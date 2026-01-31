@@ -39,6 +39,9 @@ interface SimpleDataTableProps<TData, TValue> {
   searchKey?: string;
   onAdd?: () => void;
   onRowClick?: (data: TData) => void;
+  showColumnToggle?: boolean;
+  title?: string;
+  loading?: boolean;
 }
 
 export function SimpleDataTable<TData, TValue>({
@@ -47,6 +50,9 @@ export function SimpleDataTable<TData, TValue>({
   searchKey,
   onAdd,
   onRowClick,
+  showColumnToggle = true,
+  title,
+  loading,
 }: SimpleDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -80,7 +86,7 @@ export function SimpleDataTable<TData, TValue>({
     },
   });
 
-  const { setActions } = useHeaderActions();
+  const { setActions, setLeftContent } = useHeaderActions();
 
   React.useEffect(() => {
     setActions(
@@ -94,35 +100,37 @@ export function SimpleDataTable<TData, TValue>({
             onChange={(event) =>
               table.getColumn(searchKey)?.setFilterValue(event.target.value)
             }
-            className="max-w-sm h-8"
+          className="max-w-sm h-8"
           />
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="ml-auto h-8">
-              Columns <ChevronDown className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table
-              .getAllColumns()
-              .filter((column) => column.getCanHide())
-              .map((column) => {
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize"
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) =>
-                      column.toggleVisibility(!!value)
-                    }
-                  >
-                    {column.id}
-                  </DropdownMenuCheckboxItem>
-                );
-              })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {showColumnToggle && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="ml-auto h-8">
+                Columns <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table
+                .getAllColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => {
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) =>
+                        column.toggleVisibility(!!value)
+                      }
+                    >
+                      {column.id}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {onAdd && (
           <Button onClick={onAdd} size="sm" className="h-8">
             <Plus className="mr-2 h-4 w-4" /> Add New
@@ -130,12 +138,22 @@ export function SimpleDataTable<TData, TValue>({
         )}
       </div>
     );
-    return () => setActions(null);
+
+    if (title) {
+      setLeftContent(<h1 className="text-xl font-bold">{title}</h1>);
+    }
+    return () => {
+      setActions(null);
+      setLeftContent(null);
+    };
   }, [
     setActions,
+    setLeftContent,
+    title,
     table,
     searchKey,
     onAdd,
+    showColumnToggle,
     // Add these dependencies to ensure updates when filters/visibility change
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(table.getState().columnFilters), 
@@ -166,7 +184,16 @@ export function SimpleDataTable<TData, TValue>({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
+            {loading ? (
+               <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  Loading...
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}

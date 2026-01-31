@@ -7,8 +7,13 @@ export interface IVidaUser extends Document {
   phone?: string;
   address?: string;
   AppRole: 'Super Admin' | 'Manager';
+  designation?: string;
+  bioDescription?: string;
+  isOnWebsite?: boolean;
   profilePicture?: string;
   isActive: boolean;
+  serialNo?: string;
+  signature?: string;
 }
 
 const VidaUserSchema: Schema = new Schema({
@@ -17,12 +22,17 @@ const VidaUserSchema: Schema = new Schema({
   password: { type: String },
   phone: { type: String },
   address: { type: String },
+  serialNo: { type: String },
+  signature: { type: String },
   AppRole: { 
     type: String, 
     enum: ['Super Admin', 'Manager'],
     required: true,
     default: 'Manager'
   },
+  designation: { type: String },
+  bioDescription: { type: String },
+  isOnWebsite: { type: Boolean, default: false },
   profilePicture: { type: String },
   isActive: { type: Boolean, default: true },
 });

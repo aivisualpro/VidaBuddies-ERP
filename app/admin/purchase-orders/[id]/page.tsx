@@ -47,10 +47,12 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 
 interface Shipping {
+  _id?: string;
   spoNo?: string;
   status?: string;
   ETA?: string;
   carrier?: string;
+  [key: string]: any;
 }
 
 interface CustomerPO {
@@ -247,17 +249,22 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const handleDeleteCPO = (cpoId: string, idx: number) => {
     toast("Delete Customer PO?", {
-        description: "All associated shipping records will be lost.",
+        description: "Click 'Delete' to confirm. This cannot be undone.",
         action: {
             label: "Delete",
             onClick: async () => {
-                // Optimistic
-                const oldPO = po;
-                if(po) {
-                    const newCPOs = [...po.customerPO];
-                    newCPOs.splice(idx, 1);
-                    setPO({ ...po, customerPO: newCPOs });
-                }
+                setPO((currentPO) => {
+                    if (!currentPO) return currentPO;
+                    const newCPOs = [...currentPO.customerPO];
+                    // Ensure we are deleting the correct index or find by ID if safe
+                    // For now, trusting index as per original logic, but finding by ID is safer for robustness
+                    const realIdx = newCPOs.findIndex(c => c._id === cpoId);
+                    if (realIdx !== -1) {
+                         newCPOs.splice(realIdx, 1);
+                         return { ...currentPO, customerPO: newCPOs };
+                    }
+                    return currentPO;
+                });
 
                 try {
                     const response = await fetch(`/api/admin/purchase-orders/${id}`, {
@@ -272,8 +279,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                     toast.success("Customer PO deleted");
                     fetchPO(); 
                 } catch (e) {
-                    setPO(oldPO);
                     toast.error("Error deleting Customer PO");
+                    fetchPO(); // Revert/Refresh
                 }
             }
         }
@@ -326,19 +333,34 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const handleDeleteShipping = (shipId: string, cpoIdx: number, shipIdx: number) => {
      toast("Delete Shipping Record?", {
-         description: "This action cannot be undone.",
+         description: "Click 'Delete' to confirm. This action cannot be undone.",
          action: {
              label: "Delete",
              onClick: async () => {
-                 // Optimistic
-                 const oldPO = po;
-                 if(po) {
-                     const newCPOs = [...po.customerPO];
-                     if(newCPOs[cpoIdx]?.shipping) {
-                         newCPOs[cpoIdx].shipping.splice(shipIdx, 1);
-                         setPO({ ...po, customerPO: newCPOs });
+                 setPO((currentPO) => {
+                     if(!currentPO) return currentPO;
+                     // We need to find the correct CPO and Shipping index as they might have shifted
+                     // Logic: Find CPO by index (or ID if we had it easily passed), then find shipping by ID
+                     const newCPOs = [...currentPO.customerPO];
+                     // Fallback to finding CPO by looking into the sub-docs? 
+                     // Trusting passed indices for optimistic, but let's try to be safer if possible.
+                     // Since we have shipId, we can find it.
+                     
+                     if (newCPOs[cpoIdx]?.shipping) {
+                         const targetShipIdx = newCPOs[cpoIdx].shipping.findIndex((s: any) => s._id === shipId);
+                         if(targetShipIdx !== -1) {
+                             newCPOs[cpoIdx].shipping.splice(targetShipIdx, 1);
+                             return { ...currentPO, customerPO: newCPOs };
+                         }
                      }
-                 }
+                     // If not found by ID, maybe try the passed index?
+                     if (newCPOs[cpoIdx]?.shipping?.[shipIdx]?._id === shipId) {
+                         newCPOs[cpoIdx].shipping.splice(shipIdx, 1);
+                         return { ...currentPO, customerPO: newCPOs };
+                     }
+                     
+                     return currentPO;
+                 });
 
                  try {
                      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
@@ -353,8 +375,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                      toast.success("Shipping deleted");
                      fetchPO();
                  } catch (e) {
-                     setPO(oldPO);
                      toast.error("Error deleting shipping");
+                     fetchPO();
                  }
              }
          }
@@ -677,7 +699,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             size="icon" 
                             variant="ghost" 
                             className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDeleteShipping(ship._id, ship._cpoIdx, ship._shipIdx)}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDeleteShipping(ship._id, ship._cpoIdx, ship._shipIdx);
+                            }}
                         >
                             <Trash className="h-3 w-3" />
                         </Button>
