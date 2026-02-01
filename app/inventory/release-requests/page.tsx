@@ -280,13 +280,13 @@ export default function ReleaseRequestsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 col-span-2">
                 <Label>Product</Label>
                 <Select 
                   value={formData.product} 
                   onValueChange={(val) => setFormData({ ...formData, product: val })}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full h-auto min-h-[2.5rem] py-2 whitespace-normal text-left">
                     <SelectValue placeholder="Select product" />
                   </SelectTrigger>
                   <SelectContent className="max-h-[300px]">
