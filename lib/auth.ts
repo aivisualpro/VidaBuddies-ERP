@@ -13,9 +13,17 @@ export async function encrypt(payload: any) {
 }
 
 export async function login(userData: any) {
-  // Create the session
+  // Create the session with minimal data to keep header size small
+  const minimalSession = {
+    id: userData.id,
+    name: userData.name,
+    email: userData.email,
+    role: userData.role,
+    expires: new Date(Date.now() + 2 * 60 * 60 * 1000)
+  };
+
   const expires = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
-  const session = await encrypt({ ...userData, expires });
+  const session = await encrypt(minimalSession);
 
   // Save the session in a cookie
   const cookieStore = await cookies();

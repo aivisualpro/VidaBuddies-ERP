@@ -27,16 +27,16 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        keepalive: true,
+        cache: 'no-store'
       });
 
-      let result;
       const contentType = response.headers.get("content-type");
+      let result;
       if (contentType && contentType.includes("application/json")) {
         result = await response.json();
       } else {
-        const text = await response.text();
-        console.error("[Login] Expected JSON but received:", text);
-        throw new Error("Invalid response from server");
+        throw new Error("Server returned non-JSON response. The server might be restarting or timing out.");
       }
 
       if (!response.ok) {
@@ -46,10 +46,15 @@ export default function LoginPage() {
       }
       
       toast.success(`Welcome back, ${result.user.name}`);
+      // Use window.location.href for a full reload to clear all stale state
       window.location.href = "/dashboard";
     } catch (err: any) {
-      console.error("[Login] Detailed Error:", err);
-      toast.error(err.message === "Failed to fetch" ? "Network error. Please check your connection or server status." : "System error. Please try again.");
+      console.error("[Login Error]", err);
+      if (err.name === 'AbortError' || err.message === 'Failed to fetch') {
+        toast.error("Network error or connection lost. Please refresh the page and try again.");
+      } else {
+        toast.error(err.message || "An unexpected error occurred.");
+      }
     } finally {
       setIsLoading(false);
     }

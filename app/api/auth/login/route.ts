@@ -9,11 +9,14 @@ export async function POST(request: Request) {
     const { email, password } = await request.json();
     console.log(`[Auth API] Attempting login for: ${email}`);
 
+    const start = Date.now();
     await connectToDatabase();
+    const dbEnd = Date.now();
+    console.log(`[Auth API] DB Connection took: ${dbEnd - start}ms`);
     
-    // In a real app, you would hash and compare passwords.
-    // For now, we find the user by email.
     const user = await VidaUser.findOne({ email: email.toLowerCase() });
+    const userEnd = Date.now();
+    console.log(`[Auth API] User Lookup took: ${userEnd - dbEnd}ms`);
 
     if (!user || user.password !== password) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
@@ -34,7 +37,9 @@ export async function POST(request: Request) {
       avatar: user.profilePicture || "/logo.png",
     };
 
+    const loginStart = Date.now();
     await login(userData);
+    console.log(`[Auth API] Session creation took: ${Date.now() - loginStart}ms`);
 
     return NextResponse.json({ success: true, user: userData });
   } catch (error: any) {
