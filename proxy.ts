@@ -7,13 +7,12 @@ const publicRoutes = ["/login"];
 export default async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   
-  // Skip API and static assets
+  // Safety first: never process API, static assets, or files
   if (path.startsWith('/api') || path.includes('_next') || path.includes('.')) {
     return NextResponse.next();
   }
 
   const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route)) || path === "/";
-  const isPublicRoute = publicRoutes.includes(path);
 
   const cookie = req.cookies.get("vb_session")?.value;
   let session = null;
@@ -24,9 +23,6 @@ export default async function middleware(req: NextRequest) {
       // session is invalid
     }
   }
-
-  // Log for debugging
-  console.log(`[Middleware] Path: ${path}, Session: ${!!session}, Protected: ${isProtectedRoute}`);
 
   if (isProtectedRoute && !session && path !== "/login") {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
@@ -40,5 +36,5 @@ export default async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)"],
 };

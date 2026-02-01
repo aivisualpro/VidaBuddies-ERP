@@ -29,7 +29,15 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const result = await response.json();
+      let result;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        console.error("[Login] Expected JSON but received:", text);
+        throw new Error("Invalid response from server");
+      }
 
       if (!response.ok) {
         toast.error(result.error || "Invalid credentials");
@@ -38,10 +46,10 @@ export default function LoginPage() {
       }
       
       toast.success(`Welcome back, ${result.user.name}`);
-      router.push("/dashboard");
-    } catch (err) {
-      console.error("Authentication error:", err);
-      toast.error("System error. Please try again.");
+      window.location.href = "/dashboard";
+    } catch (err: any) {
+      console.error("[Login] Detailed Error:", err);
+      toast.error(err.message === "Failed to fetch" ? "Network error. Please check your connection or server status." : "System error. Please try again.");
     } finally {
       setIsLoading(false);
     }
