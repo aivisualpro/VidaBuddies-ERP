@@ -4,8 +4,10 @@ import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 
 export async function POST(request: Request) {
+  console.log("[Auth API] Login request received");
   try {
     const { email, password } = await request.json();
+    console.log(`[Auth API] Attempting login for: ${email}`);
 
     await connectToDatabase();
     
@@ -15,6 +17,10 @@ export async function POST(request: Request) {
 
     if (!user || user.password !== password) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    if (!user.isActive) {
+      return NextResponse.json({ error: "Your account is inactive. Please contact your administrator." }, { status: 403 });
     }
 
     // Assuming password check passes for now since user didn't specify password hashing logic yet
@@ -32,6 +38,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, user: userData });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[Auth API] Login Error:", error);
+    return NextResponse.json({ 
+      error: error.message || "Authentication failed",
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    }, { status: 500 });
   }
 }

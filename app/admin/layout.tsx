@@ -3,8 +3,24 @@ import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { HeaderActionsProvider } from "@/components/providers/header-actions-provider";
 import { cookies } from "next/headers";
+import { getSession, logout } from "@/lib/auth";
+import connectToDatabase from "@/lib/db";
+import VidaUser from "@/lib/models/VidaUser";
+import { redirect } from "next/navigation";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+  
+  // Extra security: Verify status in database on every page load
+  if (session) {
+    await connectToDatabase();
+    const user = await VidaUser.findById(session.id);
+    if (!user || !user.isActive) {
+      await logout();
+      redirect("/login");
+    }
+  }
+
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
 

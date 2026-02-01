@@ -233,6 +233,55 @@ export default function UserDetailsPage() {
                   )}
                </div>
             </div>
+
+            {/* Account Security */}
+            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
+               <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-primary" />
+                  <h3 className="text-zinc-200 text-sm font-semibold tracking-wide uppercase italic">Account Security</h3>
+               </div>
+               
+               <div className="flex flex-col sm:flex-row gap-3 items-end">
+                  <div className="flex-1 w-full space-y-1.5">
+                     <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Change Password</p>
+                     <div className="relative group/pass">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 group-focus-within/pass:text-primary transition-colors" />
+                        <input 
+                           type="text" 
+                           placeholder="Enter new password"
+                           id="new-password-input"
+                           className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-zinc-200 outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-zinc-700"
+                        />
+                     </div>
+                  </div>
+                  <Button 
+                     size="sm"
+                     className="bg-primary hover:bg-primary/90 text-white font-bold text-[11px] uppercase tracking-wider h-10 px-6 rounded-xl transition-all shadow-lg shadow-primary/10 active:scale-95 whitespace-nowrap"
+                     onClick={async () => {
+                        const input = document.getElementById("new-password-input") as HTMLInputElement;
+                        const newPassword = input.value;
+                        if (!newPassword) {
+                           toast.error("Please enter a new password");
+                           return;
+                        }
+                        try {
+                           const res = await fetch("/api/auth/change-password", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ userId: user._id, newPassword })
+                           });
+                           if (!res.ok) throw new Error("Failed to change password");
+                           toast.success("Password updated successfully");
+                           input.value = "";
+                        } catch (err) {
+                           toast.error("Failed to update password");
+                        }
+                     }}
+                  >
+                     Update Password
+                  </Button>
+               </div>
+            </div>
          </div>
       </div>
 

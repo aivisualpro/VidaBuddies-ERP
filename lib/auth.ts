@@ -1,9 +1,8 @@
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT } from "jose";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-
-const secretKey = "vida_buddies_very_secret_key_change_this_in_prod";
-const key = new TextEncoder().encode(secretKey);
+export { decrypt } from "./auth-utils";
+import { decrypt as decryptLocal, key } from "./auth-utils";
 
 export async function encrypt(payload: any) {
   return await new SignJWT(payload)
@@ -13,13 +12,6 @@ export async function encrypt(payload: any) {
     .sign(key);
 }
 
-export async function decrypt(input: string): Promise<any> {
-  const { payload } = await jwtVerify(input, key, {
-    algorithms: ["HS256"],
-  });
-  return payload;
-}
-
 export async function login(userData: any) {
   // Create the session
   const expires = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
@@ -27,19 +19,25 @@ export async function login(userData: any) {
 
   // Save the session in a cookie
   const cookieStore = await cookies();
-  cookieStore.set("vb_session", session, { expires, httpOnly: true, secure: true, sameSite: 'lax' });
+  cookieStore.set("vb_session", session, { 
+    expires, 
+    httpOnly: true, 
+    secure: process.env.NODE_ENV === "production", 
+    sameSite: 'lax',
+    path: '/'
+  });
 }
 
 export async function logout() {
   // Destroy the session
-  (await cookies()).set("vb_session", "", { expires: new Date(0) });
+  (await cookies()).set("vb_session", "", { expires: new Date(0), path: '/' });
 }
 
 export async function getSession() {
   const session = (await cookies()).get("vb_session")?.value;
   if (!session) return null;
   try {
-    return await decrypt(session);
+    return await decryptLocal(session);
   } catch (e) {
     return null;
   }
@@ -50,7 +48,7 @@ export async function updateSession(request: NextRequest) {
   if (!session) return null;
 
   // Refresh the session so it doesn't expire
-  const parsed = await decrypt(session);
+  const parsed = await decryptLocal(session);
   parsed.expires = new Date(Date.now() + 2 * 60 * 60 * 1000);
   const res = NextResponse.next();
   res.cookies.set({

@@ -118,41 +118,23 @@ export default async function Page() {
   const totalInTransit = sidebarCountResult[0]?.count || 0;
 
   return (
-    <SidebarProvider
-      defaultOpen={defaultOpen}
-      className="h-screen overflow-hidden"
-      style={
-        {
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar variant="inset" />
-      <SidebarInset className="flex flex-col h-full overflow-hidden">
-        <SiteHeader />
-        <div className="flex flex-1 flex-col overflow-y-auto">
-          <div className="@container/main flex flex-1 flex-col gap-2">
-            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-              <div className="px-4 lg:px-6">
-                <ChartAreaInteractive data={chartData} />
-              </div>
-              <div className="px-4 lg:px-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>
-                            Live Shipments Map ({mapLocations.length}
-                            {totalInTransit !== mapLocations.length ? ` of ${totalInTransit}` : ''})
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0 sm:p-6">
-                        <ShipmentMapWrapper locations={mapLocations} />
-                    </CardContent>
-                </Card>
-              </div>
-            </div>
-          </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+      <div className="px-4 lg:px-6">
+        <ChartAreaInteractive data={chartData} />
+      </div>
+      <div className="px-4 lg:px-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Live Shipments Map ({mapLocations.length}
+              {totalInTransit !== mapLocations.length ? ` of ${totalInTransit}` : ''})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 sm:p-6">
+            <ShipmentMapWrapper locations={mapLocations} />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

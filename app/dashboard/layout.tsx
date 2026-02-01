@@ -8,7 +8,7 @@ import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 import { redirect } from "next/navigation";
 
-export default async function InventoryLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   
   // Extra security: Verify status in database on every page load
@@ -38,7 +38,7 @@ export default async function InventoryLayout({ children }: { children: React.Re
         <AppSidebar variant="inset" />
         <SidebarInset className="flex flex-col h-full overflow-hidden">
           <SiteHeader />
-          <div className="flex-1 overflow-hidden p-4">
+          <div className="flex-1 overflow-auto">
             {children}
           </div>
         </SidebarInset>
