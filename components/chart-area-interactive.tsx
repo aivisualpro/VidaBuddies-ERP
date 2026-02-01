@@ -136,6 +136,7 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
           id="interactive-area-chart"
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
+          style={{ minWidth: '100%', minHeight: '250px' }}
         >
           <AreaChart data={filteredData} margin={{ left: 22, right: 22 }}>
             <defs>
