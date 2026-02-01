@@ -26,6 +26,8 @@ import {
   IconShoppingCart,
   IconClipboardList,
   IconCheckbox,
+  IconRoute,
+  IconBell,
 } from "@tabler/icons-react";
 
 import { NavDocuments } from "@/components/nav-documents";
@@ -49,6 +51,11 @@ const data = {
     avatar: "/icon.png",
   },
   navSecondary: [
+    {
+      title: "Notifications",
+      url: "/admin/notifications",
+      icon: IconBell,
+    },
     {
       title: "Settings",
       url: "/admin/settings",
@@ -110,10 +117,39 @@ const data = {
       url: "/admin/andres-tracker",
       icon: IconClipboardList,
     },
+    {
+      name: "Live Shipments",
+      url: "/admin/live-shipments",
+      icon: IconRoute,
+    },
   ],
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [reports, setReports] = React.useState(data.reports);
+
+  React.useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('/api/admin/live-shipments/count');
+        if (res.ok) {
+          const { count } = await res.json();
+          if (count > 0) {
+            setReports(prev => prev.map(item => 
+              item.name === "Live Shipments" 
+                ? { ...item, badge: count } 
+                : item
+            ));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch notification count", error);
+      }
+    };
+    
+    fetchCount();
+  }, []);
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -150,7 +186,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavDocuments items={data.admin} label="Admin" />
         <NavDocuments items={data.management} label="Management" />
-        <NavDocuments items={data.reports} label="Reports" />
+        <NavDocuments items={reports} label="Reports" />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

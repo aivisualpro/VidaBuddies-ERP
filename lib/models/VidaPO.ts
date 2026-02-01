@@ -56,6 +56,42 @@ export interface IVidaPOShipping {
   qty?: number;
   type?: string;
   inventoryDate?: Date;
+  shippingTrackingRecords?: IShippingTrackingRecord[];
+}
+
+export interface IShippingTrackingRecord {
+  type?: string;
+  number?: string;
+  sealine?: string;
+  sealine_name?: string;
+  status?: string;
+  updated_at?: string;
+  from_port_name?: string;
+  from_port_country?: string;
+  from_port_locode?: string;
+  to_port_name?: string;
+  to_port_country?: string;
+  to_port_locode?: string;
+  pol_name?: string;
+  pol_date?: string;
+  pol_actual?: boolean | string;
+  pod_name?: string;
+  pod_date?: string;
+  pod_actual?: boolean | string;
+  pod_predictive_eta?: string;
+  container_iso_code?: string;
+  container_size_type?: string;
+  vessel_names?: string;
+  vessel_imos?: string;
+  last_event_code?: string;
+  last_event_status?: string;
+  last_event_date?: string;
+  last_event_location?: string;
+  last_event_facility?: string;
+  last_event_vessel?: string;
+  last_event_voyage?: string;
+  latlong?: string;
+  timestamp: Date;
 }
 
 export interface IVidaPOCustomerPO {
@@ -138,6 +174,41 @@ const VidaPOShippingSchema: Schema = new Schema({
   qty: { type: Number },
   type: { type: String },
   inventoryDate: { type: Date },
+
+  shippingTrackingRecords: [{
+    type: { type: String },
+    number: String,
+    sealine: String,
+    sealine_name: String,
+    status: String,
+    updated_at: String,
+    from_port_name: String,
+    from_port_country: String,
+    from_port_locode: String,
+    to_port_name: String,
+    to_port_country: String,
+    to_port_locode: String,
+    pol_name: String,
+    pol_date: String,
+    pol_actual: Schema.Types.Mixed, // boolean or string
+    pod_name: String,
+    pod_date: String,
+    pod_actual: Schema.Types.Mixed, // boolean or string
+    pod_predictive_eta: String,
+    container_iso_code: String,
+    container_size_type: String,
+    vessel_names: String,
+    vessel_imos: String,
+    last_event_code: String,
+    last_event_status: String,
+    last_event_date: String,
+    last_event_location: String,
+    last_event_facility: String,
+    last_event_vessel: String,
+    last_event_voyage: String,
+    latlong: String,
+    timestamp: { type: Date, default: Date.now }
+  }]
 });
 
 const VidaPOCustomerPOSchema: Schema = new Schema({

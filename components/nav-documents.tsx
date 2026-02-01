@@ -8,6 +8,7 @@ import {
   IconTrash,
   type Icon,
 } from "@tabler/icons-react";
+import { cn } from "@/lib/utils";
 
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuBadge,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -34,6 +36,7 @@ export function NavDocuments({
     name: string;
     url: string;
     icon: Icon;
+    badge?: number | string;
   }[];
   label: string;
 }) {
@@ -56,6 +59,18 @@ export function NavDocuments({
                 <span>{item.name}</span>
               </a>
             </SidebarMenuButton>
+            {item.badge !== undefined && (
+              <SidebarMenuBadge 
+                className={cn(
+                  "rounded-full px-1.5 min-w-5 h-5 flex items-center justify-center",
+                  pathname.startsWith(item.url) 
+                    ? "bg-white text-primary font-bold" 
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {item.badge}
+              </SidebarMenuBadge>
+            )}
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

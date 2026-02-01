@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <AppSidebar variant="inset" />
         <SidebarInset className="flex flex-col h-full overflow-hidden">
           <SiteHeader />
-          <div className="flex-1 overflow-hidden px-4 pt-4 pb-4">
+          <div className="flex-1 overflow-hidden p-4">
             {children}
           </div>
         </SidebarInset>

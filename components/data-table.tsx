@@ -477,6 +477,7 @@ export function DataTable({
         </div>
       </div>
       <TabsContent
+        id="content-outline"
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto px-4 lg:px-6"
       >
@@ -610,15 +611,21 @@ export function DataTable({
         </div>
       </TabsContent>
       <TabsContent
+        id="content-past-performance"
         value="past-performance"
         className="flex flex-col px-4 lg:px-6"
       >
         <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
       </TabsContent>
-      <TabsContent value="key-personnel" className="flex flex-col px-4 lg:px-6">
+      <TabsContent 
+        id="content-key-personnel"
+        value="key-personnel" 
+        className="flex flex-col px-4 lg:px-6"
+      >
         <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
       </TabsContent>
       <TabsContent
+        id="content-focus-documents"
         value="focus-documents"
         className="flex flex-col px-4 lg:px-6"
       >

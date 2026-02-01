@@ -38,11 +38,11 @@ const chartConfig = {
   },
   delivered: {
     label: "Delivered",
-    color: "hsl(var(--chart-1))",
+    color: "var(--primary)",
   },
   notDelivered: {
     label: "Not Delivered",
-    color: "hsl(var(--chart-2))",
+    color: "var(--muted-foreground)",
   },
 } satisfies ChartConfig
 
@@ -80,18 +80,19 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
     return date >= startDate && date <= referenceDate
   })
 
+  const totalShipments = React.useMemo(() => {
+    return filteredData.reduce((acc, curr) => acc + curr.delivered + curr.notDelivered, 0)
+  }, [filteredData])
+
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle>Total Shipments</CardTitle>
-        <CardDescription>
-          <span className="hidden @[540px]/card:block">
-            {timeRange === "12m" ? "Last 12 months" : timeRange === "9m" ? "Last 9 months" : timeRange === "6m" ? "Last 6 months" : "Last 3 months"}
+        <CardTitle className="flex items-baseline gap-2">
+          Total Shipments
+          <span className="text-sm font-normal text-muted-foreground">
+            {totalShipments.toLocaleString()}
           </span>
-          <span className="@[540px]/card:hidden">
-            {timeRange === "12m" ? "12 mo" : timeRange === "9m" ? "9 mo" : timeRange === "6m" ? "6 mo" : "3 mo"}
-          </span>
-        </CardDescription>
+        </CardTitle>
         <CardAction>
           <ToggleGroup
             type="single"
