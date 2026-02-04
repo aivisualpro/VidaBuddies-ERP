@@ -41,7 +41,7 @@ interface User {
   email: string;
   phone?: string;
   address?: string;
-  AppRole: "Super Admin" | "Manager";
+  AppRole: string;
   isActive: boolean;
   serialNo?: string;
   designation?: string;

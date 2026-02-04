@@ -2,7 +2,12 @@ const nextConfig = {
   // This single line hides the indicator
   devIndicators: false,
   images: {
-    domains: ["res.cloudinary.com"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+    ],
   },
 };
 

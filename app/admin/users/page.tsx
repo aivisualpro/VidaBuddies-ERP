@@ -43,7 +43,7 @@ interface User {
   email: string;
   phone?: string;
   address?: string;
-  AppRole: "Super Admin" | "Manager";
+  AppRole: string;
   password?: string;
   isActive: boolean;
   serialNo?: string;

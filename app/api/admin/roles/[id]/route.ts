@@ -5,14 +5,14 @@ import VidaAppRole from "@/lib/models/VidaAppRole";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDatabase();
     // Resolve params properly in Next.js 15+ (waiting if it's a promise, though typically it's object or promise depending on version)
     // The type signature suggests waiting might be needed in newer versions, but for now treating as params.id
     // To be safe we can await if params is a promise
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
 
     const role = await VidaAppRole.findById(id);
     if (!role) {
@@ -27,11 +27,11 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDatabase();
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
     const body = await req.json();
 
     const updatedRole = await VidaAppRole.findByIdAndUpdate(
@@ -53,11 +53,11 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDatabase();
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
 
     const deletedRole = await VidaAppRole.findByIdAndDelete(id);
 

@@ -294,84 +294,80 @@ export default function ReleaseRequestsPage() {
             {/* SECTION 1: General Info */}
             <div className="space-y-4">
                 <h3 className="font-semibold text-lg flex items-center gap-2"><Hash className="w-4 h-4"/> General Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {/* Row 1 */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Date</Label>
-                            <Input 
-                                type="date" 
-                                value={formData.date || ""}
-                                onChange={(e) => setFormData({...formData, date: e.target.value})}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Warehouse</Label>
-                             <Select 
-                                value={formData.warehouse} 
-                                onValueChange={(val) => setFormData({ ...formData, warehouse: val })}
-                                required
-                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Warehouse" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {warehouses.map((w) => (
-                                        <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     {/* Row 1: Date, Warehouse, Requested By */}
+                    <div className="space-y-2">
+                        <Label>Date</Label>
+                        <Input 
+                            type="date" 
+                            value={formData.date || ""}
+                            onChange={(e) => setFormData({...formData, date: e.target.value})}
+                            required
+                        />
                     </div>
-                    {/* Row 2 */}
-                    <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                            <Label>Requested By</Label>
-                             <Select 
-                                value={formData.requestedBy} 
-                                onValueChange={(val) => setFormData({ ...formData, requestedBy: val })}
-                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select User" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {users.map((u) => (
-                                        <SelectItem key={u._id} value={u._id}>{u.name || u.email}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                         <div className="space-y-2">
-                            <Label>Customer</Label>
-                             <Select 
-                                value={formData.customer} 
-                                onValueChange={(val) => setFormData({ ...formData, customer: val, contact: "" })}
-                                required
-                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Customer" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {customers.map((c) => (
-                                        <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    
+                    <div className="space-y-2">
+                        <Label>Warehouse</Label>
+                            <Select 
+                            value={formData.warehouse} 
+                            onValueChange={(val) => setFormData({ ...formData, warehouse: val })}
+                            required
+                            >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select Warehouse" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {warehouses.map((w) => (
+                                    <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
-                </div>
 
-                {/* Row 3 & 4 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Requested By</Label>
+                            <Select 
+                            value={formData.requestedBy} 
+                            onValueChange={(val) => setFormData({ ...formData, requestedBy: val })}
+                            >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select User" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {users.map((u) => (
+                                    <SelectItem key={u._id} value={u._id}>{u.name || u.email}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Row 2: Customer, Contact/Location, Customer PO # */}
+                    <div className="space-y-2">
+                        <Label>Customer</Label>
+                            <Select 
+                            value={formData.customer} 
+                            onValueChange={(val) => setFormData({ ...formData, customer: val, contact: "" })}
+                            required
+                            >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select Customer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {customers.map((c) => (
+                                    <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     <div className="space-y-2">
                         <Label>Contact / Location</Label>
                         <Select 
                             value={formData.contact} 
                             onValueChange={(val) => setFormData({ ...formData, contact: val })}
                             disabled={!selectedCustomer}
-                         >
-                            <SelectTrigger>
+                            >
+                            <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Select Location" />
                             </SelectTrigger>
                             <SelectContent>
@@ -383,13 +379,14 @@ export default function ReleaseRequestsPage() {
                             </SelectContent>
                         </Select>
                     </div>
+
                     <div className="space-y-2">
                         <Label>Customer PO #</Label>
                         <Input 
-                             value={formData.poNo || ""}
-                             onChange={(e) => setFormData({...formData, poNo: e.target.value})}
-                             placeholder="Enter PO Number"
-                             required
+                                value={formData.poNo || ""}
+                                onChange={(e) => setFormData({...formData, poNo: e.target.value})}
+                                placeholder="Enter PO Number"
+                                required
                         />
                     </div>
                 </div>
