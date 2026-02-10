@@ -121,6 +121,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   // Action States
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const [editingCPO, setEditingCPO] = useState<{ idx: number, data: any } | null>(null);
+  const [autoPoNo, setAutoPoNo] = useState<string>("");
   const [addingShippingToCPO, setAddingShippingToCPO] = useState<{ idx: number, poNo: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -510,7 +511,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
               <Pencil className="h-3.5 w-3.5 mr-2" />
               Edit
             </Button>
-           <Button variant="outline" size="sm" className="h-8" onClick={() => setIsAddCPOOpen(true)}>
+           <Button variant="outline" size="sm" className="h-8" onClick={() => {
+              // Auto-generate next CPO poNo
+              const existingCount = po?.customerPO?.length || 0;
+              const nextPoNo = `${po?.vbpoNo || 'VB'}-${existingCount + 1}`;
+              setAutoPoNo(nextPoNo);
+              setIsAddCPOOpen(true);
+           }}>
               <Plus className="h-3.5 w-3.5 mr-2" />
               Add Customer PO
            </Button>
@@ -1097,7 +1104,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
               <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                       <Label>PO Number (Internal)</Label>
-                      <Input name="poNo" defaultValue={editingCPO?.data?.poNo} required placeholder="e.g. VB310-1" />
+                      <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required placeholder="e.g. VB310-1" />
                   </div>
                   <div className="space-y-1">
                       <Label>Customer Ref</Label>

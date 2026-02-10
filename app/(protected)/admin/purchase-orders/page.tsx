@@ -126,8 +126,22 @@ export default function PurchaseOrdersPage() {
 
   const openAddSheet = () => {
     setEditingItem(null);
+    // Auto-generate next VB PO #
+    let nextVbpoNo = "VB1";
+    if (data.length > 0) {
+      const numbers = data
+        .map((item) => {
+          const match = item.vbpoNo?.match(/^VB(\d+)$/i);
+          return match ? parseInt(match[1], 10) : 0;
+        })
+        .filter((n) => n > 0);
+      if (numbers.length > 0) {
+        const maxNum = Math.max(...numbers);
+        nextVbpoNo = `VB${maxNum + 1}`;
+      }
+    }
     setFormData({
-      vbpoNo: "",
+      vbpoNo: nextVbpoNo,
       orderType: "",
       category: "",
       createdBy: "",
