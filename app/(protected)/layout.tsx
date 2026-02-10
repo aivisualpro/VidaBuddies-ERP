@@ -43,7 +43,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         }
       >
         <AppSidebar variant="inset" />
-        <SidebarInset className="flex flex-col h-full overflow-hidden bg-white shadow-none border-none m-0">
+        <SidebarInset className="flex flex-col h-full overflow-hidden bg-background shadow-none border-none m-0">
           <SiteHeader />
           <div className="flex-1 overflow-auto p-[16px]">
             {children}

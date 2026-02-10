@@ -46,6 +46,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+
+const UOM_OPTIONS = [
+  { value: "EA", label: "EA (Each)" },
+  { value: "CS", label: "CS (Case)" },
+  { value: "PL", label: "PL (Pallet)" },
+  { value: "DR", label: "DR (Drum)" },
+  { value: "GL", label: "GL (Gallon)" },
+  { value: "LB", label: "LB (Pound)" },
+  { value: "KG", label: "KG (Kilogram)" },
+  { value: "LT", label: "LT (Liter)" },
+  { value: "BX", label: "BX (Box)" },
+  { value: "BG", label: "BG (Bag)" },
+  { value: "RL", label: "RL (Roll)" },
+  { value: "FT", label: "FT (Foot)" },
+  { value: "MT", label: "MT (Meter)" },
+  { value: "PC", label: "PC (Piece)" },
+  { value: "SET", label: "SET" },
+  { value: "TON", label: "TON" },
+];
 
 interface Shipping {
   _id?: string;
@@ -88,8 +108,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<Record<string, string>>({});
   const [locations, setLocations] = useState<Record<string, string>>({});
+  const [customers, setCustomers] = useState<any[]>([]);
   const [supplierLocations, setSupplierLocations] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<Record<string, string>>({});
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [selectedCustomerForCPO, setSelectedCustomerForCPO] = useState<string>("");
+  const [selectedLocationForCPO, setSelectedLocationForCPO] = useState<string>("");
+  const [selectedWarehouseForCPO, setSelectedWarehouseForCPO] = useState<string>("");
+  const [selectedUOMForCPO, setSelectedUOMForCPO] = useState<string>("");
   const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
   
   // Action States
@@ -108,6 +134,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       const response = await fetch("/api/admin/customers");
       const data = await response.json();
       if (Array.isArray(data)) {
+        setCustomers(data);
         const mapping: Record<string, string> = {};
         data.forEach((cust: any) => {
           if (cust.location && Array.isArray(cust.location)) {
@@ -193,13 +220,41 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       }
   };
 
+  const fetchWarehouses = async () => {
+    try {
+      const response = await fetch("/api/admin/warehouse");
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setWarehouses(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch warehouses", error);
+    }
+  };
+
   useEffect(() => {
     fetchPO();
     fetchUsers();
     fetchCustomers();
     fetchSuppliers();
     fetchProducts();
+    fetchWarehouses();
   }, [id]);
+
+  // Auto-select single location when customer changes
+  useEffect(() => {
+    if (selectedCustomerForCPO) {
+      const cust = customers.find((c: any) => c.vbId === selectedCustomerForCPO);
+      if (cust?.location?.length === 1) {
+        setSelectedLocationForCPO(cust.location[0].vbId);
+      } else {
+        // Reset location if customer changed (unless editing)
+        if (!editingCPO) setSelectedLocationForCPO("");
+      }
+    } else {
+      setSelectedLocationForCPO("");
+    }
+  }, [selectedCustomerForCPO, customers]);
 
   // Calculate total shippings
   const allShippings = po?.customerPO?.flatMap((cpo, cpoIdx) => 
@@ -617,6 +672,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                              onClick={(e) => { 
                                  e.stopPropagation(); 
                                  setEditingCPO({ idx, data: cpo });
+                                 setSelectedCustomerForCPO(cpo.customerPONo || "");
+                                 setSelectedLocationForCPO(cpo.customerLocation || "");
+                                 setSelectedWarehouseForCPO(cpo.warehouse || "");
+                                 setSelectedUOMForCPO(cpo.UOM || "");
                              }}
                            >
                               <Pencil className="h-3.5 w-3.5" />
@@ -1028,7 +1087,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
       </div>
-      <Dialog open={isAddCPOOpen || !!editingCPO} onOpenChange={(v) => { if(!v) { setIsAddCPOOpen(false); setEditingCPO(null); } }}>
+      <Dialog open={isAddCPOOpen || !!editingCPO} onOpenChange={(v) => { if(!v) { setIsAddCPOOpen(false); setEditingCPO(null); setSelectedCustomerForCPO(""); setSelectedLocationForCPO(""); setSelectedWarehouseForCPO(""); setSelectedUOMForCPO(""); } }}>
         <DialogContent>
            <DialogHeader>
               <DialogTitle>{editingCPO ? "Edit Customer PO" : "Add Customer PO"}</DialogTitle>
@@ -1042,20 +1101,45 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="space-y-1">
                       <Label>Customer Ref</Label>
-                      <Input name="customerPONo" defaultValue={editingCPO?.data?.customerPONo} placeholder="e.g. AC00084" />
+                      <SearchableSelect
+                        name="customerPONo"
+                        options={customers.map((cust: any) => ({ value: cust.vbId, label: cust.name }))}
+                        value={selectedCustomerForCPO}
+                        onChange={(val) => setSelectedCustomerForCPO(val)}
+                        placeholder="Select Customer"
+                        searchPlaceholder="Search customers..."
+                        emptyMessage="No customers found."
+                      />
                   </div>
                   <div className="space-y-1">
                       <Label>Customer Location</Label>
-                      <select name="customerLocation" className="w-full border rounded-md h-9 px-3 text-sm bg-background" defaultValue={editingCPO?.data?.customerLocation}>
-                         <option value="">Select Location</option>
-                         {Object.entries(locations).map(([id, name]) => (
-                             <option key={id} value={id}>{name}</option>
-                         ))}
-                      </select>
+                      <SearchableSelect
+                        name="customerLocation"
+                        options={(() => {
+                          const selectedCust = customers.find((c: any) => c.vbId === selectedCustomerForCPO);
+                          if (selectedCust?.location?.length) {
+                            return selectedCust.location.map((loc: any) => ({ value: loc.vbId, label: loc.locationName || loc.vbId }));
+                          }
+                          return Object.entries(locations).map(([id, name]) => ({ value: id, label: name }));
+                        })()}
+                        value={selectedLocationForCPO}
+                        onChange={(val) => setSelectedLocationForCPO(val)}
+                        placeholder="Select Location"
+                        searchPlaceholder="Search locations..."
+                        emptyMessage="No locations found."
+                      />
                   </div>
                   <div className="space-y-1">
                       <Label>Dispatch / Warehouse</Label>
-                      <Input name="warehouse" defaultValue={editingCPO?.data?.warehouse} placeholder="Warehouse Name" />
+                      <SearchableSelect
+                        name="warehouse"
+                        options={warehouses.map((w: any) => ({ value: w.name, label: w.name }))}
+                        value={selectedWarehouseForCPO}
+                        onChange={(val) => setSelectedWarehouseForCPO(val)}
+                        placeholder="Select Warehouse"
+                        searchPlaceholder="Search warehouses..."
+                        emptyMessage="No warehouses found."
+                      />
                   </div>
                   <div className="space-y-1">
                       <Label>PO Date</Label>
@@ -1069,10 +1153,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                        <div className="space-y-1"><Label>Qty Ordered</Label><Input name="qtyOrdered" type="number" defaultValue={editingCPO?.data?.qtyOrdered} /></div>
                        <div className="space-y-1"><Label>Received</Label><Input name="qtyReceived" type="number" defaultValue={editingCPO?.data?.qtyReceived} /></div>
                   </div>
-                   <div className="space-y-1"><Label>UOM</Label><Input name="UOM" defaultValue={editingCPO?.data?.UOM} /></div>
+                  <div className="space-y-1">
+                      <Label>UOM</Label>
+                      <SearchableSelect
+                        name="UOM"
+                        options={UOM_OPTIONS}
+                        value={selectedUOMForCPO}
+                        onChange={(val) => setSelectedUOMForCPO(val)}
+                        placeholder="Select UOM"
+                        searchPlaceholder="Search units..."
+                        emptyMessage="No units found."
+                      />
+                  </div>
               </div>
               <DialogFooter>
-                 <Button type="button" variant="outline" onClick={() => { setIsAddCPOOpen(false); setEditingCPO(null); }}>Cancel</Button>
+                 <Button type="button" variant="outline" onClick={() => { setIsAddCPOOpen(false); setEditingCPO(null); setSelectedCustomerForCPO(""); setSelectedLocationForCPO(""); setSelectedWarehouseForCPO(""); setSelectedUOMForCPO(""); }}>Cancel</Button>
                  <Button type="submit" disabled={actionLoading}>{actionLoading ? "Saving..." : "Save Changes"}</Button>
               </DialogFooter>
            </form>
