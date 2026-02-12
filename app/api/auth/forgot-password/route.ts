@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
     // Prepare the email template
     const { data, error } = await resend.emails.send({
-      from: "Vida Buddies Support <info@adeelfullstack.com>",
+      from: "Vida Buddies Support <noreply@app.vidabuddies.com>",
       to: [user.email],
       subject: "Your Vida Buddies Password Recovery",
       html: `

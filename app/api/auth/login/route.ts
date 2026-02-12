@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     // Send code via email
     const { error: emailError } = await resend.emails.send({
-      from: "Vida Buddies <info@adeelfullstack.com>",
+      from: "Vida Buddies <noreply@app.vidabuddies.com>",
       to: [user.email],
       subject: "Your Vida Buddies Login Code",
       html: `
