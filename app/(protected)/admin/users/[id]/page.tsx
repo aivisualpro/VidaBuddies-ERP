@@ -122,14 +122,14 @@ export default function UserDetailsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500" style={{ zoom: "90%" }}>
-      {/* Header Card Refined to match '90% zoom' look at 100% */}
-      <div className="relative rounded-3xl overflow-hidden bg-zinc-950 text-white shadow-xl flex flex-col md:flex-row min-h-[340px] border border-primary/10">
+      {/* Header Card */}
+      <div className="relative rounded-3xl overflow-hidden bg-card text-card-foreground shadow-xl flex flex-col md:flex-row min-h-[340px] border border-border">
          {/* Edit Button - Top Right Corner Icon */}
          <div className="absolute top-5 right-5 z-20">
             <Button 
                variant="ghost" 
                size="icon" 
-               className="h-8 w-8 bg-primary/10 hover:bg-primary/20 text-white border border-primary/20 rounded-full transition-all"
+               className="h-8 w-8 bg-primary/10 hover:bg-primary/20 text-foreground border border-primary/20 rounded-full transition-all"
                onClick={() => setIsEditDialogOpen(true)}
             >
                <Pencil className="h-4 w-4" />
@@ -137,7 +137,7 @@ export default function UserDetailsPage() {
          </div>
 
          {/* Left Side - Hero Image */}
-         <div className="w-full md:w-2/5 relative bg-zinc-900 min-h-[300px] md:min-h-full">
+         <div className="w-full md:w-2/5 relative bg-muted min-h-[300px] md:min-h-full">
             {user.profilePicture ? (
                <img 
                   src={user.profilePicture} 
@@ -145,20 +145,20 @@ export default function UserDetailsPage() {
                   className="absolute inset-0 w-full h-full object-cover opacity-90" 
                />
             ) : (
-               <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
-                  <UserIcon className="h-32 w-32 text-zinc-600" />
+               <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                  <UserIcon className="h-32 w-32 text-muted-foreground/40" />
                </div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-zinc-950/20" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-card/20" />
          </div>
 
          {/* Right Side - Content */}
          <div className="w-full md:w-3/5 p-5 md:p-7 flex flex-col justify-center space-y-3">
             <div className="space-y-1">
-               <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">{user.name}</h1>
+               <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{user.name}</h1>
             </div>
 
-            <div className="text-zinc-400 text-[13px] leading-relaxed max-w-xl whitespace-pre-wrap opacity-90">
+            <div className="text-muted-foreground text-[13px] leading-relaxed max-w-xl whitespace-pre-wrap opacity-90">
                {user.bioDescription || "Enrich your expertise and grow your career. The development of both technical and human skills is at the heart of our Group's success."}
             </div>
 
@@ -175,77 +175,76 @@ export default function UserDetailsPage() {
                   {user.designation || "Team Member"}
                </div>
 
-
                {/* Website Visibility Badge */}
-               <div className={`inline-flex items-center px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-[12px] font-medium ${user.isOnWebsite ? "text-primary/90" : "text-zinc-500"}`}>
-                  <Globe className={`mr-1.5 h-3 w-3 ${user.isOnWebsite ? "text-primary" : "text-zinc-500"}`} />
+               <div className={`inline-flex items-center px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-[12px] font-medium ${user.isOnWebsite ? "text-primary/90" : "text-muted-foreground"}`}>
+                  <Globe className={`mr-1.5 h-3 w-3 ${user.isOnWebsite ? "text-primary" : "text-muted-foreground"}`} />
                   {user.isOnWebsite ? "On Website" : "Hidden"}
                </div>
 
                {/* Status Badge */}
-               <div className={`inline-flex items-center px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-[12px] font-medium ${user.isActive ? "text-primary/90" : "text-zinc-500"}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full mr-1.5 ${user.isActive ? "bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" : "bg-zinc-600"}`} />
+               <div className={`inline-flex items-center px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-[12px] font-medium ${user.isActive ? "text-primary/90" : "text-muted-foreground"}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full mr-1.5 ${user.isActive ? "bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" : "bg-muted-foreground/50"}`} />
                   {user.isActive ? "Active" : "Inactive"}
                </div>
             </div>
 
             {/* Glass Grid */}
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-3.5 grid grid-cols-2 gap-x-5 gap-y-2.5 items-stretch">
+            <div className="bg-muted/50 backdrop-blur-md rounded-2xl border border-border p-3.5 grid grid-cols-2 gap-x-5 gap-y-2.5 items-stretch">
                <div className="space-y-1">
-                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
                      <Mail className="h-3 w-3 text-primary" /> Email
                   </p>
-                  <p className="text-zinc-200 text-sm font-medium break-all">{user.email}</p>
+                  <p className="text-foreground text-sm font-medium break-all">{user.email}</p>
                </div>
                <div className="space-y-1">
-                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
                      <Phone className="h-3 w-3 text-primary" /> Phone
                   </p>
-                  <p className="text-zinc-200 text-sm font-medium">{user.phone || "Not provided"}</p>
+                  <p className="text-foreground text-sm font-medium">{user.phone || "Not provided"}</p>
                </div>
                <div className="space-y-1">
-                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
                      <MapPin className="h-3 w-3 text-primary" /> Address
                   </p>
-                  <p className="text-zinc-200 text-sm font-medium">{user.address || "Not provided"}</p>
+                  <p className="text-foreground text-sm font-medium">{user.address || "Not provided"}</p>
                </div>
                <div className="space-y-1 flex flex-col">
-                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
                      <PenTool className="h-3 w-3 text-primary" /> Signature
                   </p>
                   {user.signature ? (
-                     <div className="bg-white/10 rounded flex-1 flex items-center justify-center px-2 min-h-[32px]">
-                        <img src={user.signature} alt="Signature" className="h-full max-h-8 w-auto object-contain invert brightness-200" />
+                     <div className="bg-muted rounded flex-1 flex items-center justify-center px-2 min-h-[32px]">
+                        <img src={user.signature} alt="Signature" className="h-full max-h-8 w-auto object-contain dark:invert dark:brightness-200" />
                      </div>
                   ) : (
-                     <p className="text-zinc-600 text-xs italic">Not provided</p>
+                     <p className="text-muted-foreground/60 text-xs italic">Not provided</p>
                   )}
                </div>
             </div>
 
             {/* Account Security */}
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
+            <div className="bg-muted/50 backdrop-blur-md rounded-2xl border border-border p-4 space-y-4">
                <div className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-primary" />
-                  <h3 className="text-zinc-200 text-sm font-semibold tracking-wide uppercase italic">Account Security</h3>
+                  <h3 className="text-foreground text-sm font-semibold tracking-wide uppercase italic">Account Security</h3>
                </div>
                
                <div className="flex flex-col sm:flex-row gap-3 items-end">
                   <div className="flex-1 w-full space-y-1.5">
-                     <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Change Password</p>
+                     <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Change Password</p>
                      <div className="relative group/pass">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 group-focus-within/pass:text-primary transition-colors" />
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within/pass:text-primary transition-colors" />
                         <input 
                            type="text" 
                            placeholder="Enter new password"
                            id="new-password-input"
-                           className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-zinc-200 outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-zinc-700"
+                           className="w-full bg-background border border-border rounded-xl py-2.5 pl-10 pr-4 text-sm text-foreground outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/50"
                         />
                      </div>
                   </div>
                   <Button 
                      size="sm"
-                     className="bg-primary hover:bg-primary/90 text-white font-bold text-[11px] uppercase tracking-wider h-10 px-6 rounded-xl transition-all shadow-lg shadow-primary/10 active:scale-95 whitespace-nowrap"
+                     className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-[11px] uppercase tracking-wider h-10 px-6 rounded-xl transition-all shadow-lg shadow-primary/10 active:scale-95 whitespace-nowrap"
                      onClick={async () => {
                         const input = document.getElementById("new-password-input") as HTMLInputElement;
                         const newPassword = input.value;

@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { IconShip, IconMapPin } from "@tabler/icons-react";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 
 // Fix for default marker icons
 const DefaultIcon = L.icon({
@@ -53,13 +54,19 @@ export default function ShipmentMap({ locations }: { locations: MapLocation[] })
     // Default center (World view)
     const center: [number, number] = [20, 0];
     const [hoverInfo, setHoverInfo] = useState<{ loc: MapLocation } | null>(null);
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === "dark";
+    const tileUrl = isDark
+        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 
     return (
         <div className="h-[500px] w-full rounded-md border bg-background shadow-sm relative z-0 group">
              <MapContainer center={center} zoom={2} scrollWheelZoom={true} style={{ height: "100%", width: "100%", zIndex: 0 }}>
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    url={tileUrl}
+                    key={tileUrl}
                 />
                 {locations.map((loc, idx) => (
                     <Marker 
