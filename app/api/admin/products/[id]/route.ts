@@ -25,13 +25,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     await connectToDatabase();
     const body = await req.json();
-    const updatedItem = await VidaProduct.findByIdAndUpdate(id, body, { new: true });
+    const updatedItem = await VidaProduct.findByIdAndUpdate(id, body, { new: true, runValidators: true });
     if (!updatedItem) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
     return NextResponse.json(updatedItem);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating product:", error);
+
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || "field";
+      return NextResponse.json(
+        { error: `A product with this ${field} already exists` },
+        { status: 400 }
+      );
+    }
+
+    if (error?.name === "ValidationError") {
+      const messages = Object.values(error.errors || {}).map((e: any) => e.message);
+      return NextResponse.json(
+        { error: messages.join(", ") || "Validation failed" },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
   }
 }

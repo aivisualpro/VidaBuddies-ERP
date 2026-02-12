@@ -105,27 +105,41 @@ export function ProductFormDialog({
     }
   }, [open, initialData]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    // Validate required fields
+    if (!formData.name?.trim()) {
+      toast.error("Product Name is required");
+      setActiveSection("identity");
+      return;
+    }
+
     try {
       const url = initialData?._id
         ? `/api/admin/products/${initialData._id}`
         : "/api/admin/products";
       const method = initialData?._id ? "PUT" : "POST";
 
+      // Strip internal Mongoose fields from the payload
+      const { _id, __v, createdAt, updatedAt, ...payload } = formData as any;
+
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to save");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to save");
+      }
 
       toast.success(initialData?._id ? "Product updated" : "Product created");
       onOpenChange(false);
       onSuccess();
-    } catch (error) {
-      toast.error("An error occurred saving the product");
+    } catch (error: any) {
+      toast.error(error?.message || "An error occurred saving the product");
       console.error(error);
     }
   };
@@ -177,16 +191,17 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[85vh] p-0 overflow-hidden flex flex-col gap-0 outline-none border-none bg-background shadow-2xl">
+      <DialogContent className="max-w-5xl h-[85vh] p-0 overflow-hidden flex flex-col gap-0 outline-none border-none bg-background shadow-2xl" aria-describedby="product-form-description">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between bg-muted/20">
             <div>
               <DialogTitle className="text-xl font-bold">{initialData?._id ? "Edit Product" : "New Product"}</DialogTitle>
+              <p id="product-form-description" className="text-sm text-muted-foreground mt-0.5">Fill in the product details below.</p>
             </div>
             {/* Quick Actions / Save in Header for better UX */}
              <div className="flex gap-2">
                  <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                 <Button onClick={handleSubmit}>Save Changes</Button>
+                 <Button onClick={() => handleSubmit()}>Save Changes</Button>
              </div>
         </div>
 
@@ -220,9 +235,20 @@ export function ProductFormDialog({
                         </div>
 
                         <div className="space-y-4">
+                           {/* Serial Number */}
+                           <div className="space-y-2">
+                              <Label htmlFor="sNo">Serial Number</Label>
+                              <Input
+                                id="sNo"
+                                value={formData.sNo || ""}
+                                onChange={(e) => setFormData({ ...formData, sNo: e.target.value })}
+                                placeholder="Optional"
+                              />
+                           </div>
+
                            {/* Product Name - Taller Input */}
                            <div className="space-y-2">
-                              <Label htmlFor="name">Product Name</Label>
+                              <Label htmlFor="name">Product Name <span className="text-destructive">*</span></Label>
                               <textarea
                                 id="name"
                                 value={formData.name || ""}
