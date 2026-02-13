@@ -398,14 +398,15 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
          action: {
              label: "Delete",
              onClick: async () => {
+                 // Get shipping svbid and parent CPO poNo before removing from state
+                 const shipData = po?.customerPO?.[cpoIdx]?.shipping?.[shipIdx];
+                 const svbid = shipData?.svbid;
+                 const cpoPoNo = po?.customerPO?.[cpoIdx]?.poNo;
+                 const poNo = po?.vbpoNo;
+
                  setPO((currentPO) => {
                      if(!currentPO) return currentPO;
-                     // We need to find the correct CPO and Shipping index as they might have shifted
-                     // Logic: Find CPO by index (or ID if we had it easily passed), then find shipping by ID
                      const newCPOs = [...currentPO.customerPO];
-                     // Fallback to finding CPO by looking into the sub-docs? 
-                     // Trusting passed indices for optimistic, but let's try to be safer if possible.
-                     // Since we have shipId, we can find it.
                      
                      if (newCPOs[cpoIdx]?.shipping) {
                          const targetShipIdx = newCPOs[cpoIdx].shipping.findIndex((s: any) => s._id === shipId);
@@ -414,7 +415,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                              return { ...currentPO, customerPO: newCPOs };
                          }
                      }
-                     // If not found by ID, maybe try the passed index?
                      if (newCPOs[cpoIdx]?.shipping?.[shipIdx]?._id === shipId) {
                          newCPOs[cpoIdx].shipping.splice(shipIdx, 1);
                          return { ...currentPO, customerPO: newCPOs };
@@ -433,6 +433,27 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                      });
 
                      if (!response.ok) throw new Error("Failed to delete shipping");
+
+                     // Also delete the Google Drive folder for this shipping
+                     if (svbid && cpoPoNo && poNo) {
+                       try {
+                         const findRes = await fetch(
+                           `/api/admin/drive?type=find&poNumber=${encodeURIComponent(poNo)}&spoNumber=${encodeURIComponent(cpoPoNo)}&shipNumber=${encodeURIComponent(svbid)}`
+                         );
+                         const findData = await findRes.json();
+                         if (findData.folderId) {
+                           await fetch('/api/admin/drive', {
+                             method: 'DELETE',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ fileIds: [findData.folderId] }),
+                           });
+                         }
+                       } catch (driveErr) {
+                         console.error("Failed to delete Drive folder:", driveErr);
+                         // Don't block — shipping was already deleted from DB
+                       }
+                     }
+
                      toast.success("Shipping deleted");
                      fetchPO();
                  } catch (e) {

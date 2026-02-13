@@ -213,9 +213,18 @@ export function AttachmentsModal({
     ? navStack[navStack.length - 1].folderId
     : rootFolderId;
 
+  // Abort controller to cancel previous fetch when a new one starts (prevents duplicate folder creation)
+  const abortRef = useRef<AbortController | null>(null);
+
   /* ─── Fetch files ─── */
   const fetchFiles = useCallback(async () => {
     if (!poNumber) return;
+
+    // Cancel any in-flight request
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setFiles([]);
     try {
@@ -238,7 +247,7 @@ export function AttachmentsModal({
         url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       const data = await res.json();
       if (res.ok) {
         setFiles(data.files || []);
@@ -248,8 +257,10 @@ export function AttachmentsModal({
       } else {
         toast.error("Failed to load files", { description: data.error });
       }
-    } catch {
-      toast.error("Failed to connect to server");
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        toast.error("Failed to connect to server");
+      }
     } finally {
       setLoading(false);
     }

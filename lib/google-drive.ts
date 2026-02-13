@@ -37,8 +37,30 @@ export function getDrive() {
 }
 
 /**
+ * Find a folder inside a parent folder by name (search only, no create).
+ * Returns the folder ID or null if not found.
+ */
+export async function findFolder(
+  parentId: string,
+  folderName: string
+): Promise<string | null> {
+  const drive = getDrive();
+  const res = await drive.files.list({
+    q: `'${parentId}' in parents and name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: "files(id, name)",
+    spaces: "drive",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: "drive",
+    driveId: SHARED_DRIVE_ID,
+  });
+  return res.data.files?.[0]?.id || null;
+}
+
+/**
  * Find or create a folder inside a parent folder by name.
- * Returns the folder ID.
+ * Includes race-condition protection: if a duplicate is created
+ * by a concurrent request, it detects and cleans up the duplicate.
  */
 export async function findOrCreateFolder(
   parentId: string,
@@ -58,6 +80,19 @@ export async function findOrCreateFolder(
   });
 
   if (res.data.files && res.data.files.length > 0) {
+    // If duplicates exist (from prior race conditions), clean them up
+    if (res.data.files.length > 1) {
+      const [keep, ...dupes] = res.data.files;
+      // Trash duplicates in background (don't await to avoid blocking)
+      Promise.allSettled(
+        dupes.map(d => drive.files.update({
+          fileId: d.id!,
+          requestBody: { trashed: true },
+          supportsAllDrives: true,
+        }))
+      ).catch(() => {});
+      return keep.id!;
+    }
     return res.data.files[0].id!;
   }
 
@@ -71,6 +106,39 @@ export async function findOrCreateFolder(
     fields: "id",
     supportsAllDrives: true,
   });
+
+  // Race-condition guard: verify no duplicate was created concurrently
+  const verify = await drive.files.list({
+    q: `'${parentId}' in parents and name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: "files(id)",
+    spaces: "drive",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: "drive",
+    driveId: SHARED_DRIVE_ID,
+  });
+
+  if (verify.data.files && verify.data.files.length > 1) {
+    // Multiple folders exist — use the first, trash our duplicate if needed
+    const canonical = verify.data.files[0].id!;
+    if (folder.data.id !== canonical) {
+      drive.files.update({
+        fileId: folder.data.id!,
+        requestBody: { trashed: true },
+        supportsAllDrives: true,
+      }).catch(() => {});
+    } else {
+      // Trash the other duplicates
+      verify.data.files.slice(1).forEach(d => {
+        drive.files.update({
+          fileId: d.id!,
+          requestBody: { trashed: true },
+          supportsAllDrives: true,
+        }).catch(() => {});
+      });
+    }
+    return canonical;
+  }
 
   return folder.data.id!;
 }
@@ -95,6 +163,27 @@ export async function ensureFolderPath(
   if (!shipNumber) return spoFolderId;
   const shipFolderId = await findOrCreateFolder(spoFolderId, shipNumber);
   return shipFolderId;
+}
+
+/**
+ * Find a folder path WITHOUT creating anything.
+ * Returns the deepest folder ID, or null if any segment doesn't exist.
+ */
+export async function findFolderPath(
+  rootFolderId: string,
+  poNumber: string,
+  spoNumber?: string,
+  shipNumber?: string
+): Promise<string | null> {
+  const vbpoId = await findFolder(rootFolderId, "VBPO");
+  if (!vbpoId) return null;
+  const poId = await findFolder(vbpoId, poNumber);
+  if (!poId) return null;
+  if (!spoNumber) return poId;
+  const spoId = await findFolder(poId, spoNumber);
+  if (!spoId) return null;
+  if (!shipNumber) return spoId;
+  return findFolder(spoId, shipNumber);
 }
 
 /**

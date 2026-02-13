@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ensureFolderPath,
   ensureSubFolderPath,
+  findFolderPath,
   uploadFile,
   listFiles,
   deleteFiles,
@@ -26,7 +27,12 @@ export async function GET(request: NextRequest) {
 
     let folderId: string;
 
-    if (type === "root") {
+    if (type === "find") {
+      // Find folder by path without creating (for delete operations)
+      if (!poNumber) return NextResponse.json({ folderId: null });
+      const folderId = await findFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber, shipNumber);
+      return NextResponse.json({ folderId });
+    } else if (type === "root") {
       // List contents of the root folder (VBPO level)
       folderId = ROOT_FOLDER_ID;
     } else if (directFolderId) {
