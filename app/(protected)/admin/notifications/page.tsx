@@ -444,13 +444,6 @@ export default function NotificationsPage() {
                   </div>
                 </div>
 
-                {/* Tracking URL info */}
-                <div className="text-center space-y-2 w-full">
-                  <p className="text-xs text-muted-foreground">
-                    Points to: <span className="font-mono text-foreground">/api/qr-scan</span> → redirects to{" "}
-                    <span className="font-mono text-foreground">vidabuddies.com</span>
-                  </p>
-                </div>
 
                 {/* Action Buttons */}
                 <div className="flex gap-3 w-full">
