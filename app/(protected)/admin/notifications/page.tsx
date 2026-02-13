@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { format } from "date-fns";
 import QRCode from "qrcode";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 import {
   IconBell,
   IconInfoCircle,
@@ -21,7 +22,21 @@ import {
   IconRefresh,
   IconChartBar,
 } from "@tabler/icons-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,6 +72,7 @@ export default function NotificationsPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [qrStats, setQrStats] = useState<QrStats | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [chartRange, setChartRange] = useState<7 | 30 | 90>(7);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { setLeftContent } = useHeaderActions();
 
@@ -92,10 +108,10 @@ export default function NotificationsPage() {
       // QR encodes the Vercel URL where the tracking API lives; it redirects to vidabuddies.com
       const trackingUrl = "https://vida-buddies-erp.vercel.app/api/qr-scan";
 
-      // Generate QR code as data URL
+      // Generate QR code at 4000x4000 for print quality (300 PPI = ~13.3 inches)
       const qrCanvas = document.createElement("canvas");
       await QRCode.toCanvas(qrCanvas, trackingUrl, {
-        width: 400,
+        width: 4000,
         margin: 2,
         color: {
           dark: "#09090b",
@@ -138,7 +154,7 @@ export default function NotificationsPage() {
               Math.PI * 2
             );
             ctx.strokeStyle = "#e4e4e7";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 20;
             ctx.stroke();
 
             // Draw the logo
@@ -152,16 +168,17 @@ export default function NotificationsPage() {
         });
       }
 
+      // Store the raw data URL (display preview)
       setQrDataUrl(qrCanvas.toDataURL("image/png"));
     } catch (error) {
       console.error("Failed to generate QR code:", error);
     }
   }, []);
 
-  const fetchQrStats = useCallback(async () => {
+  const fetchQrStats = useCallback(async (days: number = 7) => {
     setQrLoading(true);
     try {
-      const res = await fetch("/api/admin/qr-stats");
+      const res = await fetch(`/api/admin/qr-stats?days=${days}`);
       if (res.ok) {
         const data = await res.json();
         setQrStats(data);
@@ -176,15 +193,87 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (activeTab === "traffic") {
       generateQrCode();
-      fetchQrStats();
+      fetchQrStats(chartRange);
     }
-  }, [activeTab, generateQrCode, fetchQrStats]);
+  }, [activeTab, chartRange, generateQrCode, fetchQrStats]);
+
+  // Inject pHYs chunk into PNG binary to set 300 PPI metadata
+  const setPngDpi = (dataUrl: string, dpi: number): string => {
+    // Convert data URL to binary
+    const base64 = dataUrl.split(",")[1];
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    // 300 DPI = 11811 pixels per meter (1 inch = 0.0254m → 300/0.0254 ≈ 11811)
+    const ppm = Math.round(dpi / 0.0254);
+
+    // Build the pHYs chunk: 4-byte length + 4-byte type + 9-byte data + 4-byte CRC
+    const phys = new Uint8Array(21);
+    const view = new DataView(phys.buffer);
+    // Length of data section = 9
+    view.setUint32(0, 9);
+    // Chunk type: "pHYs"
+    phys[4] = 0x70; phys[5] = 0x48; phys[6] = 0x59; phys[7] = 0x73;
+    // Pixels per unit X
+    view.setUint32(8, ppm);
+    // Pixels per unit Y
+    view.setUint32(12, ppm);
+    // Unit = meter
+    phys[16] = 1;
+    // CRC32 over type + data
+    const crc = crc32(phys.slice(4, 17));
+    view.setUint32(17, crc);
+
+    // Find the first IDAT chunk and insert pHYs before it
+    // PNG signature is 8 bytes, then chunks follow
+    let offset = 8;
+    while (offset < bytes.length) {
+      const chunkLen = (bytes[offset] << 24) | (bytes[offset+1] << 16) | (bytes[offset+2] << 8) | bytes[offset+3];
+      const chunkType = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+      if (chunkType === "IDAT" || chunkType === "pHYs") {
+        // If there's already a pHYs, skip past it
+        if (chunkType === "pHYs") {
+          offset += 12 + chunkLen;
+          continue;
+        }
+        break;
+      }
+      offset += 12 + chunkLen; // 4 len + 4 type + data + 4 crc
+    }
+
+    // Combine: before IDAT + pHYs + IDAT onwards
+    const result = new Uint8Array(bytes.length + 21);
+    result.set(bytes.slice(0, offset), 0);
+    result.set(phys, offset);
+    result.set(bytes.slice(offset), offset + 21);
+
+    // Convert back to data URL
+    let binary = "";
+    for (let i = 0; i < result.length; i++) binary += String.fromCharCode(result[i]);
+    return "data:image/png;base64," + btoa(binary);
+  };
+
+  // CRC32 implementation for PNG chunk checksum
+  const crc32 = (data: Uint8Array): number => {
+    let crc = 0xFFFFFFFF;
+    const table: number[] = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c;
+    }
+    for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  };
 
   const downloadQrCode = () => {
     if (!qrDataUrl) return;
+    // Inject 300 PPI metadata into PNG before download
+    const hiDpiDataUrl = setPngDpi(qrDataUrl, 300);
     const link = document.createElement("a");
     link.download = "vida-buddies-qr-code.png";
-    link.href = qrDataUrl;
+    link.href = hiDpiDataUrl;
     link.click();
   };
 
@@ -214,10 +303,17 @@ export default function NotificationsPage() {
     }
   };
 
-  const getMaxScan = () => {
-    if (!qrStats?.dailyScans) return 1;
-    return Math.max(...qrStats.dailyScans.map((d) => d.scans), 1);
-  };
+  const scanChartConfig = {
+    scans: {
+      label: "Scans",
+      color: "var(--primary)",
+    },
+  } satisfies ChartConfig;
+
+  const totalChartScans = useMemo(() => {
+    if (!qrStats?.dailyScans) return 0;
+    return qrStats.dailyScans.reduce((acc, d) => acc + d.scans, 0);
+  }, [qrStats?.dailyScans]);
 
   if (loading) {
     return <TablePageSkeleton />;
@@ -455,50 +551,101 @@ export default function NotificationsPage() {
               </Card>
             </div>
 
-            {/* Daily Scans Chart */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <IconChartBar className="h-4 w-4" />
-                  Daily Scans (Last 7 Days)
+            {/* Daily Scans Area Chart */}
+            <Card className="@container/chart">
+              <CardHeader>
+                <CardTitle className="flex items-baseline gap-2">
+                  Daily Scans
+                  <span className="text-sm font-normal text-muted-foreground">
+                    {totalChartScans.toLocaleString()}
+                  </span>
                 </CardTitle>
+                <CardAction>
+                  <ToggleGroup
+                    type="single"
+                    value={String(chartRange)}
+                    onValueChange={(v) => v && setChartRange(Number(v) as 7 | 30 | 90)}
+                    variant="outline"
+                    className="hidden *:data-[slot=toggle-group-item]:!px-4 @[500px]/chart:flex"
+                  >
+                    <ToggleGroupItem value="7">Last 7 days</ToggleGroupItem>
+                    <ToggleGroupItem value="30">Last 30 days</ToggleGroupItem>
+                    <ToggleGroupItem value="90">Last 3 months</ToggleGroupItem>
+                  </ToggleGroup>
+                  <Select
+                    value={String(chartRange)}
+                    onValueChange={(v) => setChartRange(Number(v) as 7 | 30 | 90)}
+                  >
+                    <SelectTrigger
+                      className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[500px]/chart:hidden"
+                      size="sm"
+                      aria-label="Select range"
+                    >
+                      <SelectValue placeholder="Last 7 days" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      <SelectItem value="7" className="rounded-lg">Last 7 days</SelectItem>
+                      <SelectItem value="30" className="rounded-lg">Last 30 days</SelectItem>
+                      <SelectItem value="90" className="rounded-lg">Last 3 months</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardAction>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
                 {qrLoading ? (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-[250px] flex items-center justify-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-zinc-500" />
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {qrStats?.dailyScans?.map((day) => {
-                      const percentage = (day.scans / getMaxScan()) * 100;
-                      const dayLabel = format(new Date(day.date + "T12:00:00"), "EEE, MMM d");
-                      return (
-                        <div key={day.date} className="flex items-center gap-3">
-                          <span className="text-xs text-muted-foreground w-24 text-right shrink-0">
-                            {dayLabel}
-                          </span>
-                          <div className="flex-1 bg-muted rounded-full h-6 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-700 flex items-center justify-end pr-2"
-                              style={{
-                                width: `${Math.max(percentage, day.scans > 0 ? 8 : 0)}%`,
-                              }}
-                            >
-                              {day.scans > 0 && (
-                                <span className="text-[10px] font-bold text-white">
-                                  {day.scans}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {day.scans === 0 && (
-                            <span className="text-xs text-muted-foreground">0</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <ChartContainer
+                    id="qr-scans-area-chart"
+                    config={scanChartConfig}
+                    className="aspect-auto h-[250px] w-full"
+                    style={{ minWidth: "100%", minHeight: "250px" }}
+                  >
+                    <AreaChart
+                      data={qrStats?.dailyScans ?? []}
+                      margin={{ left: 12, right: 12 }}
+                    >
+                      <defs>
+                        <linearGradient id="fillScans" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-scans)" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="var(--color-scans)" stopOpacity={0.1} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        minTickGap={32}
+                        tickFormatter={(value) => {
+                          const d = new Date(value + "T12:00:00");
+                          return chartRange <= 7
+                            ? format(d, "EEE")
+                            : format(d, "MMM d");
+                        }}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) =>
+                              format(new Date(value + "T12:00:00"), "EEE, MMM d, yyyy")
+                            }
+                            indicator="dot"
+                          />
+                        }
+                      />
+                      <Area
+                        dataKey="scans"
+                        type="natural"
+                        fill="url(#fillScans)"
+                        stroke="var(--color-scans)"
+                      />
+                    </AreaChart>
+                  </ChartContainer>
                 )}
               </CardContent>
             </Card>

@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import QrScan from '@/lib/models/QrScan';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
+
+    // Accept a ?days= query param for the chart range (default 7)
+    const { searchParams } = new URL(request.url);
+    const chartDays = Math.min(Number(searchParams.get('days')) || 7, 90);
 
     const totalScans = await QrScan.countDocuments();
 
@@ -20,9 +24,9 @@ export async function GET() {
     const last30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const scansThisMonth = await QrScan.countDocuments({ scannedAt: { $gte: last30d } });
 
-    // Get daily scans for the last 7 days for the chart
+    // Get daily scans for the requested range
     const dailyScans = [];
-    for (let i = 6; i >= 0; i--) {
+    for (let i = chartDays - 1; i >= 0; i--) {
       const dayStart = new Date();
       dayStart.setHours(0, 0, 0, 0);
       dayStart.setDate(dayStart.getDate() - i);
