@@ -20,10 +20,10 @@ export async function GET(request: Request) {
     });
 
     // Redirect to the main website
-    return NextResponse.redirect('https://vidabuddies.com', { status: 302 });
+    return NextResponse.redirect('https://www.vidabuddies.com', { status: 302 });
   } catch (error) {
     console.error('QR scan tracking error:', error);
     // Even if tracking fails, still redirect
-    return NextResponse.redirect('https://vidabuddies.com', { status: 302 });
+    return NextResponse.redirect('https://www.vidabuddies.com', { status: 302 });
   }
 }

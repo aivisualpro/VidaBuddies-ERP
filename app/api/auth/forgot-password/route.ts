@@ -39,7 +39,7 @@ export async function POST(request: Request) {
             <p style="margin: 10px 0 0 0; color: #18181b; font-size: 24px; font-weight: bold;">${user.password}</p>
           </div>
           <div style="text-align: center; margin-top: 40px;">
-            <a href="https://vida-buddies-erp.vercel.app/login" style="background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Log In to Dashboard</a>
+            <a href="https://vidabuddies.com/login" style="background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Log In to Dashboard</a>
           </div>
           <hr style="margin-top: 50px; border: 0; border-top: 1px solid #e4e4e7;" />
           <p style="color: #a1a1aa; font-size: 12px; text-align: center; margin-top: 20px;">
