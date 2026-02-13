@@ -21,14 +21,19 @@ export async function GET(request: NextRequest) {
     const directFolderId = searchParams.get("folderId");
     const poNumber = searchParams.get("poNumber");
     const spoNumber = searchParams.get("spoNumber") || undefined;
+    const shipNumber = searchParams.get("shipNumber") || undefined;
+    const type = searchParams.get("type");
 
     let folderId: string;
 
-    if (directFolderId) {
+    if (type === "root") {
+      // List contents of the root folder (VBPO level)
+      folderId = ROOT_FOLDER_ID;
+    } else if (directFolderId) {
       // Direct folder ID — list contents of any folder
       folderId = directFolderId;
     } else if (poNumber) {
-      folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber);
+      folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber, shipNumber);
     } else {
       return NextResponse.json(
         { error: "poNumber or folderId is required" },
@@ -61,6 +66,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const poNumber = formData.get("poNumber") as string;
     const spoNumber = (formData.get("spoNumber") as string) || undefined;
+    const shipNumber = (formData.get("shipNumber") as string) || undefined;
     const file = formData.get("file") as File | null;
     let folderId = formData.get("folderId") as string | null;
     const subFolder = (formData.get("subFolder") as string) || undefined;
@@ -81,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Resolve base folder
     if (!folderId) {
-      folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber);
+      folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber, shipNumber);
     }
 
     // Create subfolder(s) if specified

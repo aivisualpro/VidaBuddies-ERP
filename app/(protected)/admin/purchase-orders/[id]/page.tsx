@@ -124,12 +124,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const [editingCPO, setEditingCPO] = useState<{ idx: number, data: any } | null>(null);
   const [autoPoNo, setAutoPoNo] = useState<string>("");
+  const [autoSvbid, setAutoSvbid] = useState<string>("");
   const [addingShippingToCPO, setAddingShippingToCPO] = useState<{ idx: number, poNo: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
-  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string } | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -452,6 +453,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       const data = Object.fromEntries(formData.entries());
       const formattedData: any = { ...data };
       if (!editingShipping) formattedData.status = 'Ordered'; // Default status for new
+
+      // Auto-generate svbid if empty (for new shipping records)
+      if (!editingShipping && (!formattedData.svbid || formattedData.svbid.trim() === '') && addingShippingToCPO) {
+        const cpo = po?.customerPO?.[addingShippingToCPO.idx];
+        const existingShipCount = cpo?.shipping?.length || 0;
+        formattedData.svbid = `${addingShippingToCPO.poNo}-${existingShipCount + 1}`;
+      }
       
       // Numbers
       ['drums', 'pallets', 'gallons', 'netWeightKG', 'grossWeightKG', 'invValue', 'estTrumpDuties', 'feesAmount', 'estimatedDuties', 'qty'].forEach(k => {
@@ -680,7 +688,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
                               onClick={(e) => { 
                                   e.stopPropagation(); 
-                                  setAttachmentsOpen({ poNumber: po?.vbpoNo || '' });
+                                  setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo.poNo || undefined });
                               }}
                             >
                                <Paperclip className="h-3.5 w-3.5" />
@@ -717,6 +725,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               className="h-7 px-3 text-[10px] font-bold uppercase tracking-wide ml-1"
                               onClick={(e) => { 
                                   e.stopPropagation(); 
+                                  // Auto-generate svbid: {cpo.poNo}-{nextShipIndex}
+                                  const existingShipCount = cpo.shipping?.length || 0;
+                                  const nextSvbid = `${cpo.poNo || ''}-${existingShipCount + 1}`;
+                                  setAutoSvbid(nextSvbid);
                                   setAddingShippingToCPO({ idx, poNo: cpo.poNo || '' });
                               }}
                             >
@@ -771,7 +783,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               // Find the CPO poNo for the folder path
                               const cpo = po?.customerPO?.[ship._cpoIdx];
                               const spoNo = cpo?.poNo || `SPO-${ship._cpoIdx}`;
-                              setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: spoNo });
+                              const shipNo = ship.svbid || '';
+                              setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: spoNo, shipNumber: shipNo || undefined });
                             }}
                         >
                             <Paperclip className="h-3 w-3" />
@@ -1258,7 +1271,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="space-y-1">
                       <Label>VBID</Label>
-                      <Input name="svbid" placeholder="Auto-generated if empty" defaultValue={editingShipping?.data?.svbid} />
+                      <Input name="svbid" placeholder="Auto-generated if empty" defaultValue={editingShipping?.data?.svbid || (!editingShipping ? autoSvbid : '')} />
                   </div>
                   <div className="space-y-1">
                       <Label>Container No</Label>
@@ -1443,6 +1456,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         onClose={() => setAttachmentsOpen(null)}
         poNumber={attachmentsOpen?.poNumber || ''}
         spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
       />
 
     </TooltipProvider>

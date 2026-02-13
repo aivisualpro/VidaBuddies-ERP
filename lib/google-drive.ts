@@ -77,20 +77,24 @@ export async function findOrCreateFolder(
 
 /**
  * Ensure the full folder path exists:
- * VBPO / {poNumber} — if spoNumber is omitted
- * VBPO / {poNumber} / {spoNumber} — if spoNumber is provided
+ * VBPO / {poNumber} — if only poNumber
+ * VBPO / {poNumber} / {spoNumber} — if spoNumber provided
+ * VBPO / {poNumber} / {spoNumber} / {shipNumber} — if shipNumber provided
  * Returns the deepest folder ID.
  */
 export async function ensureFolderPath(
   rootFolderId: string,
   poNumber: string,
-  spoNumber?: string
+  spoNumber?: string,
+  shipNumber?: string
 ): Promise<string> {
   const vbpoFolderId = await findOrCreateFolder(rootFolderId, "VBPO");
   const poFolderId = await findOrCreateFolder(vbpoFolderId, poNumber);
   if (!spoNumber) return poFolderId;
   const spoFolderId = await findOrCreateFolder(poFolderId, spoNumber);
-  return spoFolderId;
+  if (!shipNumber) return spoFolderId;
+  const shipFolderId = await findOrCreateFolder(spoFolderId, shipNumber);
+  return shipFolderId;
 }
 
 /**

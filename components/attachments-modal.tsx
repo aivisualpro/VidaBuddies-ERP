@@ -33,6 +33,7 @@ import {
   ChevronRight,
   FileCode,
   FileType,
+  Lock,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -53,6 +54,7 @@ interface AttachmentsModalProps {
   onClose: () => void;
   poNumber: string;
   spoNumber?: string;
+  shipNumber?: string;
 }
 
 interface UploadFileStatus {
@@ -72,7 +74,7 @@ interface NavSegment {
 function getFileIcon(mimeType: string, size?: "sm" | "md") {
   const cls = size === "sm" ? "h-4 w-4" : "h-[18px] w-[18px]";
   if (mimeType === "application/vnd.google-apps.folder")
-    return <Folder className={cn(cls, "text-yellow-500 fill-yellow-500/20")} />;
+    return <Folder className={cn(cls, "text-yellow-600 fill-yellow-600/20")} />;
   if (mimeType.startsWith("image/")) return <Image className={cn(cls, "text-emerald-500")} />;
   if (mimeType.startsWith("video/")) return <FileVideo className={cn(cls, "text-purple-500")} />;
   if (mimeType.startsWith("audio/")) return <FileAudio className={cn(cls, "text-orange-500")} />;
@@ -135,6 +137,18 @@ function getSubFolderPath(file: File): string {
   return parts.slice(0, -1).join("/");
 }
 
+function isSystemFolder(name: string, poNumber: string): boolean {
+  // System folders follow the auto-created naming pattern:
+  // Level 1: VB412        (PO)
+  // Level 2: VB412-1      (Customer PO)
+  // Level 3: VB412-1-2    (Shipping)
+  // Pattern: poNumber followed by zero or more -digit suffixes
+  if (name === poNumber) return true;
+  const escaped = poNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^${escaped}(-\\d+)+$`);
+  return regex.test(name);
+}
+
 /* ─── Component ──────────────────────────────────────── */
 
 export function AttachmentsModal({
@@ -142,6 +156,7 @@ export function AttachmentsModal({
   onClose,
   poNumber,
   spoNumber,
+  shipNumber,
 }: AttachmentsModalProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -168,12 +183,25 @@ export function AttachmentsModal({
   const [uploadEstimated, setUploadEstimated] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  /* ─── Navigation State ─── */
+  // Determines which "level" we're showing when navStack is empty:
+  // viewRoot=true → VBPO root (all PO folders)
+  // viewSPO=false, viewShip=false → PO root (CPO folders + uploads)
+  // viewSPO=true, viewShip=false → CPO level (Ship folders + uploads)
+  // viewSPO=true, viewShip=true → Ship level (uploads only)
+  const [viewSPO, setViewSPO] = useState(!!spoNumber);
+  const [viewShip, setViewShip] = useState(!!shipNumber);
+  const [viewRoot, setViewRoot] = useState(false);
+
   useEffect(() => {
     if (open) {
       setNavStack([]);
       setRootFolderId(null);
+      setViewSPO(!!spoNumber || !!shipNumber); // SPO view if we have spoNumber OR shipNumber
+      setViewShip(!!shipNumber);
+      setViewRoot(false);
     }
-  }, [open, spoNumber]);
+  }, [open, spoNumber, shipNumber]);
 
   useEffect(() => {
     return () => {
@@ -190,16 +218,25 @@ export function AttachmentsModal({
   const fetchFiles = useCallback(async () => {
     if (!poNumber) return;
     setLoading(true);
+    setFiles([]); // Clear files immediately to show transition
     try {
       let url: string;
 
       if (navStack.length > 0) {
         // Deep navigation — use folder ID directly
         url = `/api/admin/drive?folderId=${encodeURIComponent(navStack[navStack.length - 1].folderId)}`;
+      } else if (viewRoot) {
+        // Root VBPO View — list all PO folders
+        url = `/api/admin/drive?type=root`;
+      } else if (viewShip && spoNumber && shipNumber) {
+        // Ship View — inside shipping folder
+        url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}&spoNumber=${encodeURIComponent(spoNumber)}&shipNumber=${encodeURIComponent(shipNumber)}`;
+      } else if (viewSPO && spoNumber) {
+        // SPO View — restricted to SPO folder
+        url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}&spoNumber=${encodeURIComponent(spoNumber)}`;
       } else {
-        // Root level — use PO/SPO path
+        // Root PO View
         url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}`;
-        if (spoNumber) url += `&spoNumber=${encodeURIComponent(spoNumber)}`;
       }
 
       const res = await fetch(url);
@@ -218,7 +255,7 @@ export function AttachmentsModal({
     } finally {
       setLoading(false);
     }
-  }, [poNumber, spoNumber, navStack]);
+  }, [poNumber, spoNumber, shipNumber, navStack, viewSPO, viewShip, viewRoot]);
 
   useEffect(() => {
     if (open) {
@@ -282,6 +319,7 @@ export function AttachmentsModal({
         const formData = new FormData();
         formData.append("poNumber", poNumber);
         if (spoNumber) formData.append("spoNumber", spoNumber);
+        if (shipNumber) formData.append("shipNumber", shipNumber);
         formData.append("file", file);
         if (baseFolderId) formData.append("folderId", baseFolderId);
         if (subFolder) formData.append("subFolder", subFolder);
@@ -359,11 +397,24 @@ export function AttachmentsModal({
     });
   };
 
-  const nonFolderFiles = files.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
-  const allSelected = nonFolderFiles.length > 0 && nonFolderFiles.every((f) => selectedIds.has(f.id));
+  // Determine if a file/folder is a protected system item
+  const isItemProtected = (file: DriveFile) => {
+    const isFolder = file.mimeType === "application/vnd.google-apps.folder";
+    if (!isFolder) return false; // Files are never protected
+    if (viewRoot) return true;   // At VBPO root, all folders are PO folders = protected
+    // At any level: folders matching the system naming pattern are protected
+    return isSystemFolder(file.name, poNumber);
+  };
+
+  const selectableFiles = files.filter(f => !isItemProtected(f));
+  const allSelected = selectableFiles.length > 0 && selectableFiles.every(f => selectedIds.has(f.id));
+
   const toggleAll = () => {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(nonFolderFiles.map((f) => f.id)));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableFiles.map(f => f.id)));
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -378,30 +429,59 @@ export function AttachmentsModal({
   type BreadcrumbItem = { label: string; clickable: boolean; onClick?: () => void };
   const breadcrumbs: BreadcrumbItem[] = [];
 
-  // VBPO is always first — clickable if we can go back to root
+  // 1. VBPO (Always clickable if we are not at Root View)
+  const isAtRootView = navStack.length === 0 && viewRoot;
+  
   breadcrumbs.push({
     label: "VBPO",
-    clickable: navStack.length > 0 || !!spoNumber,
-    onClick: () => navigateToIndex(-1),
-  });
-
-  // PO number
-  breadcrumbs.push({
-    label: poNumber,
-    clickable: navStack.length > 0 || !!spoNumber,
+    clickable: !isAtRootView,
     onClick: () => {
-      // Navigate back to PO level (only if spoNumber was provided, meaning SPO is a "step")
-      // Otherwise just go to root
-      navigateToIndex(-1);
+      setNavStack([]);
+      setViewSPO(false);
+      setViewShip(false);
+      setViewRoot(true);
     },
   });
 
-  // SPO number (if provided)
-  if (spoNumber) {
+  // 2. PO Number
+  if (!viewRoot) {
+    const isAtPORoot = navStack.length === 0 && !viewSPO;
+    breadcrumbs.push({
+      label: poNumber,
+      clickable: !isAtPORoot,
+      onClick: () => {
+        setNavStack([]);
+        setViewSPO(false);
+        setViewShip(false);
+        setViewRoot(false);
+      },
+    });
+  }
+
+  // 3. SPO Number (Customer PO level)
+  if (!viewRoot && spoNumber && viewSPO) {
+    const isAtSPORoot = navStack.length === 0 && !viewShip;
     breadcrumbs.push({
       label: spoNumber,
+      clickable: !isAtSPORoot,
+      onClick: () => {
+        setNavStack([]);
+        setViewSPO(true);
+        setViewShip(false);
+      }
+    });
+  }
+
+  // 4. Ship Number (Shipping level)
+  if (!viewRoot && shipNumber && viewShip) {
+    breadcrumbs.push({
+      label: shipNumber,
       clickable: navStack.length > 0,
-      onClick: () => navigateToIndex(-1),
+      onClick: () => {
+        setNavStack([]);
+        setViewSPO(true);
+        setViewShip(true);
+      }
     });
   }
 
@@ -474,7 +554,10 @@ export function AttachmentsModal({
                 Delete ({selectedIds.size})
               </Button>
             )}
-            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => folderInputRef.current?.click()} disabled={uploading}>
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
+              toast.info("Please allow the browser prompt to upload folder structure");
+              folderInputRef.current?.click();
+            }} disabled={uploading}>
               <FolderOpen className="h-3.5 w-3.5" /> Folder
             </Button>
             <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -585,7 +668,10 @@ export function AttachmentsModal({
                 <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                   <Upload className="h-3.5 w-3.5" /> Browse Files
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => folderInputRef.current?.click()} disabled={uploading}>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
+                   toast.info("Please allow the browser prompt to upload folder structure");
+                   folderInputRef.current?.click();
+                }} disabled={uploading}>
                   <FolderOpen className="h-3.5 w-3.5" /> Browse Folder
                 </Button>
               </div>
@@ -609,6 +695,7 @@ export function AttachmentsModal({
                 {sortedFiles.map((file) => {
                   const isFolder = file.mimeType === "application/vnd.google-apps.folder";
                   const isSelected = selectedIds.has(file.id);
+                  const isProtected = isItemProtected(file);
 
                   return (
                     <tr
@@ -616,34 +703,39 @@ export function AttachmentsModal({
                       className={cn(
                         "group transition-colors duration-100",
                         isSelected ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-muted/30",
-                        isFolder ? "cursor-pointer hover:bg-yellow-500/[0.04]" : "cursor-pointer"
+                        isFolder ? "cursor-pointer hover:bg-yellow-500/[0.04]" : "cursor-pointer",
+                        isProtected && "opacity-80"
                       )}
                       onClick={() => {
-                        if (isFolder) navigateIntoFolder(file.name, file.id);
-                        else toggleSelect(file.id);
+                        if (isFolder) {
+                           // If navigating from Root (VBPO) into a PO folder, we should switch mode?
+                           // Actually, if we click a folder in Root View, it enters that folder ID using data.folderId
+                           // But "PO View" expects logical mode.
+                           // Simplest: treat all folder clicks as deep navigation using ID.
+                           // OR: if we click a folder that matches `poNumber`, switch to PO View?
+                           // Let's just use standar deep navigation for now (by ID).
+                           navigateIntoFolder(file.name, file.id);
+                        }
+                        else if (!isProtected) toggleSelect(file.id);
                       }}
                     >
-                      {/* Checkbox / Chevron */}
-                      <td className="px-3 py-2">
-                        {isFolder ? (
-                          <div className="h-3.5 w-3.5 flex items-center justify-center">
-                            <ChevronRight className="h-3 w-3 text-yellow-500 group-hover:translate-x-0.5 transition-transform" />
-                          </div>
-                        ) : (
+                      {/* Checkbox */}
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3">
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleSelect(file.id)}
-                            className="h-3.5 w-3.5"
-                            onClick={(e) => e.stopPropagation()}
+                            className={cn("h-3.5 w-3.5", isProtected && "opacity-50 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground cursor-not-allowed")}
+                            disabled={isProtected}
                           />
-                        )}
+                        </div>
                       </td>
 
                       {/* Type icon */}
                       <td className="px-3 py-2">
                         <div className={cn(
                           "h-8 w-8 rounded-lg border flex items-center justify-center transition-transform group-hover:scale-105",
-                          isFolder ? "bg-yellow-500/10 border-yellow-500/20" : "bg-muted/40 border-border/40"
+                          isFolder ? "bg-yellow-600/10 border-yellow-600/20" : "bg-muted/40 border-border/40"
                         )}>
                           {getFileIcon(file.mimeType, "sm")}
                         </div>
@@ -654,13 +746,14 @@ export function AttachmentsModal({
                         <div className="min-w-0">
                           <p className={cn(
                             "text-[13px] font-semibold truncate leading-tight",
-                            isFolder ? "text-yellow-600 dark:text-yellow-400" : "text-foreground"
+                            isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground"
                           )}>
                             {file.name}
                           </p>
                           {isFolder ? (
-                            <span className="text-[9px] font-semibold text-yellow-500/60 mt-0.5 inline-block">
-                              Click to open
+                            <span className="text-[9px] font-semibold text-yellow-600/60 mt-0.5 flex items-center gap-1">
+                              {isProtected && <Lock className="h-2.5 w-2.5" />}
+                              {isProtected ? "System Folder" : "Click to open"}
                             </span>
                           ) : (
                             <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40 mt-0.5 inline-block">
