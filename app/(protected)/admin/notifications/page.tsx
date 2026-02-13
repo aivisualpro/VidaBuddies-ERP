@@ -125,7 +125,7 @@ export default function NotificationsPage() {
       if (ctx) {
         const logo = new Image();
         logo.crossOrigin = "anonymous";
-        logo.src = "/logo.png";
+        logo.src = "/vidabuddines-icon.png";
         await new Promise<void>((resolve, reject) => {
           logo.onload = () => {
             const logoSize = qrCanvas.width * 0.22;
