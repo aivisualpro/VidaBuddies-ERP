@@ -48,13 +48,13 @@ export async function POST(request: Request) {
 
     // Send code via email
     const { error: emailError } = await resend.emails.send({
-      from: "Vida Buddies <noreply@app.vidabuddies.com>",
+      from: "Vida Buddies <info@app.vidabuddies.com>",
       to: [user.email],
       subject: "Your Vida Buddies Login Code",
       html: `
         <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #09090b; border-radius: 16px; overflow: hidden;">
           <div style="background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 40px 30px 40px; text-align: center;">
-            <img src="https://vida-buddies-erp.vercel.app/logo.png" alt="Vida Buddies" style="width: 64px; height: 64px; margin-bottom: 16px;" />
+            <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 64px; height: 64px; margin-bottom: 16px;" />
             <h1 style="color: #fafafa; font-size: 22px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.5px;">Verification Code</h1>
             <p style="color: #71717a; font-size: 14px; margin: 0;">Enter this code to complete your login</p>
           </div>

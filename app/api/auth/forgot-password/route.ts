@@ -19,13 +19,13 @@ export async function POST(request: Request) {
 
     // Prepare the email template
     const { data, error } = await resend.emails.send({
-      from: "Vida Buddies Support <noreply@app.vidabuddies.com>",
+      from: "Vida Buddies Support <info@app.vidabuddies.com>",
       to: [user.email],
       subject: "Your Vida Buddies Password Recovery",
       html: `
         <div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; rounded-xl">
           <div style="text-align: center; margin-bottom: 30px;">
-            <img src="https://vida-buddies-erp.vercel.app/logo.png" alt="Vida Buddies" style="width: 80px; height: 80px;" />
+            <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 80px; height: 80px;" />
           </div>
           <h2 style="color: #18181b; text-align: center;">Password Recovery</h2>
           <p style="color: #52525b; font-size: 16px; line-height: 24px;">
