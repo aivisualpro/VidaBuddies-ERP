@@ -23,7 +23,8 @@ import {
   ChevronDown,
   Truck,
   ChevronLeft,
-  Plus
+  Plus,
+  Paperclip
 } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,6 +48,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { AttachmentsModal } from "@/components/attachments-modal";
 
 const UOM_OPTIONS = [
   { value: "EA", label: "EA (Each)" },
@@ -127,6 +129,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string } | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -670,47 +673,57 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               </p>
                            </div>
                         </div>
-                        
-                        <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-1">
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  setAttachmentsOpen({ poNumber: po?.vbpoNo || '' });
+                              }}
+                            >
+                               <Paperclip className="h-3.5 w-3.5" />
+                            </Button>
                            <Button 
-                             size="icon" 
-                             variant="ghost" 
-                             className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                             onClick={(e) => { 
-                                 e.stopPropagation(); 
-                                 setEditingCPO({ idx, data: cpo });
-                                 setSelectedCustomerForCPO(cpo.customerPONo || "");
-                                 setSelectedLocationForCPO(cpo.customerLocation || "");
-                                 setSelectedWarehouseForCPO(cpo.warehouse || "");
-                                 setSelectedUOMForCPO(cpo.UOM || "");
-                             }}
-                           >
-                              <Pencil className="h-3.5 w-3.5" />
-                           </Button>
-                           <Button 
-                             size="icon" 
-                             variant="ghost" 
-                             className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                             onClick={(e) => { 
-                                 e.stopPropagation(); 
-                                 if (cpo._id) handleDeleteCPO(cpo._id, idx);
-                             }}
-                           >
-                              <Trash className="h-3.5 w-3.5" />
-                           </Button>
-                           <Button 
-                             size="sm" 
-                             variant="secondary" 
-                             className="h-7 px-3 text-[10px] font-bold uppercase tracking-wide ml-1"
-                             onClick={(e) => { 
-                                 e.stopPropagation(); 
-                                 setAddingShippingToCPO({ idx, poNo: cpo.poNo || '' });
-                             }}
-                           >
-                              <Plus className="h-3 w-3 mr-1.5" />
-                              Add Ship
-                           </Button>
-                        </div>
+                              size="icon" 
+                              variant="ghost" 
+                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  setEditingCPO({ idx, data: cpo });
+                                  setSelectedCustomerForCPO(cpo.customerPONo || "");
+                                  setSelectedLocationForCPO(cpo.customerLocation || "");
+                                  setSelectedWarehouseForCPO(cpo.warehouse || "");
+                                  setSelectedUOMForCPO(cpo.UOM || "");
+                              }}
+                            >
+                               <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  if (cpo._id) handleDeleteCPO(cpo._id, idx);
+                              }}
+                            >
+                               <Trash className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="secondary" 
+                              className="h-7 px-3 text-[10px] font-bold uppercase tracking-wide ml-1"
+                              onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  setAddingShippingToCPO({ idx, poNo: cpo.poNo || '' });
+                              }}
+                            >
+                               <Plus className="h-3 w-3 mr-1.5" />
+                               Add Ship
+                            </Button>
+                         </div>
                       </div>
                     </div>
                   </div>
@@ -748,8 +761,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       className="absolute inset-0 w-full h-full object-cover opacity-[0.10] mix-blend-multiply dark:mix-blend-overlay group-hover:scale-110 transition-all duration-1000 pointer-events-none"
                     />
 
-                    {/* Actions: Edit/Delete (Top Right) */}
+                    {/* Actions: Attachments/Edit/Delete (Top Right) */}
                     <div className="absolute top-5 right-5 z-20 flex items-center gap-1">
+                        <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={() => {
+                              // Find the CPO poNo for the folder path
+                              const cpo = po?.customerPO?.[ship._cpoIdx];
+                              const spoNo = cpo?.poNo || `SPO-${ship._cpoIdx}`;
+                              setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: spoNo });
+                            }}
+                        >
+                            <Paperclip className="h-3 w-3" />
+                        </Button>
                         <Button 
                             size="icon" 
                             variant="ghost" 
@@ -1410,6 +1436,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             </form>
         </DialogContent>
       </Dialog>
+
+      {/* Attachments Modal */}
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+      />
 
     </TooltipProvider>
   );
