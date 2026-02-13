@@ -55,6 +55,7 @@ interface AttachmentsModalProps {
   poNumber: string;
   spoNumber?: string;
   shipNumber?: string;
+  childFolders?: string[];
 }
 
 interface UploadFileStatus {
@@ -157,6 +158,7 @@ export function AttachmentsModal({
   poNumber,
   spoNumber,
   shipNumber,
+  childFolders,
 }: AttachmentsModalProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -185,21 +187,18 @@ export function AttachmentsModal({
 
   /* ─── Navigation State ─── */
   // Determines which "level" we're showing when navStack is empty:
-  // viewRoot=true → VBPO root (all PO folders)
   // viewSPO=false, viewShip=false → PO root (CPO folders + uploads)
   // viewSPO=true, viewShip=false → CPO level (Ship folders + uploads)
   // viewSPO=true, viewShip=true → Ship level (uploads only)
   const [viewSPO, setViewSPO] = useState(!!spoNumber);
   const [viewShip, setViewShip] = useState(!!shipNumber);
-  const [viewRoot, setViewRoot] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNavStack([]);
       setRootFolderId(null);
-      setViewSPO(!!spoNumber || !!shipNumber); // SPO view if we have spoNumber OR shipNumber
+      setViewSPO(!!spoNumber || !!shipNumber);
       setViewShip(!!shipNumber);
-      setViewRoot(false);
     }
   }, [open, spoNumber, shipNumber]);
 
@@ -218,22 +217,22 @@ export function AttachmentsModal({
   const fetchFiles = useCallback(async () => {
     if (!poNumber) return;
     setLoading(true);
-    setFiles([]); // Clear files immediately to show transition
+    setFiles([]);
     try {
       let url: string;
 
       if (navStack.length > 0) {
         // Deep navigation — use folder ID directly
         url = `/api/admin/drive?folderId=${encodeURIComponent(navStack[navStack.length - 1].folderId)}`;
-      } else if (viewRoot) {
-        // Root VBPO View — list all PO folders
-        url = `/api/admin/drive?type=root`;
       } else if (viewShip && spoNumber && shipNumber) {
         // Ship View — inside shipping folder
         url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}&spoNumber=${encodeURIComponent(spoNumber)}&shipNumber=${encodeURIComponent(shipNumber)}`;
       } else if (viewSPO && spoNumber) {
-        // SPO View — restricted to SPO folder
+        // SPO/CPO View — inside CPO folder, ensure child (shipping) folders exist
         url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}&spoNumber=${encodeURIComponent(spoNumber)}`;
+        if (childFolders && childFolders.length > 0) {
+          url += `&ensureChildren=${encodeURIComponent(childFolders.join(','))}`;
+        }
       } else {
         // Root PO View
         url = `/api/admin/drive?poNumber=${encodeURIComponent(poNumber)}`;
@@ -243,7 +242,6 @@ export function AttachmentsModal({
       const data = await res.json();
       if (res.ok) {
         setFiles(data.files || []);
-        // Cache the root folder ID
         if (navStack.length === 0 && data.folderId) {
           setRootFolderId(data.folderId);
         }
@@ -255,7 +253,7 @@ export function AttachmentsModal({
     } finally {
       setLoading(false);
     }
-  }, [poNumber, spoNumber, shipNumber, navStack, viewSPO, viewShip, viewRoot]);
+  }, [poNumber, spoNumber, shipNumber, childFolders, navStack, viewSPO, viewShip]);
 
   useEffect(() => {
     if (open) {
@@ -401,7 +399,6 @@ export function AttachmentsModal({
   const isItemProtected = (file: DriveFile) => {
     const isFolder = file.mimeType === "application/vnd.google-apps.folder";
     if (!isFolder) return false; // Files are never protected
-    if (viewRoot) return true;   // At VBPO root, all folders are PO folders = protected
     // At any level: folders matching the system naming pattern are protected
     return isSystemFolder(file.name, poNumber);
   };
@@ -429,38 +426,21 @@ export function AttachmentsModal({
   type BreadcrumbItem = { label: string; clickable: boolean; onClick?: () => void };
   const breadcrumbs: BreadcrumbItem[] = [];
 
-  // 1. VBPO (Always clickable if we are not at Root View)
-  const isAtRootView = navStack.length === 0 && viewRoot;
-  
+  // 1. PO Number (always shown, top-level)
+  const isAtPORoot = navStack.length === 0 && !viewSPO;
   breadcrumbs.push({
-    label: "VBPO",
-    clickable: !isAtRootView,
+    label: poNumber,
+    clickable: !isAtPORoot,
     onClick: () => {
       setNavStack([]);
       setViewSPO(false);
       setViewShip(false);
-      setViewRoot(true);
     },
   });
 
-  // 2. PO Number
-  if (!viewRoot) {
-    const isAtPORoot = navStack.length === 0 && !viewSPO;
-    breadcrumbs.push({
-      label: poNumber,
-      clickable: !isAtPORoot,
-      onClick: () => {
-        setNavStack([]);
-        setViewSPO(false);
-        setViewShip(false);
-        setViewRoot(false);
-      },
-    });
-  }
-
-  // 3. SPO Number (Customer PO level)
-  if (!viewRoot && spoNumber && viewSPO) {
-    const isAtSPORoot = navStack.length === 0 && !viewShip;
+  // 2. SPO Number (Customer PO level) — show if spoNumber is known
+  if (spoNumber && (viewSPO || viewShip || navStack.length > 0)) {
+    const isAtSPORoot = navStack.length === 0 && viewSPO && !viewShip;
     breadcrumbs.push({
       label: spoNumber,
       clickable: !isAtSPORoot,
@@ -472,11 +452,12 @@ export function AttachmentsModal({
     });
   }
 
-  // 4. Ship Number (Shipping level)
-  if (!viewRoot && shipNumber && viewShip) {
+  // 3. Ship Number (Shipping level) — show if shipNumber is known
+  if (shipNumber && (viewShip || navStack.length > 0)) {
+    const isAtShipRoot = navStack.length === 0 && viewShip;
     breadcrumbs.push({
       label: shipNumber,
-      clickable: navStack.length > 0,
+      clickable: !isAtShipRoot,
       onClick: () => {
         setNavStack([]);
         setViewSPO(true);
@@ -485,7 +466,7 @@ export function AttachmentsModal({
     });
   }
 
-  // Deep navigation segments
+  // Deep navigation segments (user-browsed folders)
   navStack.forEach((seg, idx) => {
     breadcrumbs.push({
       label: seg.label,
@@ -708,12 +689,7 @@ export function AttachmentsModal({
                       )}
                       onClick={() => {
                         if (isFolder) {
-                           // If navigating from Root (VBPO) into a PO folder, we should switch mode?
-                           // Actually, if we click a folder in Root View, it enters that folder ID using data.folderId
-                           // But "PO View" expects logical mode.
-                           // Simplest: treat all folder clicks as deep navigation using ID.
-                           // OR: if we click a folder that matches `poNumber`, switch to PO View?
-                           // Let's just use standar deep navigation for now (by ID).
+                           // Standard deep navigation using folder ID
                            navigateIntoFolder(file.name, file.id);
                         }
                         else if (!isProtected) toggleSelect(file.id);

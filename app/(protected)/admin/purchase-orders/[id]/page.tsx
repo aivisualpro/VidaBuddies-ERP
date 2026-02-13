@@ -130,7 +130,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
-  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -688,7 +688,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
                               onClick={(e) => { 
                                   e.stopPropagation(); 
-                                  setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo.poNo || undefined });
+                                  // Pass shipping svbids as childFolders so they're pre-created on Drive
+                                  const shipFolders = (cpo.shipping || []).map((s: any) => s.svbid).filter(Boolean);
+                                  setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo.poNo || undefined, childFolders: shipFolders });
                               }}
                             >
                                <Paperclip className="h-3.5 w-3.5" />
@@ -1457,6 +1459,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         poNumber={attachmentsOpen?.poNumber || ''}
         spoNumber={attachmentsOpen?.spoNumber}
         shipNumber={attachmentsOpen?.shipNumber}
+        childFolders={attachmentsOpen?.childFolders}
       />
 
     </TooltipProvider>

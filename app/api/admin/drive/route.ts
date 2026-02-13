@@ -42,6 +42,18 @@ export async function GET(request: NextRequest) {
     }
 
     const files = await listFiles(folderId);
+
+    // If ensureChildren is provided, create those child folders before listing
+    const ensureChildren = searchParams.get("ensureChildren");
+    if (ensureChildren) {
+      const children = ensureChildren.split(",").filter(Boolean);
+      const { findOrCreateFolder } = await import("@/lib/google-drive");
+      await Promise.all(children.map(child => findOrCreateFolder(folderId, child)));
+      // Re-list to include newly created folders
+      const updatedFiles = await listFiles(folderId);
+      return NextResponse.json({ files: updatedFiles, folderId });
+    }
+
     return NextResponse.json({ files, folderId });
   } catch (error: any) {
     console.error("[Drive API] List error:", error);
