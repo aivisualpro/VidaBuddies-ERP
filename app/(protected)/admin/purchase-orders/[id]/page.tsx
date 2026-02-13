@@ -1098,14 +1098,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         <DialogContent>
            <DialogHeader>
               <DialogTitle>{editingCPO ? "Edit Customer PO" : "Add Customer PO"}</DialogTitle>
-              <DialogDescription>Enter the details for this order division.</DialogDescription>
            </DialogHeader>
            <form onSubmit={handleSaveCPO} className="space-y-4">
+              {/* Row 1: PO Number (Internal) | Customer PO Number (External) */}
               <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                       <Label>PO Number (Internal)</Label>
                       <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required placeholder="e.g. VB310-1" />
                   </div>
+                  <div className="space-y-1">
+                      <Label>Customer PO Number (External)</Label>
+                      <Input name="CustomerPO" defaultValue={editingCPO?.data?.CustomerPO || ''} placeholder="e.g. CPO-2024-001" />
+                  </div>
+              </div>
+              {/* Row 2: Customer Ref | Customer Location */}
+              <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                       <Label>Customer Ref</Label>
                       <SearchableSelect
@@ -1136,8 +1143,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         emptyMessage="No locations found."
                       />
                   </div>
+              </div>
+              {/* Row 3: Dispatch Warehouse (full width) */}
+              <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-1">
-                      <Label>Dispatch / Warehouse</Label>
+                      <Label>Dispatch Warehouse</Label>
                       <SearchableSelect
                         name="warehouse"
                         options={warehouses.map((w: any) => ({ value: w.name, label: w.name }))}
@@ -1148,6 +1158,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         emptyMessage="No warehouses found."
                       />
                   </div>
+              </div>
+              {/* Row 4: PO Date | Requested Delivery */}
+              <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                       <Label>PO Date</Label>
                       <Input name="customerPODate" type="date" defaultValue={editingCPO?.data?.customerPODate ? new Date(editingCPO.data.customerPODate).toISOString().split('T')[0] : ''} />
@@ -1156,9 +1169,16 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <Label>Requested Delivery</Label>
                       <Input name="requestedDeliveryDate" type="date" defaultValue={editingCPO?.data?.requestedDeliveryDate ? new Date(editingCPO.data.requestedDeliveryDate).toISOString().split('T')[0] : ''} />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                       <div className="space-y-1"><Label>Qty Ordered</Label><Input name="qtyOrdered" type="number" defaultValue={editingCPO?.data?.qtyOrdered} /></div>
-                       <div className="space-y-1"><Label>Received</Label><Input name="qtyReceived" type="number" defaultValue={editingCPO?.data?.qtyReceived} /></div>
+              </div>
+              {/* Row 5: Qty Ordered | Received | UOM */}
+              <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                      <Label>Qty Ordered</Label>
+                      <Input name="qtyOrdered" type="number" defaultValue={editingCPO?.data?.qtyOrdered} />
+                  </div>
+                  <div className="space-y-1">
+                      <Label>Received</Label>
+                      <Input name="qtyReceived" type="number" defaultValue={editingCPO?.data?.qtyReceived} />
                   </div>
                   <div className="space-y-1">
                       <Label>UOM</Label>
