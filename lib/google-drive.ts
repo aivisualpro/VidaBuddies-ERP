@@ -94,6 +94,23 @@ export async function ensureFolderPath(
 }
 
 /**
+ * Ensure nested subfolders exist within a parent folder.
+ * subPath is like "folder1/folder2" — creates each level.
+ * Returns the deepest folder ID.
+ */
+export async function ensureSubFolderPath(
+  parentFolderId: string,
+  subPath: string
+): Promise<string> {
+  const parts = subPath.split("/").filter(Boolean);
+  let currentId = parentFolderId;
+  for (const part of parts) {
+    currentId = await findOrCreateFolder(currentId, part);
+  }
+  return currentId;
+}
+
+/**
  * Upload a single file buffer to Google Drive.
  */
 export async function uploadFile(
@@ -181,11 +198,39 @@ export async function listFiles(
 }
 
 /**
- * Delete files from Google Drive by ID.
+ * Delete files/folders from Google Drive by ID.
+ * Uses "trash" approach first (works with lower Shared Drive permissions),
+ * falls back to permanent delete.
+ * Returns the number of successfully deleted items.
  */
-export async function deleteFiles(fileIds: string[]): Promise<void> {
+export async function deleteFiles(fileIds: string[]): Promise<number> {
   const drive = getDrive();
-  await Promise.all(
-    fileIds.map((id) => drive.files.delete({ fileId: id, supportsAllDrives: true }))
+  let deleted = 0;
+
+  const results = await Promise.allSettled(
+    fileIds.map(async (id) => {
+      try {
+        // Try trashing first — works with Contributor+ role on Shared Drives
+        await drive.files.update({
+          fileId: id,
+          requestBody: { trashed: true },
+          supportsAllDrives: true,
+        });
+      } catch (trashErr: any) {
+        // Fallback: try permanent delete
+        await drive.files.delete({ fileId: id, supportsAllDrives: true });
+      }
+    })
   );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      deleted++;
+    } else {
+      const err = result.reason as any;
+      console.error("[Drive] Delete error:", err?.code, err?.message || err);
+    }
+  }
+
+  return deleted;
 }

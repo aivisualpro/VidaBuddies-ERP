@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ensureFolderPath,
+  ensureSubFolderPath,
   uploadFile,
   listFiles,
   deleteFiles,
@@ -9,25 +10,33 @@ import {
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
 
 /**
- * GET  — List files for a PO path (optionally with SPO)
- * Query params: poNumber, spoNumber (optional)
+ * GET — List files
+ * Query params:
+ *   - folderId (optional): list files directly in this folder ID
+ *   - poNumber + spoNumber (optional): resolve path then list
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const directFolderId = searchParams.get("folderId");
     const poNumber = searchParams.get("poNumber");
     const spoNumber = searchParams.get("spoNumber") || undefined;
 
-    if (!poNumber) {
+    let folderId: string;
+
+    if (directFolderId) {
+      // Direct folder ID — list contents of any folder
+      folderId = directFolderId;
+    } else if (poNumber) {
+      folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber);
+    } else {
       return NextResponse.json(
-        { error: "poNumber is required" },
+        { error: "poNumber or folderId is required" },
         { status: 400 }
       );
     }
 
-    const folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber);
     const files = await listFiles(folderId);
-
     return NextResponse.json({ files, folderId });
   } catch (error: any) {
     console.error("[Drive API] List error:", error);
@@ -40,7 +49,12 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST — Upload a single file
- * Form data: poNumber, spoNumber (optional), file, folderId (optional)
+ * Form data:
+ *   - poNumber (required)
+ *   - spoNumber (optional)
+ *   - file (required)
+ *   - folderId (optional): skip path resolution if provided
+ *   - subFolder (optional): create subfolder(s) within target, e.g. "myFolder/sub"
  */
 export async function POST(request: NextRequest) {
   try {
@@ -49,6 +63,7 @@ export async function POST(request: NextRequest) {
     const spoNumber = (formData.get("spoNumber") as string) || undefined;
     const file = formData.get("file") as File | null;
     let folderId = formData.get("folderId") as string | null;
+    const subFolder = (formData.get("subFolder") as string) || undefined;
 
     if (!poNumber) {
       return NextResponse.json(
@@ -64,14 +79,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If folderId not provided, ensure/create the folder structure
+    // Resolve base folder
     if (!folderId) {
       folderId = await ensureFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber);
     }
 
+    // Create subfolder(s) if specified
+    let targetFolderId = folderId;
+    if (subFolder) {
+      targetFolderId = await ensureSubFolderPath(folderId, subFolder);
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await uploadFile(
-      folderId,
+      targetFolderId,
       file.name,
       file.type || "application/octet-stream",
       buffer
@@ -102,9 +123,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await deleteFiles(fileIds);
+    const deleted = await deleteFiles(fileIds);
 
-    return NextResponse.json({ deleted: fileIds.length });
+    return NextResponse.json({ deleted });
   } catch (error: any) {
     console.error("[Drive API] Delete error:", error);
     return NextResponse.json(
