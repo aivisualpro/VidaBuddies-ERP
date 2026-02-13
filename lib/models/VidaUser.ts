@@ -14,6 +14,7 @@ export interface IVidaUser extends Document {
   isActive: boolean;
   serialNo?: string;
   signature?: string;
+  isTwoFactorRequired?: boolean;
 }
 
 const VidaUserSchema: Schema = new Schema({
@@ -24,6 +25,7 @@ const VidaUserSchema: Schema = new Schema({
   address: { type: String },
   serialNo: { type: String },
   signature: { type: String },
+  isTwoFactorRequired: { type: Boolean, default: false },
   AppRole: { 
     type: String, 
     required: true,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { SignJWT } from "jose";
+import { login } from "@/lib/auth";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 import VerificationCode from "@/lib/models/VerificationCode";
@@ -31,6 +32,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Your account is inactive. Please contact your administrator." }, { status: 403 });
     }
 
+    // Build user data for session
+    const userData = {
+      id: user._id.toString(),
+      email: user.email,
+      name: user.name,
+      role: user.AppRole || "Manager",
+      avatar: user.profilePicture || "/logo.png",
+    };
+
+    // If 2FA is NOT required for this user, log in directly
+    if (!user.isTwoFactorRequired) {
+      await login(userData);
+      console.log(`[Auth API] Direct login (no 2FA) for ${user.email}`);
+      return NextResponse.json({
+        requiresVerification: false,
+        user: userData,
+      });
+    }
+
+    // ── 2FA Flow ──
     // Generate 6-digit verification code
     const code = generate6DigitCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes

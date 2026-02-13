@@ -46,6 +46,7 @@ interface User {
   profilePicture?: string;
   signature?: string;
   isOnWebsite?: boolean;
+  isTwoFactorRequired?: boolean;
 }
 
 export default function UsersPage() {

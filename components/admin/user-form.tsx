@@ -19,9 +19,15 @@ import {
   MapPin, 
   Briefcase, 
   Shield, 
+  ShieldCheck,
   Lock, 
   Activity, 
-  Hash, 
+  Hash,
+  Wand2,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +46,7 @@ interface User {
   profilePicture?: string;
   signature?: string;
   isOnWebsite?: boolean;
+  isTwoFactorRequired?: boolean;
 }
 
 interface UserFormProps {
@@ -64,8 +71,48 @@ export function UserForm({ initialData, onSubmit, onCancel, isSubmitting }: User
     profilePicture: "",
     signature: "",
     isOnWebsite: false,
+    isTwoFactorRequired: false,
     ...initialData,
   });
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
+
+  const generatePassword = () => {
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*_+-=';
+    const all = upper + lower + numbers + symbols;
+    
+    // Ensure at least one of each
+    let pass = '';
+    pass += upper[Math.floor(Math.random() * upper.length)];
+    pass += lower[Math.floor(Math.random() * lower.length)];
+    pass += numbers[Math.floor(Math.random() * numbers.length)];
+    pass += symbols[Math.floor(Math.random() * symbols.length)];
+    
+    // Fill the rest
+    for (let i = 4; i < 16; i++) {
+      pass += all[Math.floor(Math.random() * all.length)];
+    }
+    
+    // Shuffle
+    pass = pass.split('').sort(() => Math.random() - 0.5).join('');
+    
+    setFormData({ ...formData, password: pass });
+    setShowPassword(true);
+    toast.success('Strong password generated!', { description: 'Password has been filled in.' });
+  };
+
+  const copyPassword = async () => {
+    if (formData.password) {
+      await navigator.clipboard.writeText(formData.password);
+      setCopiedPassword(true);
+      toast.success('Password copied to clipboard');
+      setTimeout(() => setCopiedPassword(false), 2000);
+    }
+  };
 
   const [availableRoles, setAvailableRoles] = useState<{name: string}[]>([]);
 
@@ -232,6 +279,24 @@ export function UserForm({ initialData, onSubmit, onCancel, isSubmitting }: User
             </div>
           </div>
 
+          {/* Two‑Factor Authentication Toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-input px-4 py-3 bg-muted/30">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10">
+                <ShieldCheck className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <Label htmlFor="isTwoFactorRequired" className="text-sm font-medium cursor-pointer">Two-Factor Authentication</Label>
+                <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">Require 2FA for this user to sign in</p>
+              </div>
+            </div>
+            <Switch
+              id="isTwoFactorRequired"
+              checked={formData.isTwoFactorRequired || false}
+              onCheckedChange={(checked) => setFormData({ ...formData, isTwoFactorRequired: checked })}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
@@ -265,19 +330,87 @@ export function UserForm({ initialData, onSubmit, onCancel, isSubmitting }: User
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-1 text-xs text-blue-600 hover:text-blue-700 px-2"
+                  onClick={generatePassword}
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Suggest
+                </Button>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="password"
-                  type="password"
-                  className="pl-9"
+                  type={showPassword ? "text" : "password"}
+                  className="pl-9 pr-20"
                   placeholder={initialData?._id ? "Leave empty to keep" : "******"}
                   value={formData.password || ""}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required={!initialData?._id}
                 />
+                <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                  {formData.password && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={copyPassword}
+                    >
+                      {copiedPassword ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
               </div>
+              {formData.password && showPassword && (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        (formData.password?.length || 0) < 6
+                          ? 'w-1/4 bg-red-500'
+                          : (formData.password?.length || 0) < 10
+                          ? 'w-2/4 bg-amber-500'
+                          : (formData.password?.length || 0) < 14
+                          ? 'w-3/4 bg-blue-500'
+                          : 'w-full bg-green-500'
+                      }`}
+                    />
+                  </div>
+                  <span className={`text-[10px] font-medium ${
+                    (formData.password?.length || 0) < 6
+                      ? 'text-red-500'
+                      : (formData.password?.length || 0) < 10
+                      ? 'text-amber-500'
+                      : (formData.password?.length || 0) < 14
+                      ? 'text-blue-500'
+                      : 'text-green-500'
+                  }`}>
+                    {(formData.password?.length || 0) < 6
+                      ? 'Weak'
+                      : (formData.password?.length || 0) < 10
+                      ? 'Fair'
+                      : (formData.password?.length || 0) < 14
+                      ? 'Good'
+                      : 'Strong'}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
