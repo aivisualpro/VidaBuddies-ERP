@@ -1,31 +1,38 @@
 import { google } from "googleapis";
-import path from "path";
-import fs from "fs";
 
 const SCOPES = ["https://www.googleapis.com/auth/drive"];
 const SHARED_DRIVE_ID = process.env.GOOGLE_DRIVE_FOLDERID || "";
 
 function getAuth() {
-  const keyFilePath = path.join(process.cwd(), "google-service-account.json");
-  const keyFile = JSON.parse(fs.readFileSync(keyFilePath, "utf8"));
-  
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
+  if (!clientEmail || !privateKey) {
+    throw new Error(
+      "Missing GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_PRIVATE_KEY environment variables"
+    );
+  }
+
   const impersonateEmail = process.env.GOOGLE_IMPERSONATE_EMAIL;
 
   if (impersonateEmail) {
     // Use JWT with domain-wide delegation (impersonation)
     // Files are created as the impersonated user → their quota is used
     const jwtClient = new google.auth.JWT({
-      email: keyFile.client_email,
-      key: keyFile.private_key,
+      email: clientEmail,
+      key: privateKey,
       scopes: SCOPES,
       subject: impersonateEmail,
     });
     return jwtClient;
   }
 
-  // Fallback: direct service account auth
+  // Fallback: direct service account auth (using credentials object instead of keyFile)
   const auth = new google.auth.GoogleAuth({
-    keyFile: keyFilePath,
+    credentials: {
+      client_email: clientEmail,
+      private_key: privateKey,
+    },
     scopes: SCOPES,
   });
   return auth;
