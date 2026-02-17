@@ -66,21 +66,25 @@ export async function refreshContainerTracking(container: string) {
           // @ts-ignore
           const newRecord = { ...data, timestamp: new Date() };
 
-          // Determine new status
-          let newStatus = data.status;
-          const statusUpper = newStatus ? newStatus.toUpperCase() : "";
-          if (statusUpper === 'UNKNOWN' || statusUpper === 'ERROR') {
-            newStatus = 'Delivered';
+          // Determine new status — only update if we got a valid response
+          const statusUpper = (data.status || "").toUpperCase();
+          const isError = statusUpper === 'UNKNOWN' || statusUpper === 'ERROR' || !data.status;
+
+          // Build update: always push the tracking record
+          const updateOps: any = {
+            $push: { "customerPO.$[cpo].shipping.$[ship].shippingTrackingRecords": newRecord },
+          };
+
+          // Only update the shipping status if we got a valid (non-error) response
+          if (!isError) {
+            updateOps.$set = { "customerPO.$[cpo].shipping.$[ship].status": data.status };
           }
 
           // Atomic update
           await VidaPO.updateOne(
             // @ts-ignore
             { _id: po._id, "customerPO.shipping.containerNo": container },
-            { 
-              $push: { "customerPO.$[cpo].shipping.$[ship].shippingTrackingRecords": newRecord },
-              $set: { "customerPO.$[cpo].shipping.$[ship].status": newStatus }
-            },
+            updateOps,
             {
               arrayFilters: [
                 { "cpo.shipping.containerNo": container },
@@ -92,7 +96,7 @@ export async function refreshContainerTracking(container: string) {
           // Create a notification
           await VidaNotification.create({
             title: `Shipment Update: ${container}`,
-            message: `Status changed to ${newStatus}. Last event: ${data.last_event_status || 'N/A'} at ${data.last_event_location || 'unknown location'}.`,
+            message: `Status: ${data.status || 'Unknown'}. Last event: ${data.last_event_status || 'N/A'} at ${data.last_event_location || 'unknown location'}.`,
             type: 'info',
             relatedId: container,
             link: '/admin/live-shipments'

@@ -68,14 +68,17 @@ interface SeaRatesResponse {
 }
 
 const SR = {
-  // Ideally this should be in process.env
-  API_KEY: 'K-9642B22F-3873-4518-A9CD-80487F0C29E4', 
+  API_KEY: process.env.SEARATES_API_KEY || '',
   BASE: 'https://tracking.searates.com/tracking',
 };
 
 export async function getSeaRatesTracking(containerNumber: string) {
   const num = String(containerNumber || '').trim();
   if (!num) throw new Error('Container number is required');
+
+  if (!SR.API_KEY) {
+    throw new Error('SEARATES_API_KEY is not configured. Add it to your .env file.');
+  }
 
   const url = `${SR.BASE}?api_key=${encodeURIComponent(SR.API_KEY)}&number=${encodeURIComponent(num)}&route=true&ais=true`;
 
@@ -87,6 +90,16 @@ export async function getSeaRatesTracking(containerNumber: string) {
   }
 
   const payload: SeaRatesResponse = await res.json();
+
+  // Detect SeaRates-specific errors before mapping
+  if (payload.status === 'error') {
+    const msg = payload.message || 'Unknown SeaRates error';
+    if (msg === 'API_KEY_LIMIT_REACHED') {
+      throw new Error('SeaRates API key limit reached. Please upgrade your plan or wait for quota reset.');
+    }
+    throw new Error(`SeaRates error: ${msg}`);
+  }
+
   return mapSeaRatesToRow(payload);
 }
 

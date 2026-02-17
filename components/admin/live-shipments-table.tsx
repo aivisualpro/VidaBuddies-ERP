@@ -68,7 +68,26 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
     });
     return initial;
   });
-  const [filterMode, setFilterMode] = useState<"live" | "delivered" | "planned">("live");
+
+  // Auto-detect the best default tab based on initial data
+  const [filterMode, setFilterMode] = useState<"live" | "delivered" | "planned">(() => {
+    let hasLive = false;
+    let hasPlanned = false;
+    let hasDelivered = false;
+    containers.forEach(c => {
+      const status = c.initialData?.status?.toLowerCase() || "";
+      const isDelivered = status === "arrived" || status === "delivered";
+      const isPlanned = status === "planned" || status === "booking confirmed";
+      if (isDelivered) hasDelivered = true;
+      else if (isPlanned) hasPlanned = true;
+      else hasLive = true;
+    });
+    if (hasLive) return "live";
+    if (hasPlanned) return "planned";
+    if (hasDelivered) return "delivered";
+    return "live";
+  });
+
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const { setActions } = useHeaderActions();
@@ -93,8 +112,9 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
 
       setTrackingData(prev => ({ ...prev, [containerNo]: data }));
       toast.success(`Updated tracking for ${containerNo}`);
-    } catch (error) {
-      toast.error(`Failed to track ${containerNo}`);
+    } catch (error: any) {
+      const msg = error?.message || "Unknown error";
+      toast.error(`Failed to track ${containerNo}: ${msg}`);
       console.error(error);
     } finally {
       setLoading(prev => ({ ...prev, [containerNo]: false }));
@@ -157,14 +177,10 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
     
     // Status normalization
     const status = data?.status?.toLowerCase() || "";
-    
-    // Filter out UNKNOWN or ERROR
-    if (status === "unknown" || status === "error") {
-      return false;
-    }
 
     const isDelivered = status === "arrived" || status === "delivered";
     const isPlanned = status === "planned" || status === "booking confirmed";
+    // Treat unknown/error/empty status as "live" — they need tracking attention
     const isLive = !isDelivered && !isPlanned;
 
     // Mode filter
