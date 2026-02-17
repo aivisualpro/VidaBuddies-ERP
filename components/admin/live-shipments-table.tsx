@@ -107,15 +107,14 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch");
+        toast.error(`Failed to track ${containerNo}`, { description: data.error || "Unknown error" });
+        return;
       }
 
       setTrackingData(prev => ({ ...prev, [containerNo]: data }));
       toast.success(`Updated tracking for ${containerNo}`);
     } catch (error: any) {
-      const msg = error?.message || "Unknown error";
-      toast.error(`Failed to track ${containerNo}: ${msg}`);
-      console.error(error);
+      toast.error(`Failed to track ${containerNo}`, { description: "Network error" });
     } finally {
       setLoading(prev => ({ ...prev, [containerNo]: false }));
     }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { EmailComposeDialog } from "@/components/email-compose-dialog";
 import {
   Upload,
   Trash2,
@@ -34,6 +35,9 @@ import {
   FileCode,
   FileType,
   Lock,
+  Eye,
+  EyeOff,
+  Mail,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -185,6 +189,14 @@ export function AttachmentsModal({
   const [uploadEstimated, setUploadEstimated] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Visibility (internal/external) tab and per-file map
+  const [activeTab, setActiveTab] = useState<"internal" | "external">("internal");
+  const [visibilityMap, setVisibilityMap] = useState<Record<string, "internal" | "external">>({});
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+
+  // Email compose dialog
+  const [emailComposeOpen, setEmailComposeOpen] = useState(false);
+
   /* ─── Navigation State ─── */
   // Determines which "level" we're showing when navStack is empty:
   // viewSPO=false, viewShip=false → PO root (CPO folders + uploads)
@@ -266,6 +278,21 @@ export function AttachmentsModal({
     }
   }, [poNumber, spoNumber, shipNumber, childFolders, navStack, viewSPO, viewShip]);
 
+  // Fetch visibility map whenever files change
+  const fetchVisibility = useCallback(async (fileList: DriveFile[]) => {
+    if (fileList.length === 0) return;
+    const ids = fileList.map(f => f.id).join(",");
+    try {
+      const res = await fetch(`/api/admin/drive/visibility?ids=${encodeURIComponent(ids)}`);
+      const data = await res.json();
+      if (res.ok && data.visibilities) {
+        setVisibilityMap(prev => ({ ...prev, ...data.visibilities }));
+      }
+    } catch {
+      // Silently fail — default to internal
+    }
+  }, []);
+
   useEffect(() => {
     if (open) {
       fetchFiles();
@@ -273,6 +300,37 @@ export function AttachmentsModal({
       setUploadFiles([]);
     }
   }, [open, fetchFiles]);
+
+  // When files load, fetch their visibility
+  useEffect(() => {
+    if (files.length > 0) {
+      fetchVisibility(files);
+    }
+  }, [files, fetchVisibility]);
+
+  // Toggle visibility for a file
+  const toggleVisibility = async (fileId: string) => {
+    const current = visibilityMap[fileId] || "internal";
+    const next = current === "internal" ? "external" : "internal";
+    setTogglingIds(prev => new Set(prev).add(fileId));
+    try {
+      const res = await fetch("/api/admin/drive/visibility", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driveFileId: fileId, visibility: next }),
+      });
+      if (res.ok) {
+        setVisibilityMap(prev => ({ ...prev, [fileId]: next }));
+        toast.success(`Marked as ${next}`);
+      } else {
+        toast.error("Failed to update visibility");
+      }
+    } catch {
+      toast.error("Failed to update visibility");
+    } finally {
+      setTogglingIds(prev => { const s = new Set(prev); s.delete(fileId); return s; });
+    }
+  };
 
   /* ─── Navigation ─── */
   const navigateIntoFolder = (folderName: string, folderId: string) => {
@@ -494,10 +552,21 @@ export function AttachmentsModal({
     return a.name.localeCompare(b.name);
   });
 
-  const folderCount = sortedFiles.filter((f) => f.mimeType === "application/vnd.google-apps.folder").length;
-  const fileCount = sortedFiles.length - folderCount;
+  // Filter by active tab (internal/external)
+  const tabFilteredFiles = sortedFiles.filter(f => {
+    const vis = visibilityMap[f.id] || "internal";
+    return vis === activeTab;
+  });
+
+  const folderCount = tabFilteredFiles.filter((f) => f.mimeType === "application/vnd.google-apps.folder").length;
+  const fileCount = tabFilteredFiles.length - folderCount;
+
+  // Counts for tab badges
+  const internalCount = sortedFiles.filter(f => (visibilityMap[f.id] || "internal") === "internal").length;
+  const externalCount = sortedFiles.filter(f => (visibilityMap[f.id] || "internal") === "external").length;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { if (!v && !uploading) onClose(); }}>
       <DialogContent className="max-w-5xl max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
 
@@ -510,6 +579,48 @@ export function AttachmentsModal({
               </div>
               Attachments
             </DialogTitle>
+
+            {/* Internal / External Tabs */}
+            <div className="flex items-center gap-1 ml-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("internal")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                  activeTab === "internal"
+                    ? "bg-primary/10 text-primary shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                <Eye className="h-3 w-3" />
+                Internal
+                {internalCount > 0 && (
+                  <span className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                    activeTab === "internal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                  )}>{internalCount}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("external")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                  activeTab === "external"
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                <EyeOff className="h-3 w-3" />
+                External
+                {externalCount > 0 && (
+                  <span className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                    activeTab === "external" ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
+                  )}>{externalCount}</span>
+                )}
+              </button>
+            </div>
 
             {/* Breadcrumbs */}
             <nav className="flex items-center gap-0 ml-0.5 flex-wrap">
@@ -540,6 +651,17 @@ export function AttachmentsModal({
           </DialogHeader>
 
           <div className="flex items-center gap-2 shrink-0">
+            {activeTab === "external" && selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
+                onClick={() => setEmailComposeOpen(true)}
+                disabled={uploading}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Email ({selectedIds.size})
+              </Button>
+            )}
             {selectedIds.size > 0 && (
               <Button size="sm" variant="destructive" className="h-8 text-xs gap-1.5 shadow-sm" onClick={handleDelete} disabled={deleting || uploading}>
                 {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -640,20 +762,37 @@ export function AttachmentsModal({
               <Loader2 className="h-8 w-8 text-primary animate-spin" />
               <p className="text-xs text-muted-foreground font-medium">Loading files...</p>
             </div>
-          ) : sortedFiles.length === 0 && !isShowingUpload ? (
+          ) : tabFilteredFiles.length === 0 && !isShowingUpload ? (
             <div className="flex flex-col items-center justify-center py-20 px-8 gap-5">
               <div className="relative">
-                <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/[0.03] border-2 border-dashed border-primary/25 flex items-center justify-center">
-                  <CloudUpload className="h-10 w-10 text-primary/40" />
+                <div className={cn(
+                  "h-24 w-24 rounded-2xl border-2 border-dashed flex items-center justify-center",
+                  activeTab === "external"
+                    ? "bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03] border-amber-500/25"
+                    : "bg-gradient-to-br from-primary/10 to-primary/[0.03] border-primary/25"
+                )}>
+                  {activeTab === "external" ? (
+                    <EyeOff className="h-10 w-10 text-amber-500/40" />
+                  ) : (
+                    <CloudUpload className="h-10 w-10 text-primary/40" />
+                  )}
                 </div>
-                <div className="absolute -bottom-1.5 -right-1.5 h-7 w-7 rounded-full bg-primary/15 border-2 border-background flex items-center justify-center shadow-sm">
-                  <Upload className="h-3.5 w-3.5 text-primary" />
-                </div>
+                {activeTab === "internal" && (
+                  <div className="absolute -bottom-1.5 -right-1.5 h-7 w-7 rounded-full bg-primary/15 border-2 border-background flex items-center justify-center shadow-sm">
+                    <Upload className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                )}
               </div>
               <div className="text-center space-y-1.5">
-                <p className="text-sm font-semibold">Drop files or folders here</p>
+                <p className="text-sm font-semibold">
+                  {activeTab === "external"
+                    ? "No external files"
+                    : "Drop files or folders here"}
+                </p>
                 <p className="text-xs text-muted-foreground max-w-[300px]">
-                  Folder uploads preserve their structure. Click "Folder" to upload an entire directory.
+                  {activeTab === "external"
+                    ? "Toggle files from the Internal tab to mark them as external."
+                    : "Folder uploads preserve their structure. Click \"Folder\" to upload an entire directory."}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -668,7 +807,7 @@ export function AttachmentsModal({
                 </Button>
               </div>
             </div>
-          ) : sortedFiles.length > 0 ? (
+          ) : tabFilteredFiles.length > 0 ? (
             <table className="w-full text-left">
               <thead className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm border-b border-border/30">
                 <tr>
@@ -677,6 +816,7 @@ export function AttachmentsModal({
                   </th>
                   <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[52px]">Type</th>
                   <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70">Name</th>
+                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[100px] text-center">Visibility</th>
                   <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[80px] text-right">Size</th>
                   <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[120px]">Date</th>
                   <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[48px] text-center">Link</th>
@@ -684,7 +824,7 @@ export function AttachmentsModal({
               </thead>
 
               <tbody className="divide-y divide-border/20">
-                {sortedFiles.map((file) => {
+                {tabFilteredFiles.map((file) => {
                   const isFolder = file.mimeType === "application/vnd.google-apps.folder";
                   const isSelected = selectedIds.has(file.id);
                   const isProtected = isItemProtected(file);
@@ -706,7 +846,7 @@ export function AttachmentsModal({
                         else if (!isProtected) toggleSelect(file.id);
                       }}
                     >
-                      {/* Checkbox */}
+                      {/* Checkbox for Delete */}
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-3">
                           <Checkbox
@@ -748,6 +888,32 @@ export function AttachmentsModal({
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Visibility Toggle */}
+                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => toggleVisibility(file.id)}
+                          disabled={togglingIds.has(file.id)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border",
+                            (visibilityMap[file.id] || "internal") === "internal"
+                              ? "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
+                              : "bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10",
+                            togglingIds.has(file.id) && "opacity-50 cursor-not-allowed"
+                          )}
+                          title={`Click to mark as ${(visibilityMap[file.id] || "internal") === "internal" ? "external" : "internal"}`}
+                        >
+                          {togglingIds.has(file.id) ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (visibilityMap[file.id] || "internal") === "internal" ? (
+                            <Eye className="h-3 w-3" />
+                          ) : (
+                            <EyeOff className="h-3 w-3" />
+                          )}
+                          {(visibilityMap[file.id] || "internal") === "internal" ? "Internal" : "External"}
+                        </button>
                       </td>
 
                       {/* Size */}
@@ -813,5 +979,18 @@ export function AttachmentsModal({
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Email Compose Dialog */}
+    <EmailComposeDialog
+      open={emailComposeOpen}
+      onClose={() => {
+        setEmailComposeOpen(false);
+        setSelectedIds(new Set());
+      }}
+      attachments={tabFilteredFiles
+        .filter((f) => selectedIds.has(f.id))
+        .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))}
+    />
+    </>
   );
 }

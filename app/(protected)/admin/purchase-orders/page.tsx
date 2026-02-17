@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ interface PurchaseOrder {
 }
 
 export default function PurchaseOrdersPage() {
+  const router = useRouter();
   const [data, setData] = useState<PurchaseOrder[]>([]);
   const [users, setUsers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -217,46 +219,6 @@ export default function PurchaseOrdersPage() {
         return users[email.toLowerCase()] || email;
       },
     },
-    {
-      id: "details",
-      header: "Details",
-      cell: ({ row }) => (
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/admin/purchase-orders/${row.original._id}`}>
-            View Details
-          </Link>
-        </Button>
-      ),
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const item = row.original;
-        return (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openEditSheet(item)}
-              className="h-8 w-8 p-0"
-              title="Edit"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDelete(item._id)}
-              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-              title="Delete"
-            >
-              <Trash className="h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-    },
   ];
 
   if (loading) {
@@ -270,6 +232,7 @@ export default function PurchaseOrdersPage() {
         data={data}
         searchKey="vbpoNo"
         onAdd={openAddSheet}
+        onRowClick={(row) => router.push(`/admin/purchase-orders/${row._id}`)}
       />
 
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>
