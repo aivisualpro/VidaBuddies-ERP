@@ -38,6 +38,8 @@ import {
   Eye,
   EyeOff,
   Mail,
+  Send,
+  Clock,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -190,12 +192,28 @@ export function AttachmentsModal({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Visibility (internal/external) tab and per-file map
-  const [activeTab, setActiveTab] = useState<"internal" | "external">("internal");
+  const [activeTab, setActiveTab] = useState<"internal" | "external" | "emails">("internal");
   const [visibilityMap, setVisibilityMap] = useState<Record<string, "internal" | "external">>({});
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // Email compose dialog
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
+
+  // Email records
+  const [emailRecords, setEmailRecords] = useState<any[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+
+  const fetchEmailRecords = useCallback(async () => {
+    if (!poNumber) return;
+    setLoadingEmails(true);
+    try {
+      const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(poNumber)}`);
+      const data = await res.json();
+      if (res.ok) setEmailRecords(data.emails || []);
+    } catch { /* silent */ } finally {
+      setLoadingEmails(false);
+    }
+  }, [poNumber]);
 
   /* ─── Navigation State ─── */
   // Determines which "level" we're showing when navStack is empty:
@@ -620,6 +638,25 @@ export function AttachmentsModal({
                   )}>{externalCount}</span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab("emails"); fetchEmailRecords(); }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                  activeTab === "emails"
+                    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                <Mail className="h-3 w-3" />
+                Emails
+                {emailRecords.length > 0 && (
+                  <span className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                    activeTab === "emails" ? "bg-blue-500/20 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"
+                  )}>{emailRecords.length}</span>
+                )}
+              </button>
             </div>
 
             {/* Breadcrumbs */}
@@ -650,6 +687,7 @@ export function AttachmentsModal({
             </nav>
           </DialogHeader>
 
+          {activeTab !== "emails" && (
           <div className="flex items-center gap-2 shrink-0">
             {activeTab === "external" && selectedIds.size > 0 && (
               <Button
@@ -679,6 +717,7 @@ export function AttachmentsModal({
               Upload
             </Button>
           </div>
+          )}
         </div>
 
         {/* Hidden inputs */}
@@ -751,6 +790,7 @@ export function AttachmentsModal({
         )}
 
         {/* ═══════ TABLE CONTENT ═══════ */}
+        {activeTab !== "emails" && (
         <div
           className={cn("flex-1 overflow-y-auto min-h-0 transition-colors", dragOver && "bg-primary/5")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -952,9 +992,10 @@ export function AttachmentsModal({
             </table>
           ) : null}
         </div>
+        )}
 
         {/* ═══════ FOOTER ═══════ */}
-        {sortedFiles.length > 0 && (
+        {activeTab !== "emails" && sortedFiles.length > 0 && (
           <div className="flex items-center justify-between px-6 py-2.5 border-t border-border/30 bg-muted/20 shrink-0">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               {folderCount > 0 && <>{folderCount} folder(s){fileCount > 0 && ", "}</>}
@@ -963,6 +1004,105 @@ export function AttachmentsModal({
             <span className="text-[10px] text-muted-foreground/50 font-medium">
               {breadcrumbs.map((b) => b.label).join(" / ")}
             </span>
+          </div>
+        )}
+
+        {/* ═══════ EMAILS TAB CONTENT ═══════ */}
+        {activeTab === "emails" && (
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {loadingEmails ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : emailRecords.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center">
+                  <Mail className="h-7 w-7 text-blue-500/40" />
+                </div>
+                <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
+                <p className="text-xs text-muted-foreground/60">Select files in the External tab and click Email to send</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/20">
+                {emailRecords.map((email: any, idx: number) => (
+                  <div key={email._id || idx} className="px-6 py-4 hover:bg-muted/20 transition-colors group">
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className={cn(
+                        "h-9 w-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5",
+                        email.status === "sent"
+                          ? "bg-emerald-500/10 border-emerald-500/20"
+                          : "bg-destructive/10 border-destructive/20"
+                      )}>
+                        <Send className={cn(
+                          "h-4 w-4",
+                          email.status === "sent" ? "text-emerald-600" : "text-destructive"
+                        )} />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-[13px] font-bold truncate flex-1">{email.subject || "(No subject)"}</p>
+                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50 shrink-0">
+                            <Clock className="h-3 w-3" />
+                            {new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            {" "}
+                            {new Date(email.sentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                          </div>
+                        </div>
+
+                        {/* Recipients */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] mb-1.5">
+                          <span className="text-muted-foreground/50 font-semibold">To:</span>
+                          {(email.to || []).map((addr: string, i: number) => (
+                            <span key={i} className="bg-muted/60 text-foreground/80 px-1.5 py-0.5 rounded font-medium">{addr}</span>
+                          ))}
+                          {email.cc && email.cc.length > 0 && (
+                            <>
+                              <span className="text-muted-foreground/40">|</span>
+                              <span className="text-muted-foreground/50 font-semibold">Cc:</span>
+                              {email.cc.map((addr: string, i: number) => (
+                                <span key={i} className="bg-muted/40 text-foreground/60 px-1.5 py-0.5 rounded font-medium">{addr}</span>
+                              ))}
+                            </>
+                          )}
+                        </div>
+
+                        {/* Body preview */}
+                        {email.body && (
+                          <p className="text-xs text-muted-foreground/60 leading-relaxed line-clamp-2 mb-2">
+                            {email.body}
+                          </p>
+                        )}
+
+                        {/* Attachments and folder path */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {email.attachments && email.attachments.length > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50 font-semibold">
+                              <Paperclip className="h-3 w-3" />
+                              {email.attachments.length} attachment{email.attachments.length > 1 ? "s" : ""}
+                            </span>
+                          )}
+                          {email.folderPath && (
+                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                              <Folder className="h-3 w-3" />
+                              {email.folderPath}
+                            </span>
+                          )}
+                          {email.status === "failed" && (
+                            <span className="flex items-center gap-1 text-[10px] text-destructive font-semibold">
+                              <XCircle className="h-3 w-3" />
+                              Failed: {email.error || "Unknown error"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -990,6 +1130,9 @@ export function AttachmentsModal({
       attachments={tabFilteredFiles
         .filter((f) => selectedIds.has(f.id))
         .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))}
+      vbpoNo={poNumber}
+      folderPath={breadcrumbs.map((b) => b.label).join(" / ")}
+      onSent={fetchEmailRecords}
     />
     </>
   );

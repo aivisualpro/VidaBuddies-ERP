@@ -53,6 +53,9 @@ interface EmailComposeDialogProps {
   open: boolean;
   onClose: () => void;
   attachments: AttachmentFile[];
+  vbpoNo?: string;
+  folderPath?: string;
+  onSent?: () => void;
 }
 
 /* ─── Helpers ─── */
@@ -80,7 +83,7 @@ function formatSize(bytes: string | number): string {
 
 /* ─── Component ─── */
 
-export function EmailComposeDialog({ open, onClose, attachments }: EmailComposeDialogProps) {
+export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderPath, onSent }: EmailComposeDialogProps) {
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
   const [subject, setSubject] = useState("");
@@ -95,10 +98,14 @@ export function EmailComposeDialog({ open, onClose, attachments }: EmailComposeD
   const [templateName, setTemplateName] = useState("");
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  // Initialize attachments when dialog opens
+  // Initialize attachments and subject when dialog opens
   useEffect(() => {
     if (open) {
       setLocalAttachments([...attachments]);
+      // Auto-populate subject with folder path
+      if (folderPath && !subject) {
+        setSubject(folderPath);
+      }
       fetchTemplates();
     }
   }, [open, attachments]);
@@ -142,6 +149,8 @@ export function EmailComposeDialog({ open, onClose, attachments }: EmailComposeD
           cc,
           subject,
           body,
+          vbpoNo,
+          folderPath,
           fileIds: localAttachments.filter(
             (f) => f.mimeType !== "application/vnd.google-apps.folder"
           ),
@@ -154,6 +163,7 @@ export function EmailComposeDialog({ open, onClose, attachments }: EmailComposeD
         toast.success("Email sent successfully!", {
           description: `${data.attachmentCount || 0} attachment(s) included`,
         });
+        onSent?.();
         handleClose();
       } else {
         toast.error("Failed to send email", { description: data.error });
