@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { EmailComposeDialog } from "@/components/email-compose-dialog";
+import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose-dialog";
 import {
   Upload,
   Trash2,
@@ -198,6 +198,8 @@ export function AttachmentsModal({
 
   // Email compose dialog
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
+  const [emailComposeMode, setEmailComposeMode] = useState<"compose" | "view">("compose");
+  const [emailInitialData, setEmailInitialData] = useState<EmailInitialData | undefined>(undefined);
 
   // Email records
   const [emailRecords, setEmailRecords] = useState<any[]>([]);
@@ -586,7 +588,7 @@ export function AttachmentsModal({
   return (
     <>
     <Dialog open={open} onOpenChange={(v) => { if (!v && !uploading) onClose(); }}>
-      <DialogContent className="max-w-5xl max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
 
         {/* ═══════ HEADER ═══════ */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
@@ -1023,85 +1025,95 @@ export function AttachmentsModal({
                 <p className="text-xs text-muted-foreground/60">Select files in the External tab and click Email to send</p>
               </div>
             ) : (
-              <div className="divide-y divide-border/20">
-                {emailRecords.map((email: any, idx: number) => (
-                  <div key={email._id || idx} className="px-6 py-4 hover:bg-muted/20 transition-colors group">
-                    <div className="flex items-start gap-3">
-                      {/* Icon */}
-                      <div className={cn(
-                        "h-9 w-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5",
-                        email.status === "sent"
-                          ? "bg-emerald-500/10 border-emerald-500/20"
-                          : "bg-destructive/10 border-destructive/20"
-                      )}>
-                        <Send className={cn(
-                          "h-4 w-4",
-                          email.status === "sent" ? "text-emerald-600" : "text-destructive"
-                        )} />
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-[13px] font-bold truncate flex-1">{email.subject || "(No subject)"}</p>
-                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50 shrink-0">
-                            <Clock className="h-3 w-3" />
-                            {new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            {" "}
-                            {new Date(email.sentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-                          </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/40 bg-muted/20 sticky top-0 z-10">
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[50px]"></th>
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">From</th>
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">To</th>
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Subject</th>
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Body</th>
+                    <th className="px-3 py-2.5 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[40px]"><Paperclip className="h-3 w-3 mx-auto" /></th>
+                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[130px]">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emailRecords.map((email: any, idx: number) => (
+                    <tr
+                      key={email._id || idx}
+                      onClick={() => {
+                        setEmailComposeMode("view");
+                        setEmailInitialData({
+                          to: (email.to || []).join(", "),
+                          cc: (email.cc || []).join(", "),
+                          subject: email.subject || "",
+                          body: email.body || "",
+                          from: email.from || "info@app.vidabuddies.com",
+                          sentAt: email.sentAt,
+                          attachments: (email.attachments || []).map((a: any) => ({
+                            id: a.fileId || a.id || "",
+                            name: a.name || "",
+                            mimeType: a.mimeType || "",
+                            size: String(a.size || "0"),
+                          })),
+                        });
+                        setEmailComposeOpen(true);
+                      }}
+                      className="border-b border-border/20 hover:bg-muted/30 cursor-pointer transition-colors group"
+                    >
+                      {/* Status icon */}
+                      <td className="px-3 py-2.5">
+                        <div className={cn(
+                          "h-6 w-6 rounded-lg flex items-center justify-center",
+                          email.status === "sent"
+                            ? "bg-emerald-500/10"
+                            : "bg-destructive/10"
+                        )}>
+                          <Send className={cn(
+                            "h-3 w-3",
+                            email.status === "sent" ? "text-emerald-600" : "text-destructive"
+                          )} />
                         </div>
-
-                        {/* Recipients */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] mb-1.5">
-                          <span className="text-muted-foreground/50 font-semibold">To:</span>
-                          {(email.to || []).map((addr: string, i: number) => (
-                            <span key={i} className="bg-muted/60 text-foreground/80 px-1.5 py-0.5 rounded font-medium">{addr}</span>
-                          ))}
-                          {email.cc && email.cc.length > 0 && (
-                            <>
-                              <span className="text-muted-foreground/40">|</span>
-                              <span className="text-muted-foreground/50 font-semibold">Cc:</span>
-                              {email.cc.map((addr: string, i: number) => (
-                                <span key={i} className="bg-muted/40 text-foreground/60 px-1.5 py-0.5 rounded font-medium">{addr}</span>
-                              ))}
-                            </>
-                          )}
-                        </div>
-
-                        {/* Body preview */}
-                        {email.body && (
-                          <p className="text-xs text-muted-foreground/60 leading-relaxed line-clamp-2 mb-2">
-                            {email.body}
-                          </p>
+                      </td>
+                      {/* From */}
+                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]">
+                        {email.from || "info@app.vidabuddies.com"}
+                      </td>
+                      {/* To */}
+                      <td className="px-3 py-2.5 truncate max-w-[150px]">
+                        <span className="font-medium">{(email.to || []).join(", ")}</span>
+                      </td>
+                      {/* Subject */}
+                      <td className="px-3 py-2.5 font-semibold truncate max-w-[180px]">
+                        {email.subject || "(No subject)"}
+                      </td>
+                      {/* Body preview */}
+                      <td className="px-3 py-2.5 text-muted-foreground/60 truncate max-w-[180px]">
+                        {email.body ? email.body.substring(0, 60) + (email.body.length > 60 ? "..." : "") : "—"}
+                      </td>
+                      {/* Attachments count */}
+                      <td className="px-3 py-2.5 text-center">
+                        {email.attachments && email.attachments.length > 0 ? (
+                          <span className="bg-muted/60 text-foreground/70 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                            {email.attachments.length}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
                         )}
-
-                        {/* Attachments and folder path */}
-                        <div className="flex items-center gap-3 flex-wrap">
-                          {email.attachments && email.attachments.length > 0 && (
-                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50 font-semibold">
-                              <Paperclip className="h-3 w-3" />
-                              {email.attachments.length} attachment{email.attachments.length > 1 ? "s" : ""}
-                            </span>
-                          )}
-                          {email.folderPath && (
-                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
-                              <Folder className="h-3 w-3" />
-                              {email.folderPath}
-                            </span>
-                          )}
-                          {email.status === "failed" && (
-                            <span className="flex items-center gap-1 text-[10px] text-destructive font-semibold">
-                              <XCircle className="h-3 w-3" />
-                              Failed: {email.error || "Unknown error"}
-                            </span>
-                          )}
+                      </td>
+                      {/* Date */}
+                      <td className="px-3 py-2.5 text-muted-foreground/60 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          {" "}
+                          {new Date(email.sentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         )}
@@ -1125,14 +1137,33 @@ export function AttachmentsModal({
       open={emailComposeOpen}
       onClose={() => {
         setEmailComposeOpen(false);
+        setEmailComposeMode("compose");
+        setEmailInitialData(undefined);
         setSelectedIds(new Set());
       }}
-      attachments={tabFilteredFiles
-        .filter((f) => selectedIds.has(f.id))
-        .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))}
+      attachments={emailComposeMode === "compose" && !emailInitialData
+        ? tabFilteredFiles
+          .filter((f) => selectedIds.has(f.id))
+          .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))
+        : []
+      }
       vbpoNo={poNumber}
       folderPath={breadcrumbs.map((b) => b.label).join(" / ")}
-      onSent={fetchEmailRecords}
+      onSent={() => {
+        fetchEmailRecords();
+        setEmailComposeMode("compose");
+        setEmailInitialData(undefined);
+      }}
+      mode={emailComposeMode}
+      initialData={emailInitialData}
+      onForward={(data) => {
+        setEmailComposeOpen(false);
+        setTimeout(() => {
+          setEmailComposeMode("compose");
+          setEmailInitialData(data);
+          setEmailComposeOpen(true);
+        }, 200);
+      }}
     />
     </>
   );
