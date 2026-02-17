@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose-dialog";
+import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import {
   Upload,
   Trash2,
@@ -200,6 +201,10 @@ export function AttachmentsModal({
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
   const [emailComposeMode, setEmailComposeMode] = useState<"compose" | "view">("compose");
   const [emailInitialData, setEmailInitialData] = useState<EmailInitialData | undefined>(undefined);
+
+  // File preview
+  const [previewFile, setPreviewFile] = useState<DriveFile | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Email records
   const [emailRecords, setEmailRecords] = useState<any[]>([]);
@@ -911,11 +916,17 @@ export function AttachmentsModal({
                       </td>
 
                       {/* Name */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2" onClick={(e) => {
+                        if (!isFolder) {
+                          e.stopPropagation();
+                          setPreviewFile(file);
+                          setPreviewOpen(true);
+                        }
+                      }}>
                         <div className="min-w-0">
                           <p className={cn(
                             "text-[13px] font-semibold truncate leading-tight",
-                            isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground"
+                            isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground hover:text-primary cursor-pointer transition-colors"
                           )}>
                             {file.name}
                           </p>
@@ -1164,6 +1175,18 @@ export function AttachmentsModal({
           setEmailComposeOpen(true);
         }, 200);
       }}
+    />
+
+    {/* File Preview Dialog */}
+    <FilePreviewDialog
+      open={previewOpen}
+      onClose={() => {
+        setPreviewOpen(false);
+        setPreviewFile(null);
+      }}
+      file={previewFile}
+      files={tabFilteredFiles.filter((f) => f.mimeType !== "application/vnd.google-apps.folder")}
+      onNavigate={(f) => setPreviewFile(f as DriveFile)}
     />
     </>
   );
