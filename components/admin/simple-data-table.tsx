@@ -42,6 +42,7 @@ interface SimpleDataTableProps<TData, TValue> {
   showColumnToggle?: boolean;
   title?: string;
   loading?: boolean;
+  headerExtra?: React.ReactNode;
 }
 
 export function SimpleDataTable<TData, TValue>({
@@ -53,6 +54,7 @@ export function SimpleDataTable<TData, TValue>({
   showColumnToggle = true,
   title,
   loading,
+  headerExtra,
 }: SimpleDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -91,6 +93,7 @@ export function SimpleDataTable<TData, TValue>({
   React.useEffect(() => {
     setActions(
       <div className="flex items-center gap-2">
+        {headerExtra}
         {searchKey && (
           <Input
             placeholder={`Filter by ${searchKey}...`}
@@ -100,7 +103,7 @@ export function SimpleDataTable<TData, TValue>({
             onChange={(event) =>
               table.getColumn(searchKey)?.setFilterValue(event.target.value)
             }
-          className="max-w-sm h-8"
+            className="max-w-sm h-8"
           />
         )}
         {showColumnToggle && (
@@ -158,9 +161,10 @@ export function SimpleDataTable<TData, TValue>({
     searchKey,
     onAdd,
     showColumnToggle,
+    headerExtra,
     // Add these dependencies to ensure updates when filters/visibility change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(table.getState().columnFilters), 
+    JSON.stringify(table.getState().columnFilters),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(table.getState().columnVisibility)
   ]);
@@ -178,9 +182,9 @@ export function SimpleDataTable<TData, TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                     </TableHead>
                   );
                 })}
@@ -189,7 +193,7 @@ export function SimpleDataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {loading ? (
-               <TableRow>
+              <TableRow>
                 <TableCell
                   colSpan={columns.length}
                   className="h-24 text-center"

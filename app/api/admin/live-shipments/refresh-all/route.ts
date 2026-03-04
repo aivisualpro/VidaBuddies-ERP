@@ -12,9 +12,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const authHeader = request.headers.get('authorization');
   const token = searchParams.get('token');
-  
+
   const SECRET = process.env.CRON_SECRET || 'vida-refresh-secret-123';
-  
+
   if (token !== SECRET && authHeader !== `Bearer ${SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -26,11 +26,13 @@ export async function GET(request: Request) {
     const results = await VidaPO.aggregate([
       { $unwind: "$customerPO" },
       { $unwind: "$customerPO.shipping" },
-      { 
-        $match: { 
+      {
+        $match: {
           "customerPO.shipping.containerNo": { $exists: true, $ne: "" },
-          "customerPO.shipping.status": { $in: ["IN_TRANSIT", "PLANNED", "Booking Confirmed", "On Water"] }
-        } 
+          "customerPO.shipping.status": {
+            $nin: ["Delivered", "arrived", "delivered"]
+          }
+        }
       },
       { $group: { _id: "$customerPO.shipping.containerNo" } }
     ]);

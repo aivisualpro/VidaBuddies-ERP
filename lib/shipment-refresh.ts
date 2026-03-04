@@ -4,6 +4,19 @@ import connectToDatabase from '@/lib/db';
 import VidaPO from '@/lib/models/VidaPO';
 import VidaNotification from '@/lib/models/VidaNotification';
 
+/**
+ * Maps raw SeaRates tracking status to the app's standardized shipping statuses.
+ * App statuses: Pending, Planned, In Transit, Delivered
+ */
+function mapTrackingStatusToAppStatus(rawStatus: string): string {
+  const s = (rawStatus || '').toLowerCase().trim();
+  if (s === 'arrived' || s === 'delivered') return 'Delivered';
+  if (s === 'planned' || s === 'booking confirmed') return 'Planned';
+  if (s === 'on water' || s === 'in_transit' || s === 'in transit') return 'In Transit';
+  // For unknown/empty statuses, don't change — return empty to skip update
+  return '';
+}
+
 export async function refreshContainerTracking(container: string) {
   if (!container) {
     throw new Error('Container number is required');
@@ -14,7 +27,7 @@ export async function refreshContainerTracking(container: string) {
 
   // 2. Connect to DB and find the relevant PO containing this container
   await connectToDatabase();
-  
+
   const pos = await VidaPO.find({
     "customerPO.shipping.containerNo": container
   }).lean();
@@ -48,13 +61,13 @@ export async function refreshContainerTracking(container: string) {
         let hasChanged = true;
         if (lastRecord) {
           const keysToCompare = [
-            'status', 'latlong', 'last_event_date', 'last_event_status', 
+            'status', 'latlong', 'last_event_date', 'last_event_status',
             'last_event_location', 'pod_predictive_eta', 'pol_date', 'pod_date'
           ];
-          
+
           const isSame = keysToCompare.every(k => {
-             // @ts-ignore
-             return lastRecord[k] === data[k];
+            // @ts-ignore
+            return lastRecord[k] === data[k];
           });
 
           if (isSame) {
@@ -66,18 +79,17 @@ export async function refreshContainerTracking(container: string) {
           // @ts-ignore
           const newRecord = { ...data, timestamp: new Date() };
 
-          // Determine new status — only update if we got a valid response
-          const statusUpper = (data.status || "").toUpperCase();
-          const isError = statusUpper === 'UNKNOWN' || statusUpper === 'ERROR' || !data.status;
+          // Map the raw SeaRates status to one of the app's standardized statuses
+          const mappedStatus = mapTrackingStatusToAppStatus(data.status);
 
           // Build update: always push the tracking record
           const updateOps: any = {
             $push: { "customerPO.$[cpo].shipping.$[ship].shippingTrackingRecords": newRecord },
           };
 
-          // Only update the shipping status if we got a valid (non-error) response
-          if (!isError) {
-            updateOps.$set = { "customerPO.$[cpo].shipping.$[ship].status": data.status };
+          // Only update the shipping status if we got a valid mapped status
+          if (mappedStatus) {
+            updateOps.$set = { "customerPO.$[cpo].shipping.$[ship].status": mappedStatus };
           }
 
           // Atomic update
