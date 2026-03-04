@@ -10,14 +10,13 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Tag, FileType, Ship, CheckCircle2 } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2 } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
 interface PurchaseOrder {
@@ -130,6 +129,21 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  const updateFieldInline = async (id: string, field: string, value: string) => {
+    try {
+      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!response.ok) throw new Error("Failed");
+      setData(prev => prev.map(po => po._id === id ? { ...po, [field]: value } : po));
+      toast.success(`Updated ${field}`);
+    } catch {
+      toast.error(`Failed to update ${field}`);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this purchase order?")) return;
     try {
@@ -198,10 +212,55 @@ export default function PurchaseOrdersPage() {
     {
       accessorKey: "orderType",
       header: "Order Type",
+      cell: ({ row }) => {
+        const value = row.original.orderType || '';
+        const colorMap: Record<string, string> = {
+          'Export': 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+          'Import': 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+          'Dropship': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+          'DROPSHIP': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+          'Inventory': 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+          'INVENTORY': 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+          'IMPORT': 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+        };
+        const chipColor = colorMap[value] || 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+        return (
+          <select
+            value={value}
+            onChange={(e) => { e.stopPropagation(); updateFieldInline(row.original._id, 'orderType', e.target.value); }}
+            onClick={(e) => e.stopPropagation()}
+            className={`appearance-none cursor-pointer text-[11px] font-medium px-2 py-0.5 rounded-full border-0 outline-none ${chipColor}`}
+          >
+            <option value="Export">Export</option>
+            <option value="Import">Import</option>
+            <option value="Dropship">Dropship</option>
+            <option value="Inventory">Inventory</option>
+          </select>
+        );
+      },
     },
     {
       accessorKey: "category",
       header: "Category",
+      cell: ({ row }) => {
+        const value = row.original.category || '';
+        const colorMap: Record<string, string> = {
+          'CONVENTIONAL': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+          'ORGANIC': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+        };
+        const chipColor = colorMap[value] || 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+        return (
+          <select
+            value={value}
+            onChange={(e) => { e.stopPropagation(); updateFieldInline(row.original._id, 'category', e.target.value); }}
+            onClick={(e) => e.stopPropagation()}
+            className={`appearance-none cursor-pointer text-[11px] font-medium px-2 py-0.5 rounded-full border-0 outline-none ${chipColor}`}
+          >
+            <option value="CONVENTIONAL">CONVENTIONAL</option>
+            <option value="ORGANIC">ORGANIC</option>
+          </select>
+        );
+      },
     },
     {
       id: "customerPos",
@@ -393,9 +452,6 @@ export default function PurchaseOrdersPage() {
         <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{editingItem ? "Edit Purchase Order" : "Add Purchase Order"}</DialogTitle>
-            <DialogDescription>
-              manage purchase order details.
-            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
