@@ -1238,12 +1238,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Created By</p>
                           <p className="text-[10px] font-bold uppercase">{users[po.createdBy?.toLowerCase()] || po.createdBy || 'System'}</p>
                         </div>
-
-                      </div>
-
-                      <div className="flex flex-col items-end max-w-[50%]">
-                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Tracking Log</p>
-                        <p className="text-[10px] font-bold uppercase truncate">{ship.updateShipmentTracking || '-'}</p>
                       </div>
                     </div>
                   </div>
