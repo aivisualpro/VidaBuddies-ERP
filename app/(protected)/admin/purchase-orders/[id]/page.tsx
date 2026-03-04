@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { DetailPageSkeleton } from "@/components/skeletons";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,83 @@ interface PurchaseOrder {
   category: string;
   createdBy: string;
   customerPO: CustomerPO[];
+}
+
+function ProductMultiSelect({ products, initialSelected }: { products: Record<string, string>; initialSelected: string[] }) {
+  const [selectedProducts, setSelectedProducts] = useState<string[]>(initialSelected);
+  const [productSearch, setProductSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = Object.entries(products).filter(([, name]) =>
+    !productSearch || name.toLowerCase().includes(productSearch.toLowerCase())
+  );
+
+  const toggle = (id: string) => {
+    setSelectedProducts(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <input type="hidden" name="products" value={selectedProducts.join(',')} />
+
+      {selectedProducts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selectedProducts.map(id => (
+            <span key={id} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-md font-medium">
+              {products[id] || id}
+              <button type="button" onClick={() => toggle(id)} className="hover:bg-primary/20 rounded-full h-3.5 w-3.5 flex items-center justify-center text-primary/60 hover:text-primary">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <input
+        type="text"
+        placeholder={selectedProducts.length > 0 ? `${selectedProducts.length} selected — search more...` : "Search products..."}
+        value={productSearch}
+        onChange={(e) => { setProductSearch(e.target.value); setShowDropdown(true); }}
+        onFocus={() => setShowDropdown(true)}
+        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        autoComplete="off"
+      />
+
+      {showDropdown && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-[200px] overflow-y-auto bg-popover border rounded-lg shadow-xl">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-4 text-xs text-muted-foreground text-center">No products found</div>
+          ) : (
+            filtered.map(([id, name]) => {
+              const isSelected = selectedProducts.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggle(id)}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2 ${isSelected ? 'bg-primary/5 text-primary font-semibold' : 'text-foreground'}`}
+                >
+                  <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {isSelected && <span className="text-[10px]">✓</span>}
+                  </span>
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -1298,7 +1375,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           { id: 'weights', label: 'Weights', icon: '⚖️' },
           { id: 'financials', label: 'Financials', icon: '💰' },
           { id: 'inventory', label: 'Inventory', icon: '📋' },
-          { id: 'tracking', label: 'Tracking', icon: '📝' },
         ];
 
         const CARRIER_OPTIONS = ['MAERSK', 'MSC', 'CMA CGM', 'COSCO', 'ONE', 'Evergreen', 'Hapag-Lloyd', 'ZIM', 'Yang Ming', 'HMM'];
@@ -1385,19 +1461,23 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <Input name="ticoVB" placeholder="Tico VB ref" className="text-sm" defaultValue={editingShipping?.data?.ticoVB} />
                         </div>
                       </div>
-                      {/* Products - Multi-add */}
+                      {/* Products - Searchable Multi-select */}
                       <div className="mt-4">
                         <div className="flex items-center justify-between mb-2">
                           <Label className="text-xs font-semibold">Products</Label>
                         </div>
-                        <div className="space-y-2">
-                          <select name="product" className="w-full border rounded-md h-9 px-3 text-sm bg-background" defaultValue={editingShipping?.data?.product}>
-                            <option value="">Select Product</option>
-                            {Object.entries(products).map(([id, name]) => (
-                              <option key={id} value={id}>{name}</option>
-                            ))}
-                          </select>
-                        </div>
+                        <ProductMultiSelect
+                          products={products}
+                          initialSelected={
+                            editingShipping?.data?.products
+                              ? (typeof editingShipping.data.products === 'string'
+                                ? editingShipping.data.products.split(',').filter(Boolean)
+                                : Array.isArray(editingShipping.data.products)
+                                  ? editingShipping.data.products
+                                  : editingShipping.data.product ? [editingShipping.data.product] : [])
+                              : (editingShipping?.data?.product ? [editingShipping.data.product] : [])
+                          }
+                        />
                       </div>
                     </div>
 
@@ -1595,22 +1675,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       </div>
                     </div>
 
-                    {/* === TRACKING LOG === */}
-                    <div id="ship-section-tracking" className="pt-2 pb-4">
-                      <h4 className="text-xs font-black uppercase text-muted-foreground tracking-widest mb-4 flex items-center gap-2">
-                        <span className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center text-[10px]">📝</span>
-                        Tracking Log
-                      </h4>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Log Notes</Label>
-                        <textarea
-                          name="updateShipmentTracking"
-                          placeholder="Tracking updates, notes, timeline..."
-                          className="w-full min-h-[80px] border rounded-md px-3 py-2 text-sm bg-background resize-y"
-                          defaultValue={editingShipping?.data?.updateShipmentTracking}
-                        />
-                      </div>
-                    </div>
 
                   </div>
                 </div>
