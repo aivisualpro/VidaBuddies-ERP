@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2 } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
+import TimelineModal from "@/components/admin/timeline-modal";
 
 interface PurchaseOrder {
   _id: string;
@@ -56,6 +57,8 @@ export default function PurchaseOrdersPage() {
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterShipStatus, setFilterShipStatus] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
+  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
 
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
     vbpoNo: "",
@@ -100,9 +103,28 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  const fetchTimelineCounts = async () => {
+    try {
+      const response = await fetch("/api/admin/timeline");
+      const items = await response.json();
+      if (Array.isArray(items)) {
+        const counts: Record<string, number> = {};
+        items.forEach((t: any) => {
+          if (t.vbpoNo) {
+            counts[t.vbpoNo] = (counts[t.vbpoNo] || 0) + 1;
+          }
+        });
+        setTimelineCounts(counts);
+      }
+    } catch (error) {
+      console.error("Failed to fetch timeline counts", error);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
     fetchUsers();
+    fetchTimelineCounts();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -346,6 +368,29 @@ export default function PurchaseOrdersPage() {
       },
     },
     {
+      id: "timeline",
+      header: "Timeline",
+      cell: ({ row }) => {
+        const vbpoNo = row.original.vbpoNo;
+        const count = timelineCounts[vbpoNo] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setTimelineOpen({ vbpoNo, title: `Timeline — ${vbpoNo}` });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <Clock className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       accessorKey: "createdBy",
       header: "Created By",
       cell: ({ row }) => {
@@ -532,6 +577,15 @@ export default function PurchaseOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Timeline Modal */}
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => { setTimelineOpen(null); fetchTimelineCounts(); }}
+        vbpoNo={timelineOpen?.vbpoNo}
+        title={timelineOpen?.title}
+        users={users}
+      />
     </div>
   );
 }

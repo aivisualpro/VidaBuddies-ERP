@@ -24,7 +24,8 @@ import {
   Truck,
   ChevronLeft,
   Plus,
-  Paperclip
+  Paperclip,
+  Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AttachmentsModal } from "@/components/attachments-modal";
+import TimelineModal from "@/components/admin/timeline-modal";
 
 const UOM_OPTIONS = [
   { value: "EA", label: "EA (Each)" },
@@ -131,6 +133,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; poNo?: string; svbid?: string; title?: string } | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -543,6 +546,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           <Pencil className="h-3.5 w-3.5 mr-2" />
           Edit
         </Button>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setTimelineOpen({ vbpoNo: po?.vbpoNo, title: `Timeline — ${po?.vbpoNo}` })}>
+          <Clock className="h-3.5 w-3.5 mr-2" />
+          Timeline
+        </Button>
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
           // Auto-generate next CPO poNo
           const existingCount = po?.customerPO?.length || 0;
@@ -743,6 +750,17 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             <Trash className="h-3.5 w-3.5" />
                           </Button>
                           <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTimelineOpen({ vbpoNo: po?.vbpoNo, poNo: cpo.poNo, title: `Timeline — ${cpo.poNo}` });
+                            }}
+                          >
+                            <Clock className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
                             size="sm"
                             variant="secondary"
                             className="h-7 px-3 text-[10px] font-bold uppercase tracking-wide ml-1"
@@ -811,6 +829,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         }}
                       >
                         <Paperclip className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        onClick={() => setTimelineOpen({ vbpoNo: po?.vbpoNo, poNo: po?.customerPO?.[ship._cpoIdx]?.poNo, svbid: ship.svbid, title: `Timeline — ${ship.svbid || 'Shipping'}` })}
+                      >
+                        <Clock className="h-3 w-3" />
                       </Button>
                       <Button
                         size="icon"
@@ -1600,6 +1626,17 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         spoNumber={attachmentsOpen?.spoNumber}
         shipNumber={attachmentsOpen?.shipNumber}
         childFolders={attachmentsOpen?.childFolders}
+      />
+
+      {/* Timeline Modal */}
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        vbpoNo={timelineOpen?.vbpoNo}
+        poNo={timelineOpen?.poNo}
+        svbid={timelineOpen?.svbid}
+        title={timelineOpen?.title}
+        users={users}
       />
 
     </TooltipProvider>
