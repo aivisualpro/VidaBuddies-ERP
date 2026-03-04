@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -304,6 +305,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                 </span>
               )}
             </DialogTitle>
+            <DialogDescription className="sr-only">{isViewMode ? "View sent email details" : "Compose and send a new email"}</DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -333,101 +335,101 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                 {/* COMPOSE MODE: Templates + Send */}
                 {/* Templates dropdown */}
                 <div className="relative">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs gap-1.5"
-                onClick={() => setShowTemplates(!showTemplates)}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Templates
-                <ChevronDown className={cn("h-3 w-3 transition-transform", showTemplates && "rotate-180")} />
-              </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setShowTemplates(!showTemplates)}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Templates
+                    <ChevronDown className={cn("h-3 w-3 transition-transform", showTemplates && "rotate-180")} />
+                  </Button>
 
-              {showTemplates && (
-                <div className="absolute right-0 top-10 z-50 w-72 bg-popover border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="px-3 py-2.5 border-b bg-muted/30">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                      Saved Templates
-                    </p>
-                  </div>
-                  <div className="max-h-[200px] overflow-y-auto">
-                    {loadingTemplates ? (
-                      <div className="flex items-center justify-center py-6">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  {showTemplates && (
+                    <div className="absolute right-0 top-10 z-50 w-72 bg-popover border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-3 py-2.5 border-b bg-muted/30">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                          Saved Templates
+                        </p>
                       </div>
-                    ) : templates.length === 0 ? (
-                      <div className="text-center py-6 px-4">
-                        <p className="text-xs text-muted-foreground">No templates saved yet</p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-1">Compose an email and save it as a template</p>
-                      </div>
-                    ) : (
-                      templates.map((t) => (
-                        <div
-                          key={t.name}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => applyTemplate(t)}
-                          onKeyDown={(e) => { if (e.key === "Enter") applyTemplate(t); }}
-                          className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-muted/50 transition-colors group cursor-pointer"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold truncate">{t.name}</p>
-                            {t.subject && (
-                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">{t.subject}</p>
-                            )}
+                      <div className="max-h-[200px] overflow-y-auto">
+                        {loadingTemplates ? (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => deleteTemplate(t.name, e)}
-                            className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-2"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="px-3 py-2 border-t bg-muted/20">
-                    {showSaveTemplate ? (
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          value={templateName}
-                          onChange={(e) => setTemplateName(e.target.value)}
-                          placeholder="Template name..."
-                          className="h-7 text-xs flex-1"
-                          autoFocus
-                          onKeyDown={(e) => { if (e.key === "Enter") saveTemplate(); if (e.key === "Escape") setShowSaveTemplate(false); }}
-                        />
-                        <Button size="sm" className="h-7 text-[10px] px-2" onClick={saveTemplate}>
-                          Save
-                        </Button>
+                        ) : templates.length === 0 ? (
+                          <div className="text-center py-6 px-4">
+                            <p className="text-xs text-muted-foreground">No templates saved yet</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-1">Compose an email and save it as a template</p>
+                          </div>
+                        ) : (
+                          templates.map((t) => (
+                            <div
+                              key={t.name}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => applyTemplate(t)}
+                              onKeyDown={(e) => { if (e.key === "Enter") applyTemplate(t); }}
+                              className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-muted/50 transition-colors group cursor-pointer"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold truncate">{t.name}</p>
+                                {t.subject && (
+                                  <p className="text-[10px] text-muted-foreground truncate mt-0.5">{t.subject}</p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => deleteTemplate(t.name, e)}
+                                className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-2"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))
+                        )}
                       </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-[10px] w-full gap-1.5 text-muted-foreground"
-                        onClick={() => setShowSaveTemplate(true)}
-                      >
-                        <Save className="h-3 w-3" />
-                        Save current as template
-                      </Button>
-                    )}
-                  </div>
+                      <div className="px-3 py-2 border-t bg-muted/20">
+                        {showSaveTemplate ? (
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              value={templateName}
+                              onChange={(e) => setTemplateName(e.target.value)}
+                              placeholder="Template name..."
+                              className="h-7 text-xs flex-1"
+                              autoFocus
+                              onKeyDown={(e) => { if (e.key === "Enter") saveTemplate(); if (e.key === "Escape") setShowSaveTemplate(false); }}
+                            />
+                            <Button size="sm" className="h-7 text-[10px] px-2" onClick={saveTemplate}>
+                              Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-[10px] w-full gap-1.5 text-muted-foreground"
+                            onClick={() => setShowSaveTemplate(true)}
+                          >
+                            <Save className="h-3 w-3" />
+                            Save current as template
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <Button
-              size="sm"
-              className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
-              onClick={handleSend}
-              disabled={sending}
-            >
-              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-              {sending ? "Sending..." : "Send"}
-            </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {sending ? "Sending..." : "Send"}
+                </Button>
               </>
             )}
 
@@ -558,13 +560,13 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                         </span>
                       )}
                       {!isViewMode && (
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(file.id)}
-                        className="h-4 w-4 rounded flex items-center justify-center text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100 -mr-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(file.id)}
+                          className="h-4 w-4 rounded flex items-center justify-center text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100 -mr-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
                       )}
                     </div>
                   ))}

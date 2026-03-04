@@ -1186,6 +1186,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingCPO ? "Edit Customer PO" : "Add Customer PO"}</DialogTitle>
+            <DialogDescription className="sr-only">{editingCPO ? "Update customer purchase order details" : "Add a new customer purchase order"}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveCPO} className="space-y-4">
             {/* Row 1: PO # (Internal) | Customer PO # */}
@@ -1304,10 +1305,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
         return (
           <Dialog open={!!addingShippingToCPO || !!editingShipping} onOpenChange={(v) => { if (!v) { setAddingShippingToCPO(null); setEditingShipping(null); } }}>
-            <DialogContent className="max-w-[90vw] w-[1100px] h-[85vh] p-0 gap-0 overflow-hidden">
-              <form onSubmit={handleSaveShipping} className="flex flex-col h-full">
+            <DialogContent className="max-w-[90vw] w-[1100px] h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
+              <form onSubmit={handleSaveShipping} className="flex flex-col flex-1 min-h-0">
                 {/* Header */}
-                <div className="px-6 py-4 border-b bg-gradient-to-r from-background to-muted/30">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-background to-muted/30 shrink-0">
                   <DialogHeader>
                     <DialogTitle className="text-lg">{editingShipping ? "Edit Shipping Record" : "Add Shipping Record"}</DialogTitle>
                     <DialogDescription className="text-xs">
@@ -1317,17 +1318,24 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 </div>
 
                 {/* Body: Sidebar + Content */}
-                <div className="flex flex-1 min-h-0">
+                <div className="flex flex-1 min-h-0 overflow-hidden">
                   {/* Left Nav Tabs */}
-                  <div className="w-[160px] border-r bg-muted/20 py-2 flex-shrink-0 overflow-y-auto">
+                  <div className="w-[160px] border-r bg-muted/20 py-2 flex-shrink-0">
                     {SHIPPING_SECTIONS.map((section) => (
                       <button
                         key={section.id}
                         type="button"
                         onClick={() => {
-                          document.getElementById(`ship-section-${section.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          const container = document.getElementById('shipping-form-scroll');
+                          const target = document.getElementById(`ship-section-${section.id}`);
+                          if (container && target) {
+                            const containerRect = container.getBoundingClientRect();
+                            const targetRect = target.getBoundingClientRect();
+                            const scrollOffset = targetRect.top - containerRect.top + container.scrollTop - 16;
+                            container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+                          }
                         }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-muted/60 transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground"
+                        className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-primary/10 transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground border-l-2 border-transparent hover:border-primary"
                       >
                         <span className="text-sm">{section.icon}</span>
                         {section.label}
@@ -1335,8 +1343,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                     ))}
                   </div>
 
-                  {/* Right Content */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
+                  {/* Right Content - scrollable */}
+                  <div id="shipping-form-scroll" className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
 
                     {/* === CORE INFO === */}
                     <div id="ship-section-core">
@@ -1608,7 +1616,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-3 border-t bg-muted/20 flex items-center justify-end gap-2">
+                <div className="px-6 py-3 border-t bg-muted/20 flex items-center justify-end gap-2 shrink-0">
                   <Button type="button" variant="outline" size="sm" onClick={() => { setAddingShippingToCPO(null); setEditingShipping(null); }}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={actionLoading}>{actionLoading ? "Saving..." : (editingShipping ? "Update Shipping" : "Add Shipping")}</Button>
                 </div>

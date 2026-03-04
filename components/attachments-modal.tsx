@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -63,6 +64,7 @@ interface AttachmentsModalProps {
   spoNumber?: string;
   shipNumber?: string;
   childFolders?: string[];
+  defaultTab?: "internal" | "external" | "emails";
 }
 
 interface UploadFileStatus {
@@ -166,6 +168,7 @@ export function AttachmentsModal({
   spoNumber,
   shipNumber,
   childFolders,
+  defaultTab,
 }: AttachmentsModalProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -193,7 +196,7 @@ export function AttachmentsModal({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Visibility (internal/external) tab and per-file map
-  const [activeTab, setActiveTab] = useState<"internal" | "external" | "emails">("internal");
+  const [activeTab, setActiveTab] = useState<"internal" | "external" | "emails">(defaultTab || "internal");
   const [visibilityMap, setVisibilityMap] = useState<Record<string, "internal" | "external">>({});
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
@@ -236,8 +239,11 @@ export function AttachmentsModal({
       setRootFolderId(null);
       setViewSPO(!!spoNumber || !!shipNumber);
       setViewShip(!!shipNumber);
+      setActiveTab(defaultTab || "internal");
+      if (defaultTab === "emails") fetchEmailRecords();
     }
-  }, [open, spoNumber, shipNumber]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, spoNumber, shipNumber, defaultTab]);
 
   useEffect(() => {
     return () => {
@@ -577,8 +583,9 @@ export function AttachmentsModal({
     return a.name.localeCompare(b.name);
   });
 
-  // Filter by active tab (internal/external)
-  const tabFilteredFiles = sortedFiles.filter(f => {
+  // Filter by active tab (internal/external) — always show folders for navigation
+  const tabFilteredFiles = activeTab === "emails" ? [] : sortedFiles.filter(f => {
+    if (f.mimeType === "application/vnd.google-apps.folder") return true; // folders always visible
     const vis = visibilityMap[f.id] || "internal";
     return vis === activeTab;
   });
@@ -592,602 +599,603 @@ export function AttachmentsModal({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={(v) => { if (!v && !uploading) onClose(); }}>
-      <DialogContent className="max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <Dialog open={open} onOpenChange={(v) => { if (!v && !uploading) onClose(); }}>
+        <DialogContent className="max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
 
-        {/* ═══════ HEADER ═══════ */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
-          <DialogHeader className="p-0 space-y-1.5">
-            <DialogTitle className="text-lg font-bold flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shadow-sm">
-                <Paperclip className="h-4.5 w-4.5 text-primary" />
-              </div>
-              Attachments
-            </DialogTitle>
-
-            {/* Internal / External Tabs */}
-            <div className="flex items-center gap-1 ml-0.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab("internal")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
-                  activeTab === "internal"
-                    ? "bg-primary/10 text-primary shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                <Eye className="h-3 w-3" />
-                Internal
-                {internalCount > 0 && (
-                  <span className={cn(
-                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                    activeTab === "internal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-                  )}>{internalCount}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("external")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
-                  activeTab === "external"
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                <EyeOff className="h-3 w-3" />
-                External
-                {externalCount > 0 && (
-                  <span className={cn(
-                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                    activeTab === "external" ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
-                  )}>{externalCount}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setActiveTab("emails"); fetchEmailRecords(); }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
-                  activeTab === "emails"
-                    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                <Mail className="h-3 w-3" />
-                Emails
-                {emailRecords.length > 0 && (
-                  <span className={cn(
-                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                    activeTab === "emails" ? "bg-blue-500/20 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"
-                  )}>{emailRecords.length}</span>
-                )}
-              </button>
-            </div>
-
-            {/* Breadcrumbs */}
-            <nav className="flex items-center gap-0 ml-0.5 flex-wrap">
-              {breadcrumbs.map((bc, i) => (
-                <div key={i} className="flex items-center">
-                  {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 mx-0.5" />}
-                  {bc.clickable ? (
-                    <button
-                      type="button"
-                      onClick={bc.onClick}
-                      className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded-md hover:bg-primary/5 transition-all cursor-pointer"
-                    >
-                      {bc.label}
-                    </button>
-                  ) : (
-                    <span className={cn(
-                      "text-xs font-medium px-1.5 py-0.5 rounded-md",
-                      i === breadcrumbs.length - 1
-                        ? "text-foreground bg-muted/60"
-                        : "text-muted-foreground"
-                    )}>
-                      {bc.label}
-                    </span>
-                  )}
+          {/* ═══════ HEADER ═══════ */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
+            <DialogHeader className="p-0 space-y-1.5">
+              <DialogTitle className="text-lg font-bold flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shadow-sm">
+                  <Paperclip className="h-4.5 w-4.5 text-primary" />
                 </div>
-              ))}
-            </nav>
-          </DialogHeader>
+                Attachments
+              </DialogTitle>
+              <DialogDescription className="sr-only">Manage file attachments for this purchase order</DialogDescription>
 
-          {activeTab !== "emails" && (
-          <div className="flex items-center gap-2 shrink-0">
-            {activeTab === "external" && selectedIds.size > 0 && (
-              <Button
-                size="sm"
-                className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
-                onClick={() => setEmailComposeOpen(true)}
-                disabled={uploading}
-              >
-                <Mail className="h-3.5 w-3.5" />
-                Email ({selectedIds.size})
-              </Button>
-            )}
-            {selectedIds.size > 0 && (
-              <Button size="sm" variant="destructive" className="h-8 text-xs gap-1.5 shadow-sm" onClick={handleDelete} disabled={deleting || uploading}>
-                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Delete ({selectedIds.size})
-              </Button>
-            )}
-            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
-              toast.info("Please allow the browser prompt to upload folder structure");
-              folderInputRef.current?.click();
-            }} disabled={uploading}>
-              <FolderOpen className="h-3.5 w-3.5" /> Folder
-            </Button>
-            <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              Upload
-            </Button>
-          </div>
-          )}
-        </div>
-
-        {/* Hidden inputs */}
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) handleUpload(e.target.files); e.target.value = ""; }} />
-        <input ref={folderInputRef} type="file" multiple
-          // @ts-ignore
-          webkitdirectory="" className="hidden" onChange={(e) => { if (e.target.files) handleUpload(e.target.files); e.target.value = ""; }} />
-
-        {/* ═══════ UPLOAD PROGRESS ═══════ */}
-        {isShowingUpload && (
-          <div className="border-b border-border/40 bg-gradient-to-b from-primary/[0.02] to-transparent shrink-0">
-            <div className="px-6 pt-4 pb-2 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  {uploading ? (
-                    <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <CloudUpload className="h-4 w-4 text-primary animate-pulse" />
-                    </div>
-                  ) : uploadFiles.some((f) => f.status === "error") ? (
-                    <div className="h-8 w-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                      <AlertCircle className="h-4 w-4 text-amber-500" />
-                    </div>
-                  ) : (
-                    <div className="h-8 w-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                      <CheckCircle className="h-4 w-4 text-emerald-500" />
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-bold leading-none">
-                      {uploading ? "Uploading..." : uploadFiles.some((f) => f.status === "error") ? "Completed with errors" : "Upload Complete!"}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
-                      {uploadCompleted}/{uploadTotal} files
-                      {uploadElapsed > 0 && ` • ${formatTime(uploadElapsed)}`}
-                      {uploading && uploadEstimated > 0 && ` • ~${formatTime(uploadEstimated)} left`}
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xl font-black text-primary tabular-nums tracking-tight">{Math.round(uploadPercentage)}%</span>
-              </div>
-
-              <div className="h-2 w-full bg-muted/50 rounded-full overflow-hidden">
-                <div
+              {/* Internal / External Tabs */}
+              <div className="flex items-center gap-1 ml-0.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("internal")}
                   className={cn(
-                    "h-full rounded-full transition-all duration-700 ease-out",
-                    uploading ? "bg-gradient-to-r from-primary to-primary/70" : uploadFiles.some((f) => f.status === "error") ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                    "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                    activeTab === "internal"
+                      ? "bg-primary/10 text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
-                  style={{ width: `${uploadPercentage}%` }}
-                />
+                >
+                  <Eye className="h-3 w-3" />
+                  Internal
+                  {internalCount > 0 && (
+                    <span className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                      activeTab === "internal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                    )}>{internalCount}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("external")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                    activeTab === "external"
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <EyeOff className="h-3 w-3" />
+                  External
+                  {externalCount > 0 && (
+                    <span className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                      activeTab === "external" ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
+                    )}>{externalCount}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab("emails"); fetchEmailRecords(); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all",
+                    activeTab === "emails"
+                      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <Mail className="h-3 w-3" />
+                  Emails
+                  {emailRecords.length > 0 && (
+                    <span className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                      activeTab === "emails" ? "bg-blue-500/20 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"
+                    )}>{emailRecords.length}</span>
+                  )}
+                </button>
               </div>
-            </div>
 
-            <div className="max-h-[120px] overflow-y-auto px-6 pb-3">
-              <div className="space-y-0.5">
-                {uploadFiles.map((f, idx) => (
-                  <div key={idx} className={cn("flex items-center gap-2 py-0.5 px-2 rounded text-[11px]", f.status === "uploading" && "bg-primary/5", f.status === "error" && "bg-destructive/5")}>
-                    {f.status === "pending" && <div className="h-3 w-3 rounded-full border-[1.5px] border-muted-foreground/25 shrink-0" />}
-                    {f.status === "uploading" && <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" />}
-                    {f.status === "done" && <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" />}
-                    {f.status === "error" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                    <span className={cn("truncate flex-1 font-medium", f.status === "done" && "text-muted-foreground/60", f.status === "error" && "text-destructive", f.status === "pending" && "text-muted-foreground/40")}>
-                      {f.name}
-                    </span>
-                    {f.error && <span className="text-[9px] text-destructive/60 truncate max-w-[100px]">{f.error}</span>}
+              {/* Breadcrumbs */}
+              <nav className="flex items-center gap-0 ml-0.5 flex-wrap">
+                {breadcrumbs.map((bc, i) => (
+                  <div key={i} className="flex items-center">
+                    {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 mx-0.5" />}
+                    {bc.clickable ? (
+                      <button
+                        type="button"
+                        onClick={bc.onClick}
+                        className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded-md hover:bg-primary/5 transition-all cursor-pointer"
+                      >
+                        {bc.label}
+                      </button>
+                    ) : (
+                      <span className={cn(
+                        "text-xs font-medium px-1.5 py-0.5 rounded-md",
+                        i === breadcrumbs.length - 1
+                          ? "text-foreground bg-muted/60"
+                          : "text-muted-foreground"
+                      )}>
+                        {bc.label}
+                      </span>
+                    )}
                   </div>
                 ))}
-              </div>
-            </div>
-          </div>
-        )}
+              </nav>
+            </DialogHeader>
 
-        {/* ═══════ TABLE CONTENT ═══════ */}
-        {activeTab !== "emails" && (
-        <div
-          className={cn("flex-1 overflow-y-auto min-h-0 transition-colors", dragOver && "bg-primary/5")}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-        >
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <Loader2 className="h-8 w-8 text-primary animate-spin" />
-              <p className="text-xs text-muted-foreground font-medium">Loading files...</p>
-            </div>
-          ) : tabFilteredFiles.length === 0 && !isShowingUpload ? (
-            <div className="flex flex-col items-center justify-center py-20 px-8 gap-5">
-              <div className="relative">
-                <div className={cn(
-                  "h-24 w-24 rounded-2xl border-2 border-dashed flex items-center justify-center",
-                  activeTab === "external"
-                    ? "bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03] border-amber-500/25"
-                    : "bg-gradient-to-br from-primary/10 to-primary/[0.03] border-primary/25"
-                )}>
-                  {activeTab === "external" ? (
-                    <EyeOff className="h-10 w-10 text-amber-500/40" />
-                  ) : (
-                    <CloudUpload className="h-10 w-10 text-primary/40" />
-                  )}
-                </div>
-                {activeTab === "internal" && (
-                  <div className="absolute -bottom-1.5 -right-1.5 h-7 w-7 rounded-full bg-primary/15 border-2 border-background flex items-center justify-center shadow-sm">
-                    <Upload className="h-3.5 w-3.5 text-primary" />
-                  </div>
+            {activeTab !== "emails" && (
+              <div className="flex items-center gap-2 shrink-0">
+                {activeTab === "external" && selectedIds.size > 0 && (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
+                    onClick={() => setEmailComposeOpen(true)}
+                    disabled={uploading}
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Email ({selectedIds.size})
+                  </Button>
                 )}
-              </div>
-              <div className="text-center space-y-1.5">
-                <p className="text-sm font-semibold">
-                  {activeTab === "external"
-                    ? "No external files"
-                    : "Drop files or folders here"}
-                </p>
-                <p className="text-xs text-muted-foreground max-w-[300px]">
-                  {activeTab === "external"
-                    ? "Toggle files from the Internal tab to mark them as external."
-                    : "Folder uploads preserve their structure. Click \"Folder\" to upload an entire directory."}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                  <Upload className="h-3.5 w-3.5" /> Browse Files
-                </Button>
+                {selectedIds.size > 0 && (
+                  <Button size="sm" variant="destructive" className="h-8 text-xs gap-1.5 shadow-sm" onClick={handleDelete} disabled={deleting || uploading}>
+                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    Delete ({selectedIds.size})
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
-                   toast.info("Please allow the browser prompt to upload folder structure");
-                   folderInputRef.current?.click();
+                  toast.info("Please allow the browser prompt to upload folder structure");
+                  folderInputRef.current?.click();
                 }} disabled={uploading}>
-                  <FolderOpen className="h-3.5 w-3.5" /> Browse Folder
+                  <FolderOpen className="h-3.5 w-3.5" /> Folder
+                </Button>
+                <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  Upload
                 </Button>
               </div>
-            </div>
-          ) : tabFilteredFiles.length > 0 ? (
-            <table className="w-full text-left">
-              <thead className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm border-b border-border/30">
-                <tr>
-                  <th className="w-10 px-3 py-2.5">
-                    <Checkbox checked={allSelected} onCheckedChange={toggleAll} className="h-3.5 w-3.5" />
-                  </th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[52px]">Type</th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70">Name</th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[100px] text-center">Visibility</th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[80px] text-right">Size</th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[120px]">Date</th>
-                  <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[48px] text-center">Link</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-border/20">
-                {tabFilteredFiles.map((file) => {
-                  const isFolder = file.mimeType === "application/vnd.google-apps.folder";
-                  const isSelected = selectedIds.has(file.id);
-                  const isProtected = isItemProtected(file);
-
-                  return (
-                    <tr
-                      key={file.id}
-                      className={cn(
-                        "group transition-colors duration-100",
-                        isSelected ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-muted/30",
-                        isFolder ? "cursor-pointer hover:bg-yellow-500/[0.04]" : "cursor-pointer",
-                        isProtected && "opacity-80"
-                      )}
-                      onClick={() => {
-                        if (isFolder) {
-                           // Standard deep navigation using folder ID
-                           navigateIntoFolder(file.name, file.id);
-                        }
-                        else if (!isProtected) toggleSelect(file.id);
-                      }}
-                    >
-                      {/* Checkbox for Delete */}
-                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(file.id)}
-                            className={cn("h-3.5 w-3.5", isProtected && "opacity-50 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground cursor-not-allowed")}
-                            disabled={isProtected}
-                          />
-                        </div>
-                      </td>
-
-                      {/* Type icon */}
-                      <td className="px-3 py-2">
-                        <div className={cn(
-                          "h-8 w-8 rounded-lg border flex items-center justify-center transition-transform group-hover:scale-105",
-                          isFolder ? "bg-yellow-600/10 border-yellow-600/20" : "bg-muted/40 border-border/40"
-                        )}>
-                          {getFileIcon(file.mimeType, "sm")}
-                        </div>
-                      </td>
-
-                      {/* Name */}
-                      <td className="px-3 py-2" onClick={(e) => {
-                        if (!isFolder) {
-                          e.stopPropagation();
-                          setPreviewFile(file);
-                          setPreviewOpen(true);
-                        }
-                      }}>
-                        <div className="min-w-0">
-                          <p className={cn(
-                            "text-[13px] font-semibold truncate leading-tight",
-                            isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground hover:text-primary cursor-pointer transition-colors"
-                          )}>
-                            {file.name}
-                          </p>
-                          {isFolder ? (
-                            <span className="text-[9px] font-semibold text-yellow-600/60 mt-0.5 flex items-center gap-1">
-                              {isProtected && <Lock className="h-2.5 w-2.5" />}
-                              {isProtected ? "System Folder" : "Click to open"}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40 mt-0.5 inline-block">
-                              {getFileExtension(file.name)}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Visibility Toggle */}
-                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => toggleVisibility(file.id)}
-                          disabled={togglingIds.has(file.id)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border",
-                            (visibilityMap[file.id] || "internal") === "internal"
-                              ? "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
-                              : "bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10",
-                            togglingIds.has(file.id) && "opacity-50 cursor-not-allowed"
-                          )}
-                          title={`Click to mark as ${(visibilityMap[file.id] || "internal") === "internal" ? "external" : "internal"}`}
-                        >
-                          {togglingIds.has(file.id) ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (visibilityMap[file.id] || "internal") === "internal" ? (
-                            <Eye className="h-3 w-3" />
-                          ) : (
-                            <EyeOff className="h-3 w-3" />
-                          )}
-                          {(visibilityMap[file.id] || "internal") === "internal" ? "Internal" : "External"}
-                        </button>
-                      </td>
-
-                      {/* Size */}
-                      <td className="px-3 py-2 text-right">
-                        <span className="text-xs text-muted-foreground font-medium tabular-nums">
-                          {isFolder ? "—" : formatFileSize(file.size)}
-                        </span>
-                      </td>
-
-                      {/* Date */}
-                      <td className="px-3 py-2">
-                        <span className="text-xs text-muted-foreground font-medium">
-                          {formatDate(file.createdTime)}
-                        </span>
-                      </td>
-
-                      {/* Open */}
-                      <td className="px-3 py-2 text-center">
-                        {file.webViewLink ? (
-                          <a
-                            href={file.webViewLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open in Google Drive"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : null}
-        </div>
-        )}
-
-        {/* ═══════ FOOTER ═══════ */}
-        {activeTab !== "emails" && sortedFiles.length > 0 && (
-          <div className="flex items-center justify-between px-6 py-2.5 border-t border-border/30 bg-muted/20 shrink-0">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-              {folderCount > 0 && <>{folderCount} folder(s){fileCount > 0 && ", "}</>}
-              {fileCount > 0 && <>{fileCount} file(s)</>}
-            </span>
-            <span className="text-[10px] text-muted-foreground/50 font-medium">
-              {breadcrumbs.map((b) => b.label).join(" / ")}
-            </span>
-          </div>
-        )}
-
-        {/* ═══════ EMAILS TAB CONTENT ═══════ */}
-        {activeTab === "emails" && (
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {loadingEmails ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : emailRecords.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center">
-                  <Mail className="h-7 w-7 text-blue-500/40" />
-                </div>
-                <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
-                <p className="text-xs text-muted-foreground/60">Select files in the External tab and click Email to send</p>
-              </div>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border/40 bg-muted/20 sticky top-0 z-10">
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[50px]"></th>
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">From</th>
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">To</th>
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Subject</th>
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Body</th>
-                    <th className="px-3 py-2.5 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[40px]"><Paperclip className="h-3 w-3 mx-auto" /></th>
-                    <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[130px]">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {emailRecords.map((email: any, idx: number) => (
-                    <tr
-                      key={email._id || idx}
-                      onClick={() => {
-                        setEmailComposeMode("view");
-                        setEmailInitialData({
-                          to: (email.to || []).join(", "),
-                          cc: (email.cc || []).join(", "),
-                          subject: email.subject || "",
-                          body: email.body || "",
-                          from: email.from || "info@app.vidabuddies.com",
-                          sentAt: email.sentAt,
-                          attachments: (email.attachments || []).map((a: any) => ({
-                            id: a.fileId || a.id || "",
-                            name: a.name || "",
-                            mimeType: a.mimeType || "",
-                            size: String(a.size || "0"),
-                          })),
-                        });
-                        setEmailComposeOpen(true);
-                      }}
-                      className="border-b border-border/20 hover:bg-muted/30 cursor-pointer transition-colors group"
-                    >
-                      {/* Status icon */}
-                      <td className="px-3 py-2.5">
-                        <div className={cn(
-                          "h-6 w-6 rounded-lg flex items-center justify-center",
-                          email.status === "sent"
-                            ? "bg-emerald-500/10"
-                            : "bg-destructive/10"
-                        )}>
-                          <Send className={cn(
-                            "h-3 w-3",
-                            email.status === "sent" ? "text-emerald-600" : "text-destructive"
-                          )} />
-                        </div>
-                      </td>
-                      {/* From */}
-                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]">
-                        {email.from || "info@app.vidabuddies.com"}
-                      </td>
-                      {/* To */}
-                      <td className="px-3 py-2.5 truncate max-w-[150px]">
-                        <span className="font-medium">{(email.to || []).join(", ")}</span>
-                      </td>
-                      {/* Subject */}
-                      <td className="px-3 py-2.5 font-semibold truncate max-w-[180px]">
-                        {email.subject || "(No subject)"}
-                      </td>
-                      {/* Body preview */}
-                      <td className="px-3 py-2.5 text-muted-foreground/60 truncate max-w-[180px]">
-                        {email.body ? email.body.substring(0, 60) + (email.body.length > 60 ? "..." : "") : "—"}
-                      </td>
-                      {/* Attachments count */}
-                      <td className="px-3 py-2.5 text-center">
-                        {email.attachments && email.attachments.length > 0 ? (
-                          <span className="bg-muted/60 text-foreground/70 px-1.5 py-0.5 rounded font-bold text-[10px]">
-                            {email.attachments.length}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/30">—</span>
-                        )}
-                      </td>
-                      {/* Date */}
-                      <td className="px-3 py-2.5 text-muted-foreground/60 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          {" "}
-                          {new Date(email.sentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             )}
           </div>
-        )}
 
-        {/* Drag overlay */}
-        {dragOver && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary/60 rounded-xl pointer-events-none">
-            <div className="flex flex-col items-center gap-3 animate-in zoom-in-95 duration-200">
-              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <CloudUpload className="h-8 w-8 text-primary" />
+          {/* Hidden inputs */}
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) handleUpload(e.target.files); e.target.value = ""; }} />
+          <input ref={folderInputRef} type="file" multiple
+            // @ts-ignore
+            webkitdirectory="" className="hidden" onChange={(e) => { if (e.target.files) handleUpload(e.target.files); e.target.value = ""; }} />
+
+          {/* ═══════ UPLOAD PROGRESS ═══════ */}
+          {isShowingUpload && (
+            <div className="border-b border-border/40 bg-gradient-to-b from-primary/[0.02] to-transparent shrink-0">
+              <div className="px-6 pt-4 pb-2 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    {uploading ? (
+                      <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <CloudUpload className="h-4 w-4 text-primary animate-pulse" />
+                      </div>
+                    ) : uploadFiles.some((f) => f.status === "error") ? (
+                      <div className="h-8 w-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                        <AlertCircle className="h-4 w-4 text-amber-500" />
+                      </div>
+                    ) : (
+                      <div className="h-8 w-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold leading-none">
+                        {uploading ? "Uploading..." : uploadFiles.some((f) => f.status === "error") ? "Completed with errors" : "Upload Complete!"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                        {uploadCompleted}/{uploadTotal} files
+                        {uploadElapsed > 0 && ` • ${formatTime(uploadElapsed)}`}
+                        {uploading && uploadEstimated > 0 && ` • ~${formatTime(uploadEstimated)} left`}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xl font-black text-primary tabular-nums tracking-tight">{Math.round(uploadPercentage)}%</span>
+                </div>
+
+                <div className="h-2 w-full bg-muted/50 rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-700 ease-out",
+                      uploading ? "bg-gradient-to-r from-primary to-primary/70" : uploadFiles.some((f) => f.status === "error") ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                    )}
+                    style={{ width: `${uploadPercentage}%` }}
+                  />
+                </div>
               </div>
-              <p className="text-sm font-bold text-primary">Drop files or folders to upload</p>
+
+              <div className="max-h-[120px] overflow-y-auto px-6 pb-3">
+                <div className="space-y-0.5">
+                  {uploadFiles.map((f, idx) => (
+                    <div key={idx} className={cn("flex items-center gap-2 py-0.5 px-2 rounded text-[11px]", f.status === "uploading" && "bg-primary/5", f.status === "error" && "bg-destructive/5")}>
+                      {f.status === "pending" && <div className="h-3 w-3 rounded-full border-[1.5px] border-muted-foreground/25 shrink-0" />}
+                      {f.status === "uploading" && <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" />}
+                      {f.status === "done" && <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" />}
+                      {f.status === "error" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                      <span className={cn("truncate flex-1 font-medium", f.status === "done" && "text-muted-foreground/60", f.status === "error" && "text-destructive", f.status === "pending" && "text-muted-foreground/40")}>
+                        {f.name}
+                      </span>
+                      {f.error && <span className="text-[9px] text-destructive/60 truncate max-w-[100px]">{f.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
 
-    {/* Email Compose Dialog */}
-    <EmailComposeDialog
-      open={emailComposeOpen}
-      onClose={() => {
-        setEmailComposeOpen(false);
-        setEmailComposeMode("compose");
-        setEmailInitialData(undefined);
-        setSelectedIds(new Set());
-      }}
-      attachments={emailComposeMode === "compose" && !emailInitialData
-        ? tabFilteredFiles
-          .filter((f) => selectedIds.has(f.id))
-          .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))
-        : []
-      }
-      vbpoNo={poNumber}
-      folderPath={breadcrumbs.map((b) => b.label).join(" / ")}
-      onSent={() => {
-        fetchEmailRecords();
-        setEmailComposeMode("compose");
-        setEmailInitialData(undefined);
-      }}
-      mode={emailComposeMode}
-      initialData={emailInitialData}
-      onForward={(data) => {
-        setEmailComposeOpen(false);
-        setTimeout(() => {
+          {/* ═══════ TABLE CONTENT ═══════ */}
+          {activeTab !== "emails" && (
+            <div
+              className={cn("flex-1 overflow-y-auto min-h-0 transition-colors", dragOver && "bg-primary/5")}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-24 gap-3">
+                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                  <p className="text-xs text-muted-foreground font-medium">Loading files...</p>
+                </div>
+              ) : tabFilteredFiles.length === 0 && !isShowingUpload ? (
+                <div className="flex flex-col items-center justify-center py-20 px-8 gap-5">
+                  <div className="relative">
+                    <div className={cn(
+                      "h-24 w-24 rounded-2xl border-2 border-dashed flex items-center justify-center",
+                      activeTab === "external"
+                        ? "bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03] border-amber-500/25"
+                        : "bg-gradient-to-br from-primary/10 to-primary/[0.03] border-primary/25"
+                    )}>
+                      {activeTab === "external" ? (
+                        <EyeOff className="h-10 w-10 text-amber-500/40" />
+                      ) : (
+                        <CloudUpload className="h-10 w-10 text-primary/40" />
+                      )}
+                    </div>
+                    {activeTab === "internal" && (
+                      <div className="absolute -bottom-1.5 -right-1.5 h-7 w-7 rounded-full bg-primary/15 border-2 border-background flex items-center justify-center shadow-sm">
+                        <Upload className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-center space-y-1.5">
+                    <p className="text-sm font-semibold">
+                      {activeTab === "external"
+                        ? "No external files"
+                        : "Drop files or folders here"}
+                    </p>
+                    <p className="text-xs text-muted-foreground max-w-[300px]">
+                      {activeTab === "external"
+                        ? "Toggle files from the Internal tab to mark them as external."
+                        : "Folder uploads preserve their structure. Click \"Folder\" to upload an entire directory."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                      <Upload className="h-3.5 w-3.5" /> Browse Files
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
+                      toast.info("Please allow the browser prompt to upload folder structure");
+                      folderInputRef.current?.click();
+                    }} disabled={uploading}>
+                      <FolderOpen className="h-3.5 w-3.5" /> Browse Folder
+                    </Button>
+                  </div>
+                </div>
+              ) : tabFilteredFiles.length > 0 ? (
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm border-b border-border/30">
+                    <tr>
+                      <th className="w-10 px-3 py-2.5">
+                        <Checkbox checked={allSelected} onCheckedChange={toggleAll} className="h-3.5 w-3.5" />
+                      </th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[52px]">Type</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70">Name</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[100px] text-center">Visibility</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[80px] text-right">Size</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[120px]">Date</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[48px] text-center">Link</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-border/20">
+                    {tabFilteredFiles.map((file) => {
+                      const isFolder = file.mimeType === "application/vnd.google-apps.folder";
+                      const isSelected = selectedIds.has(file.id);
+                      const isProtected = isItemProtected(file);
+
+                      return (
+                        <tr
+                          key={file.id}
+                          className={cn(
+                            "group transition-colors duration-100",
+                            isSelected ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-muted/30",
+                            isFolder ? "cursor-pointer hover:bg-yellow-500/[0.04]" : "cursor-pointer",
+                            isProtected && "opacity-80"
+                          )}
+                          onClick={() => {
+                            if (isFolder) {
+                              // Standard deep navigation using folder ID
+                              navigateIntoFolder(file.name, file.id);
+                            }
+                            else if (!isProtected) toggleSelect(file.id);
+                          }}
+                        >
+                          {/* Checkbox for Delete */}
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelect(file.id)}
+                                className={cn("h-3.5 w-3.5", isProtected && "opacity-50 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground cursor-not-allowed")}
+                                disabled={isProtected}
+                              />
+                            </div>
+                          </td>
+
+                          {/* Type icon */}
+                          <td className="px-3 py-2">
+                            <div className={cn(
+                              "h-8 w-8 rounded-lg border flex items-center justify-center transition-transform group-hover:scale-105",
+                              isFolder ? "bg-yellow-600/10 border-yellow-600/20" : "bg-muted/40 border-border/40"
+                            )}>
+                              {getFileIcon(file.mimeType, "sm")}
+                            </div>
+                          </td>
+
+                          {/* Name */}
+                          <td className="px-3 py-2" onClick={(e) => {
+                            if (!isFolder) {
+                              e.stopPropagation();
+                              setPreviewFile(file);
+                              setPreviewOpen(true);
+                            }
+                          }}>
+                            <div className="min-w-0">
+                              <p className={cn(
+                                "text-[13px] font-semibold truncate leading-tight",
+                                isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground hover:text-primary cursor-pointer transition-colors"
+                              )}>
+                                {file.name}
+                              </p>
+                              {isFolder ? (
+                                <span className="text-[9px] font-semibold text-yellow-600/60 mt-0.5 flex items-center gap-1">
+                                  {isProtected && <Lock className="h-2.5 w-2.5" />}
+                                  {isProtected ? "System Folder" : "Click to open"}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40 mt-0.5 inline-block">
+                                  {getFileExtension(file.name)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Visibility Toggle */}
+                          <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => toggleVisibility(file.id)}
+                              disabled={togglingIds.has(file.id)}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border",
+                                (visibilityMap[file.id] || "internal") === "internal"
+                                  ? "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
+                                  : "bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10",
+                                togglingIds.has(file.id) && "opacity-50 cursor-not-allowed"
+                              )}
+                              title={`Click to mark as ${(visibilityMap[file.id] || "internal") === "internal" ? "external" : "internal"}`}
+                            >
+                              {togglingIds.has(file.id) ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (visibilityMap[file.id] || "internal") === "internal" ? (
+                                <Eye className="h-3 w-3" />
+                              ) : (
+                                <EyeOff className="h-3 w-3" />
+                              )}
+                              {(visibilityMap[file.id] || "internal") === "internal" ? "Internal" : "External"}
+                            </button>
+                          </td>
+
+                          {/* Size */}
+                          <td className="px-3 py-2 text-right">
+                            <span className="text-xs text-muted-foreground font-medium tabular-nums">
+                              {isFolder ? "—" : formatFileSize(file.size)}
+                            </span>
+                          </td>
+
+                          {/* Date */}
+                          <td className="px-3 py-2">
+                            <span className="text-xs text-muted-foreground font-medium">
+                              {formatDate(file.createdTime)}
+                            </span>
+                          </td>
+
+                          {/* Open */}
+                          <td className="px-3 py-2 text-center">
+                            {file.webViewLink ? (
+                              <a
+                                href={file.webViewLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open in Google Drive"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+          )}
+
+          {/* ═══════ FOOTER ═══════ */}
+          {activeTab !== "emails" && sortedFiles.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-2.5 border-t border-border/30 bg-muted/20 shrink-0">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                {folderCount > 0 && <>{folderCount} folder(s){fileCount > 0 && ", "}</>}
+                {fileCount > 0 && <>{fileCount} file(s)</>}
+              </span>
+              <span className="text-[10px] text-muted-foreground/50 font-medium">
+                {breadcrumbs.map((b) => b.label).join(" / ")}
+              </span>
+            </div>
+          )}
+
+          {/* ═══════ EMAILS TAB CONTENT ═══════ */}
+          {activeTab === "emails" && (
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {loadingEmails ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : emailRecords.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center">
+                    <Mail className="h-7 w-7 text-blue-500/40" />
+                  </div>
+                  <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
+                  <p className="text-xs text-muted-foreground/60">Select files in the External tab and click Email to send</p>
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/40 bg-muted/20 sticky top-0 z-10">
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[50px]"></th>
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">From</th>
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">To</th>
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Subject</th>
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Body</th>
+                      <th className="px-3 py-2.5 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[40px]"><Paperclip className="h-3 w-3 mx-auto" /></th>
+                      <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[130px]">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailRecords.map((email: any, idx: number) => (
+                      <tr
+                        key={email._id || idx}
+                        onClick={() => {
+                          setEmailComposeMode("view");
+                          setEmailInitialData({
+                            to: (email.to || []).join(", "),
+                            cc: (email.cc || []).join(", "),
+                            subject: email.subject || "",
+                            body: email.body || "",
+                            from: email.from || "info@app.vidabuddies.com",
+                            sentAt: email.sentAt,
+                            attachments: (email.attachments || []).map((a: any) => ({
+                              id: a.fileId || a.id || "",
+                              name: a.name || "",
+                              mimeType: a.mimeType || "",
+                              size: String(a.size || "0"),
+                            })),
+                          });
+                          setEmailComposeOpen(true);
+                        }}
+                        className="border-b border-border/20 hover:bg-muted/30 cursor-pointer transition-colors group"
+                      >
+                        {/* Status icon */}
+                        <td className="px-3 py-2.5">
+                          <div className={cn(
+                            "h-6 w-6 rounded-lg flex items-center justify-center",
+                            email.status === "sent"
+                              ? "bg-emerald-500/10"
+                              : "bg-destructive/10"
+                          )}>
+                            <Send className={cn(
+                              "h-3 w-3",
+                              email.status === "sent" ? "text-emerald-600" : "text-destructive"
+                            )} />
+                          </div>
+                        </td>
+                        {/* From */}
+                        <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]">
+                          {email.from || "info@app.vidabuddies.com"}
+                        </td>
+                        {/* To */}
+                        <td className="px-3 py-2.5 truncate max-w-[150px]">
+                          <span className="font-medium">{(email.to || []).join(", ")}</span>
+                        </td>
+                        {/* Subject */}
+                        <td className="px-3 py-2.5 font-semibold truncate max-w-[180px]">
+                          {email.subject || "(No subject)"}
+                        </td>
+                        {/* Body preview */}
+                        <td className="px-3 py-2.5 text-muted-foreground/60 truncate max-w-[180px]">
+                          {email.body ? email.body.substring(0, 60) + (email.body.length > 60 ? "..." : "") : "—"}
+                        </td>
+                        {/* Attachments count */}
+                        <td className="px-3 py-2.5 text-center">
+                          {email.attachments && email.attachments.length > 0 ? (
+                            <span className="bg-muted/60 text-foreground/70 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                              {email.attachments.length}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30">—</span>
+                          )}
+                        </td>
+                        {/* Date */}
+                        <td className="px-3 py-2.5 text-muted-foreground/60 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {" "}
+                            {new Date(email.sentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* Drag overlay */}
+          {dragOver && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary/60 rounded-xl pointer-events-none">
+              <div className="flex flex-col items-center gap-3 animate-in zoom-in-95 duration-200">
+                <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <CloudUpload className="h-8 w-8 text-primary" />
+                </div>
+                <p className="text-sm font-bold text-primary">Drop files or folders to upload</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Compose Dialog */}
+      <EmailComposeDialog
+        open={emailComposeOpen}
+        onClose={() => {
+          setEmailComposeOpen(false);
           setEmailComposeMode("compose");
-          setEmailInitialData(data);
-          setEmailComposeOpen(true);
-        }, 200);
-      }}
-    />
+          setEmailInitialData(undefined);
+          setSelectedIds(new Set());
+        }}
+        attachments={emailComposeMode === "compose" && !emailInitialData
+          ? tabFilteredFiles
+            .filter((f) => selectedIds.has(f.id))
+            .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size }))
+          : []
+        }
+        vbpoNo={poNumber}
+        folderPath={breadcrumbs.map((b) => b.label).join(" / ")}
+        onSent={() => {
+          fetchEmailRecords();
+          setEmailComposeMode("compose");
+          setEmailInitialData(undefined);
+        }}
+        mode={emailComposeMode}
+        initialData={emailInitialData}
+        onForward={(data) => {
+          setEmailComposeOpen(false);
+          setTimeout(() => {
+            setEmailComposeMode("compose");
+            setEmailInitialData(data);
+            setEmailComposeOpen(true);
+          }, 200);
+        }}
+      />
 
-    {/* File Preview Dialog */}
-    <FilePreviewDialog
-      open={previewOpen}
-      onClose={() => {
-        setPreviewOpen(false);
-        setPreviewFile(null);
-      }}
-      file={previewFile}
-      files={tabFilteredFiles.filter((f) => f.mimeType !== "application/vnd.google-apps.folder")}
-      onNavigate={(f) => setPreviewFile(f as DriveFile)}
-    />
+      {/* File Preview Dialog */}
+      <FilePreviewDialog
+        open={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewFile(null);
+        }}
+        file={previewFile}
+        files={tabFilteredFiles.filter((f) => f.mimeType !== "application/vnd.google-apps.folder")}
+        onNavigate={(f) => setPreviewFile(f as DriveFile)}
+      />
     </>
   );
 }

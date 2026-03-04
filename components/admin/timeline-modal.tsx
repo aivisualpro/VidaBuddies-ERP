@@ -6,6 +6,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -157,6 +158,7 @@ function EditEntryDialog({
                         <Pencil className="h-4 w-4 text-primary" />
                         Edit Timeline Entry
                     </DialogTitle>
+                    <DialogDescription className="sr-only">Modify the details of this timeline entry</DialogDescription>
                 </DialogHeader>
                 <div className="px-5 py-4 space-y-3">
                     <div className="grid grid-cols-3 gap-3">
@@ -540,6 +542,7 @@ export default function TimelineModal({
                                 <Clock className="h-4 w-4 text-primary" />
                                 {displayTitle}
                             </DialogTitle>
+                            <DialogDescription className="sr-only">View and manage timeline entries for this purchase order</DialogDescription>
                         </DialogHeader>
                         <div className="flex items-center gap-2">
                             <div className="relative flex-1">

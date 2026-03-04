@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -203,6 +205,8 @@ export function FilePreviewDialog({
             : "max-w-5xl h-[88vh]"
         )}
       >
+        <DialogTitle className="sr-only">{file?.name || "File Preview"}</DialogTitle>
+        <DialogDescription className="sr-only">Preview of {file?.name || "selected file"}</DialogDescription>
 
         {/* ═══ HEADER ═══ */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/40 bg-gradient-to-r from-background to-muted/10 shrink-0">
@@ -220,11 +224,11 @@ export function FilePreviewDialog({
                 <span className={cn(
                   "px-1.5 py-0.5 rounded font-bold uppercase tracking-widest text-[8px]",
                   typeColor.includes("red") ? "bg-red-500/10 text-red-500" :
-                  typeColor.includes("emerald") ? "bg-emerald-500/10 text-emerald-500" :
-                  typeColor.includes("blue") ? "bg-blue-500/10 text-blue-500" :
-                  typeColor.includes("green") ? "bg-green-500/10 text-green-500" :
-                  typeColor.includes("purple") ? "bg-purple-500/10 text-purple-500" :
-                  "bg-muted text-muted-foreground"
+                    typeColor.includes("emerald") ? "bg-emerald-500/10 text-emerald-500" :
+                      typeColor.includes("blue") ? "bg-blue-500/10 text-blue-500" :
+                        typeColor.includes("green") ? "bg-green-500/10 text-green-500" :
+                          typeColor.includes("purple") ? "bg-purple-500/10 text-purple-500" :
+                            "bg-muted text-muted-foreground"
                 )}>
                   {ext}
                 </span>

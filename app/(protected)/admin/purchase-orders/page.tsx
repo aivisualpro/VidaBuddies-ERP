@@ -12,13 +12,15 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
+import { AttachmentsModal } from "@/components/attachments-modal";
 
 interface PurchaseOrder {
   _id: string;
@@ -59,6 +61,8 @@ export default function PurchaseOrdersPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
+  const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
 
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
     vbpoNo: "",
@@ -103,6 +107,14 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  // After data loads, fetch email counts
+  useEffect(() => {
+    if (data.length > 0) {
+      fetchEmailCountsForPOs(data);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.length]);
+
   const fetchTimelineCounts = async () => {
     try {
       const response = await fetch("/api/admin/timeline");
@@ -118,6 +130,26 @@ export default function PurchaseOrdersPage() {
       }
     } catch (error) {
       console.error("Failed to fetch timeline counts", error);
+    }
+  };
+
+  const fetchEmailCountsForPOs = async (poList: PurchaseOrder[]) => {
+    const counts: Record<string, number> = {};
+    try {
+      // Batch: fetch all emails across all POs
+      const promises = poList.map(async (po) => {
+        try {
+          const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(po.vbpoNo)}`);
+          const data = await res.json();
+          if (res.ok && data.emails) {
+            counts[po.vbpoNo] = data.emails.length;
+          }
+        } catch { /* silent */ }
+      });
+      await Promise.all(promises);
+      setEmailCounts(counts);
+    } catch (error) {
+      console.error("Failed to fetch email counts", error);
     }
   };
 
@@ -391,6 +423,29 @@ export default function PurchaseOrdersPage() {
       },
     },
     {
+      id: "emails",
+      header: "Emails",
+      cell: ({ row }) => {
+        const vbpoNo = row.original.vbpoNo;
+        const count = emailCounts[vbpoNo] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAttachmentsOpen({ poNumber: vbpoNo });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <Mail className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       accessorKey: "createdBy",
       header: "Created By",
       cell: ({ row }) => {
@@ -497,6 +552,7 @@ export default function PurchaseOrdersPage() {
         <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{editingItem ? "Edit Purchase Order" : "Add Purchase Order"}</DialogTitle>
+            <DialogDescription className="sr-only">{editingItem ? "Update purchase order details" : "Create a new purchase order"}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -585,6 +641,14 @@ export default function PurchaseOrdersPage() {
         vbpoNo={timelineOpen?.vbpoNo}
         title={timelineOpen?.title}
         users={users}
+      />
+
+      {/* Attachments Modal (Emails tab) */}
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        defaultTab="emails"
       />
     </div>
   );
