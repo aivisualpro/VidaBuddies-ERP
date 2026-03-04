@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaPO from "@/lib/models/VidaPO";
+import { getSession } from "@/lib/auth";
 
 export async function GET() {
   try {
@@ -21,6 +22,13 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const data = await req.json();
+
+    // Auto-set createdBy from session
+    const session = await getSession();
+    if (session?.email) {
+      data.createdBy = session.email;
+    }
+
     const newItem = await VidaPO.create(data);
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {

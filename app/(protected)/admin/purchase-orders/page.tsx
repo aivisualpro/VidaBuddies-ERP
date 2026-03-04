@@ -164,7 +164,6 @@ export default function PurchaseOrdersPage() {
       vbpoNo: nextVbpoNo,
       orderType: "",
       category: "",
-      createdBy: "",
       date: new Date().toISOString().split('T')[0],
     });
     setIsSheetOpen(true);
@@ -435,42 +434,38 @@ export default function PurchaseOrdersPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="orderType">Order Type</Label>
-                <div className="relative">
-                  <FileType className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="orderType"
-                    className="pl-9"
-                    value={formData.orderType || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, orderType: e.target.value })
-                    }
-                  />
-                </div>
+                <select
+                  id="orderType"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={formData.orderType || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, orderType: e.target.value })
+                  }
+                  required
+                >
+                  <option value="" disabled>Select type...</option>
+                  <option value="Export">Export</option>
+                  <option value="Import">Import</option>
+                  <option value="Dropship">Dropship</option>
+                  <option value="Inventory">Inventory</option>
+                </select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="category">Category</Label>
-                <div className="relative">
-                  <Tag className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="category"
-                    className="pl-9"
-                    value={formData.category || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category: e.target.value })
-                    }
-                  />
-                </div>
+                <select
+                  id="category"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={formData.category || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                  required
+                >
+                  <option value="" disabled>Select category...</option>
+                  <option value="CONVENTIONAL">Conventional</option>
+                  <option value="ORGANIC">Organic</option>
+                </select>
               </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="createdBy">Created By</Label>
-              <Input
-                id="createdBy"
-                value={formData.createdBy || ""}
-                onChange={(e) =>
-                  setFormData({ ...formData, createdBy: e.target.value })
-                }
-              />
             </div>
             <DialogFooter className="gap-2 sm:space-x-0">
               <Button variant="outline" type="button" onClick={() => setIsSheetOpen(false)}>
