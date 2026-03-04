@@ -1157,20 +1157,20 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
       <Dialog open={isAddCPOOpen || !!editingCPO} onOpenChange={(v) => { if (!v) { setIsAddCPOOpen(false); setEditingCPO(null); setSelectedCustomerForCPO(""); setSelectedLocationForCPO(""); setSelectedWarehouseForCPO(""); setSelectedUOMForCPO(""); } }}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingCPO ? "Edit Customer PO" : "Add Customer PO"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveCPO} className="space-y-4">
-            {/* Row 1: PO Number (Internal) | Customer PO Number (External) */}
+            {/* Row 1: PO # (Internal) | Customer PO # */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>PO Number (Internal)</Label>
-                <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required placeholder="e.g. VB310-1" />
+                <Label>PO # (Internal)</Label>
+                <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required readOnly className="bg-muted cursor-not-allowed" />
               </div>
               <div className="space-y-1">
-                <Label>Customer PO Number (External)</Label>
-                <Input name="CustomerPO" defaultValue={editingCPO?.data?.CustomerPO || ''} placeholder="e.g. CPO-2024-001" />
+                <Label>Customer PO #</Label>
+                <Input name="customerPONo" defaultValue={editingCPO?.data?.customerPONo || ''} placeholder="e.g. CPO-2024-001" />
               </div>
             </div>
             {/* Row 2: Customer Ref | Customer Location */}
@@ -1178,7 +1178,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
               <div className="space-y-1">
                 <Label>Customer Ref</Label>
                 <SearchableSelect
-                  name="customerPONo"
+                  name="customer"
                   options={customers.map((cust: any) => ({ value: cust.vbId, label: cust.name }))}
                   value={selectedCustomerForCPO}
                   onChange={(val) => setSelectedCustomerForCPO(val)}
