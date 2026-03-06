@@ -140,6 +140,7 @@ export function FilePreviewDialog({
 }: FilePreviewDialogProps) {
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   const currentIndex = file && files.length > 0
     ? files.findIndex((f) => f.id === file.id)
@@ -164,7 +165,10 @@ export function FilePreviewDialog({
 
   // Reset loading state when file changes
   useEffect(() => {
-    if (open && file) setLoading(true);
+    if (open && file) {
+      setLoading(true);
+      setImgFailed(false);
+    }
   }, [open, file?.id]);
 
   // Keyboard navigation
@@ -342,19 +346,22 @@ export function FilePreviewDialog({
           )}
 
           {canPreview ? (
-            isImage && file.thumbnailLink ? (
-              /* Image: render natively for best quality */
+            isImage && file.thumbnailLink && !imgFailed ? (
+              /* Image: try native render for best quality, fall back to iframe */
               <div className="w-full h-full flex items-center justify-center p-6 bg-[repeating-conic-gradient(#80808010_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]">
                 <img
                   src={file.thumbnailLink.replace(/=s\d+/, "=s1600")}
                   alt={file.name}
                   className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                   onLoad={() => setLoading(false)}
-                  onError={() => setLoading(false)}
+                  onError={() => {
+                    setImgFailed(true);
+                    setLoading(true);
+                  }}
                 />
               </div>
             ) : (
-              /* Everything else: Google Drive preview iframe */
+              /* Everything else (or image fallback): Google Drive preview iframe */
               <iframe
                 src={previewUrl}
                 className="w-full h-full border-0"

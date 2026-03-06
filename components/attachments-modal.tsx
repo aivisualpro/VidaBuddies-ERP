@@ -585,7 +585,7 @@ export function AttachmentsModal({
 
   // Filter by active tab (internal/external) — always show folders for navigation
   const tabFilteredFiles = activeTab === "emails" ? [] : sortedFiles.filter(f => {
-    if (f.mimeType === "application/vnd.google-apps.folder") return true; // folders always visible
+    if (f.mimeType === "application/vnd.google-apps.folder") return true; // folders always visible for navigation
     const vis = visibilityMap[f.id] || "internal";
     return vis === activeTab;
   });
@@ -593,9 +593,10 @@ export function AttachmentsModal({
   const folderCount = tabFilteredFiles.filter((f) => f.mimeType === "application/vnd.google-apps.folder").length;
   const fileCount = tabFilteredFiles.length - folderCount;
 
-  // Counts for tab badges
-  const internalCount = sortedFiles.filter(f => (visibilityMap[f.id] || "internal") === "internal").length;
-  const externalCount = sortedFiles.filter(f => (visibilityMap[f.id] || "internal") === "external").length;
+  // Counts for tab badges — only count actual files, not folders
+  const nonFolderFiles = sortedFiles.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
+  const internalCount = nonFolderFiles.filter(f => (visibilityMap[f.id] || "internal") === "internal").length;
+  const externalCount = nonFolderFiles.filter(f => (visibilityMap[f.id] || "internal") === "external").length;
 
   return (
     <>
@@ -883,6 +884,8 @@ export function AttachmentsModal({
                       const isFolder = file.mimeType === "application/vnd.google-apps.folder";
                       const isSelected = selectedIds.has(file.id);
                       const isProtected = isItemProtected(file);
+                      // On External tab, folders are navigation-only (dimmed)
+                      const isFolderOnExternalTab = isFolder && activeTab === "external";
 
                       return (
                         <tr
@@ -891,7 +894,8 @@ export function AttachmentsModal({
                             "group transition-colors duration-100",
                             isSelected ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-muted/30",
                             isFolder ? "cursor-pointer hover:bg-yellow-500/[0.04]" : "cursor-pointer",
-                            isProtected && "opacity-80"
+                            isProtected && "opacity-80",
+                            isFolderOnExternalTab && "opacity-50"
                           )}
                           onClick={() => {
                             if (isFolder) {
@@ -951,30 +955,34 @@ export function AttachmentsModal({
                             </div>
                           </td>
 
-                          {/* Visibility Toggle */}
+                          {/* Visibility Toggle — only for files, not folders */}
                           <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => toggleVisibility(file.id)}
-                              disabled={togglingIds.has(file.id)}
-                              className={cn(
-                                "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border",
-                                (visibilityMap[file.id] || "internal") === "internal"
-                                  ? "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
-                                  : "bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10",
-                                togglingIds.has(file.id) && "opacity-50 cursor-not-allowed"
-                              )}
-                              title={`Click to mark as ${(visibilityMap[file.id] || "internal") === "internal" ? "external" : "internal"}`}
-                            >
-                              {togglingIds.has(file.id) ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (visibilityMap[file.id] || "internal") === "internal" ? (
-                                <Eye className="h-3 w-3" />
-                              ) : (
-                                <EyeOff className="h-3 w-3" />
-                              )}
-                              {(visibilityMap[file.id] || "internal") === "internal" ? "Internal" : "External"}
-                            </button>
+                            {isFolder ? (
+                              <span className="text-xs text-muted-foreground/30">—</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleVisibility(file.id)}
+                                disabled={togglingIds.has(file.id)}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition-all border",
+                                  (visibilityMap[file.id] || "internal") === "internal"
+                                    ? "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
+                                    : "bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10",
+                                  togglingIds.has(file.id) && "opacity-50 cursor-not-allowed"
+                                )}
+                                title={`Click to mark as ${(visibilityMap[file.id] || "internal") === "internal" ? "external" : "internal"}`}
+                              >
+                                {togglingIds.has(file.id) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (visibilityMap[file.id] || "internal") === "internal" ? (
+                                  <Eye className="h-3 w-3" />
+                                ) : (
+                                  <EyeOff className="h-3 w-3" />
+                                )}
+                                {(visibilityMap[file.id] || "internal") === "internal" ? "Internal" : "External"}
+                              </button>
+                            )}
                           </td>
 
                           {/* Size */}
@@ -1020,7 +1028,8 @@ export function AttachmentsModal({
             <div className="flex items-center justify-between px-6 py-2.5 border-t border-border/30 bg-muted/20 shrink-0">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                 {folderCount > 0 && <>{folderCount} folder(s){fileCount > 0 && ", "}</>}
-                {fileCount > 0 && <>{fileCount} file(s)</>}
+                {fileCount > 0 && <>{fileCount} {activeTab} file(s)</>}
+                {folderCount === 0 && fileCount === 0 && "No files"}
               </span>
               <span className="text-[10px] text-muted-foreground/50 font-medium">
                 {breadcrumbs.map((b) => b.label).join(" / ")}

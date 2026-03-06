@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { EmailChipInput, EmailContact } from "@/components/email-chip-input";
 import {
   Send,
   Loader2,
@@ -101,8 +102,8 @@ function formatSize(bytes: string | number): string {
 
 export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderPath, onSent, mode = "compose", initialData, onForward }: EmailComposeDialogProps) {
   const isViewMode = mode === "view";
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
+  const [to, setTo] = useState<string[]>([]);
+  const [cc, setCc] = useState<string[]>([]);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -115,12 +116,27 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   const [templateName, setTemplateName] = useState("");
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
+  // Email contacts for autocomplete
+  const [emailContacts, setEmailContacts] = useState<EmailContact[]>([]);
+
+  // Fetch email contacts on first open
+  const fetchContacts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/email-contacts");
+      const data = await res.json();
+      if (data.contacts) setEmailContacts(data.contacts);
+    } catch { /* silent */ }
+  }, []);
+
   // Initialize attachments and subject when dialog opens
   useEffect(() => {
     if (open) {
       if (initialData) {
-        setTo(initialData.to || "");
-        setCc(initialData.cc || "");
+        // Parse to/cc from string to arrays
+        const parseEmails = (val?: string) =>
+          val ? val.split(",").map((e) => e.trim()).filter(Boolean) : [];
+        setTo(parseEmails(initialData.to));
+        setCc(parseEmails(initialData.cc));
         setSubject(initialData.subject || "");
         setBody(initialData.body || "");
         setLocalAttachments(initialData.attachments || []);
@@ -130,7 +146,10 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
           setSubject(folderPath);
         }
       }
-      if (!isViewMode) fetchTemplates();
+      if (!isViewMode) {
+        fetchTemplates();
+        fetchContacts();
+      }
     }
   }, [open, attachments]);
 
@@ -154,7 +173,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   };
 
   const handleSend = async () => {
-    if (!to.trim()) {
+    if (to.length === 0) {
       toast.error("Please enter at least one recipient");
       return;
     }
@@ -169,8 +188,8 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to,
-          cc,
+          to: to.join(", "),
+          cc: cc.join(", "),
           subject,
           body,
           vbpoNo,
@@ -200,8 +219,8 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   };
 
   const handleClose = () => {
-    setTo("");
-    setCc("");
+    setTo([]);
+    setCc([]);
     setSubject("");
     setBody("");
     setShowTemplates(false);
@@ -317,10 +336,10 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                   className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm"
                   onClick={() => {
                     onForward?.({
-                      to: to,
-                      cc: cc,
+                      to: to.join(", "),
+                      cc: cc.join(", "),
                       subject: `Fwd: ${subject}`,
-                      body: `\n\n---------- Forwarded message ----------\nFrom: ${initialData?.from || "Vida Buddies"}\nTo: ${to}\nSubject: ${subject}\n\n${body}`,
+                      body: `\n\n---------- Forwarded message ----------\nFrom: ${initialData?.from || "Vida Buddies"}\nTo: ${to.join(", ")}\nSubject: ${subject}\n\n${body}`,
                       attachments: [...localAttachments],
                     });
                     handleClose();
@@ -465,38 +484,34 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
             )}
 
             {/* To */}
-            <div className="flex items-center px-6">
-              <div className="flex items-center gap-2 w-[60px] shrink-0">
+            <div className="flex items-start px-6">
+              <div className="flex items-center gap-2 w-[60px] shrink-0 pt-2.5">
                 <Users className="h-3.5 w-3.5 text-muted-foreground/50" />
                 <label htmlFor="compose-to-field" className="text-xs font-semibold text-muted-foreground">To</label>
               </div>
-              <Input
+              <EmailChipInput
                 id="compose-to-field"
-                name="compose-to-field"
-                autoComplete="nope-to-xz9"
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={setTo}
+                contacts={emailContacts}
                 readOnly={isViewMode}
-                placeholder="recipient@email.com, another@email.com"
-                className={cn("border-0 shadow-none focus-visible:ring-0 text-sm h-11 px-2", isViewMode && "bg-transparent cursor-default")}
+                placeholder="Add recipients..."
               />
             </div>
 
             {/* Cc */}
-            <div className="flex items-center px-6">
-              <div className="flex items-center gap-2 w-[60px] shrink-0">
+            <div className="flex items-start px-6">
+              <div className="flex items-center gap-2 w-[60px] shrink-0 pt-2.5">
                 <Users className="h-3.5 w-3.5 text-muted-foreground/50" />
                 <label htmlFor="compose-cc-field" className="text-xs font-semibold text-muted-foreground">Cc</label>
               </div>
-              <Input
+              <EmailChipInput
                 id="compose-cc-field"
-                name="compose-cc-field"
-                autoComplete="nope-cc-xz9"
                 value={cc}
-                onChange={(e) => setCc(e.target.value)}
+                onChange={setCc}
+                contacts={emailContacts}
                 readOnly={isViewMode}
-                placeholder="cc@email.com"
-                className={cn("border-0 shadow-none focus-visible:ring-0 text-sm h-11 px-2", isViewMode && "bg-transparent cursor-default")}
+                placeholder="Add Cc..."
               />
             </div>
 

@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { getDrive } from "@/lib/google-drive";
 import connectToDatabase from "@/lib/db";
 import EmailRecord from "@/lib/models/EmailRecord";
+import { getSession } from "@/lib/auth";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -20,6 +21,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get logged-in user info from session
+    const session = await getSession();
+    const senderName = session?.name || "Unknown";
+    const senderEmail = session?.email || "Unknown";
 
     // Parse email addresses
     const toAddresses = to.split(",").map((e: string) => e.trim()).filter(Boolean);
@@ -74,13 +80,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Append "Sent by" signature to the email body
+    const sentBySignature = `<br/><br/><div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 16px; color: #6b7280; font-size: 13px;">Sent by<br/><strong style="color: #374151;">${senderName}</strong><br/>${senderEmail}</div>`;
+    const fullBody = body.replace(/\n/g, "<br/>") + sentBySignature;
+
     // Send via Resend
     const fromAddress = "Vida Buddies <info@app.vidabuddies.com>";
     const emailPayload: any = {
       from: fromAddress,
       to: toAddresses,
       subject,
-      html: body.replace(/\n/g, "<br/>"),
+      html: fullBody,
     };
 
     if (ccAddresses.length > 0) {
