@@ -1,20 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import {
   ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
@@ -30,35 +31,40 @@ import {
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
 
-export const description = "An interactive area chart"
+export const description = "An interactive stacked bar chart"
 
 const chartConfig = {
-  visitors: {
+  shipments: {
     label: "Total Shipments",
   },
   delivered: {
     label: "Delivered",
-    color: "var(--primary)",
+    color: "hsl(142, 71%, 45%)",
   },
-  notDelivered: {
-    label: "Not Delivered",
-    color: "var(--muted-foreground)",
+  inTransit: {
+    label: "In Transit",
+    color: "hsl(217, 91%, 60%)",
+  },
+  other: {
+    label: "Pending / Planned",
+    color: "hsl(47, 100%, 68%)",
   },
 } satisfies ChartConfig
 
 interface ChartData {
   date: string
   delivered: number
-  notDelivered: number
+  inTransit: number
+  other: number
 }
 
 export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
   const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("3m")
+  const [timeRange, setTimeRange] = React.useState("12m")
 
   React.useEffect(() => {
     if (isMobile) {
-      setTimeRange("3m")
+      setTimeRange("6m")
     }
   }, [isMobile])
 
@@ -81,7 +87,7 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
   })
 
   const totalShipments = React.useMemo(() => {
-    return filteredData.reduce((acc, curr) => acc + curr.delivered + curr.notDelivered, 0)
+    return filteredData.reduce((acc, curr) => acc + curr.delivered + curr.inTransit + curr.other, 0)
   }, [filteredData])
 
   return (
@@ -112,7 +118,7 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
               size="sm"
               aria-label="Select a value"
             >
-              <SelectValue placeholder="Last 3 months" />
+              <SelectValue placeholder="Last 12 months" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
               <SelectItem value="3m" className="rounded-lg">
@@ -133,60 +139,39 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
-          id="interactive-area-chart"
+          id="shipments-bar-chart"
           config={chartConfig}
-          className="aspect-auto h-[250px] w-full"
-          style={{ minWidth: '100%', minHeight: '250px' }}
+          className="aspect-auto h-[280px] w-full"
+          style={{ minWidth: '100%', minHeight: '280px' }}
         >
-          <AreaChart data={filteredData} margin={{ left: 22, right: 22 }}>
-            <defs>
-              <linearGradient id="fillDelivered" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-delivered)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-delivered)"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-              <linearGradient id="fillNotDelivered" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-notDelivered)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-notDelivered)"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
+          <BarChart data={filteredData} margin={{ left: 12, right: 12 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis
               dataKey="date"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              minTickGap={32}
               interval={0}
               tickFormatter={(value) => {
                 const date = new Date(value + "-01T00:00:00")
                 const month = date.toLocaleDateString("en-US", { month: "short" })
                 const year = date.toLocaleDateString("en-US", { year: "2-digit" })
-                return `${month}-${year}`
+                return `${month} '${year}`
               }}
             />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              allowDecimals={false}
+              width={30}
+            />
             <ChartTooltip
-              cursor={false}
               content={
                 <ChartTooltipContent
                   labelFormatter={(value) => {
                     return new Date(value + "-01T00:00:00").toLocaleDateString("en-US", {
-                      month: "short",
+                      month: "long",
                       year: "numeric",
                     })
                   }}
@@ -194,21 +179,26 @@ export function ChartAreaInteractive({ data }: { data: ChartData[] }) {
                 />
               }
             />
-            <Area
-              dataKey="notDelivered"
-              type="natural"
-              fill="url(#fillNotDelivered)"
-              stroke="var(--color-notDelivered)"
-              stackId="a"
-            />
-            <Area
+            <ChartLegend content={<ChartLegendContent />} />
+            <Bar
               dataKey="delivered"
-              type="natural"
-              fill="url(#fillDelivered)"
-              stroke="var(--color-delivered)"
               stackId="a"
+              fill="var(--color-delivered)"
+              radius={[0, 0, 0, 0]}
             />
-          </AreaChart>
+            <Bar
+              dataKey="inTransit"
+              stackId="a"
+              fill="var(--color-inTransit)"
+              radius={[0, 0, 0, 0]}
+            />
+            <Bar
+              dataKey="other"
+              stackId="a"
+              fill="var(--color-other)"
+              radius={[4, 4, 0, 0]}
+            />
+          </BarChart>
         </ChartContainer>
       </CardContent>
     </Card>
