@@ -8,7 +8,7 @@ import VidaProduct from "@/lib/models/VidaProduct";
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    
+
     // Fetch all reference data in parallel
     const [pos, customers, suppliers, products] = await Promise.all([
       VidaPO.find({}),
@@ -19,15 +19,22 @@ export async function GET(req: NextRequest) {
 
     // Build lookup maps
     const customerMap = new Map(customers.map(c => [c.vbId, c.name]));
-    const productMap = new Map(products.map(p => [p.vbId, p.name]));
-    
-    // Build supplier location map
+    const productMap = new Map<string, string>();
+    products.forEach(p => {
+      if (p.vbId) productMap.set(p.vbId, p.name);
+      if (p._id) productMap.set(p._id.toString(), p.name);
+    });
+
+    // Build supplier location map: "Supplier Name — Location Name"
     const supplierLocationMap = new Map();
     suppliers.forEach(s => {
       if (s.location && Array.isArray(s.location)) {
         s.location.forEach(loc => {
           if (loc.vbId) {
-            supplierLocationMap.set(loc.vbId, loc.locationName || s.name);
+            const locLabel = loc.locationName
+              ? `${s.name} — ${loc.locationName}`
+              : s.name;
+            supplierLocationMap.set(loc.vbId, locLabel);
           }
         });
       }
@@ -35,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     // Flatten the records
     const flattenedRecords = [];
-    
+
     for (const po of pos) {
       if (po.customerPO && Array.isArray(po.customerPO)) {
         for (const cpo of po.customerPO) {
@@ -46,24 +53,30 @@ export async function GET(req: NextRequest) {
                 poId: po._id,
                 cpoId: cpo._id,
                 shipId: ship._id,
-                
+
                 // VidaPO data
                 vbpoNo: po.vbpoNo,
                 orderType: po.orderType,
-                
+
                 // CustomerPO data
                 poNo: cpo.poNo,
-                customer: cpo.customer ? (customerMap.get(cpo.customer) || cpo.customer) : "", 
+                customer: cpo.customer ? (customerMap.get(cpo.customer) || cpo.customer) : "",
                 customerLocation: cpo.customerLocation,
                 customerPONo: cpo.customerPONo,
                 qtyOrdered: cpo.qtyOrdered,
                 warehouse: cpo.warehouse,
-                
+
                 // Shipping data
                 spoNo: ship.spoNo,
                 svbid: ship.svbid,
                 supplierLocationId: ship.supplierLocation ? (supplierLocationMap.get(ship.supplierLocation) || ship.supplierLocation) : "",
-                product: ship.product ? (productMap.get(ship.product) || ship.product) : "",
+                product: (() => {
+                  // Handle products array (new) or product singular (legacy)
+                  const pids = (Array.isArray(ship.products) && ship.products.length > 0)
+                    ? ship.products
+                    : ship.product ? [ship.product] : [];
+                  return pids.map((pid: string) => productMap.get(pid) || pid).join(', ') || "";
+                })(),
                 BOLNumber: ship.BOLNumber,
                 carrier: ship.carrier,
                 vessellTrip: ship.vessellTrip,
@@ -71,7 +84,7 @@ export async function GET(req: NextRequest) {
                 estimatedDuties: ship.estimatedDuties,
                 quickNote: ship.quickNote,
                 portofEntryShipto: ship.portOfEntryShipTo,
-                
+
                 // Inventory fields
                 itemNo: ship.itemNo,
                 description: ship.description,
@@ -79,7 +92,7 @@ export async function GET(req: NextRequest) {
                 qty: ship.qty,
                 type: ship.type,
                 inventoryDate: ship.inventoryDate,
-                
+
                 // Customs fields
                 carrierBookingRef: ship.carrierBookingRef,
                 isManufacturerSecurityISF: ship.isManufacturerSecurityISF,
@@ -88,7 +101,7 @@ export async function GET(req: NextRequest) {
                 status: ship.status || "",
                 customsStatus: ship.isCustomsStatus ? "Cleared" : "Pending",
                 documentsRequired: ship.isAllDocumentsProvidedToCustomsBroker ? "All Provided" : "Missing",
-                
+
                 // LSB fields
                 container: ship.containerNo,
                 vbid: ship.svbid, // svbid maps to vbid in LSB view
@@ -98,7 +111,7 @@ export async function GET(req: NextRequest) {
         }
       }
     }
-    
+
     return NextResponse.json(flattenedRecords);
   } catch (error) {
     console.error("Error fetching tracker data:", error);

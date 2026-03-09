@@ -2,21 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { 
-  ColumnDef, 
-  flexRender, 
-  getCoreRowModel, 
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
   useReactTable,
   getPaginationRowModel,
   getSortedRowModel,
   SortingState
 } from "@tanstack/react-table";
-import { 
-  Ship, 
-  Package, 
-  ShieldCheck, 
-  Truck, 
-  Search, 
+import {
+  Ship,
+  Package,
+  ShieldCheck,
+  Truck,
+  Search,
   ArrowLeft,
   LayoutGrid,
   Table as TableIcon,
@@ -115,39 +115,39 @@ export default function AndresTrackerPage() {
         </h1>
       </div>
     );
-    
+
     setRightContent(
-        <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center bg-zinc-100 dark:bg-zinc-900 px-3 py-0.5 rounded-xl border border-zinc-200 dark:border-zinc-800 focus-within:ring-2 focus-within:ring-primary/20 transition-all w-64 lg:w-96 h-8">
-                <Search className="h-3.5 w-3.5 text-zinc-500 mr-2" />
-                <Input 
-                    placeholder="Search tracker..." 
-                    className="border-none bg-transparent h-6 shadow-none focus-visible:ring-0 p-0 text-xs"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
-            <ToggleGroup 
-                type="single" 
-                value={viewMode} 
-                onValueChange={(v) => v && setViewMode(v as any)}
-                className="bg-zinc-100 dark:bg-zinc-900 p-0.5 rounded-lg border h-8"
-            >
-                <ToggleGroupItem value="table" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
-                    <TableIcon className="h-3.5 w-3.5 mr-2" />
-                    <span className="text-xs font-medium">Table</span>
-                </ToggleGroupItem>
-                <ToggleGroupItem value="tabs" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
-                    <LayoutGrid className="h-3.5 w-3.5 mr-2" />
-                    <span className="text-xs font-medium">Tabs</span>
-                </ToggleGroupItem>
-            </ToggleGroup>
+      <div className="flex items-center gap-4">
+        <div className="hidden md:flex items-center bg-zinc-100 dark:bg-zinc-900 px-3 py-0.5 rounded-xl border border-zinc-200 dark:border-zinc-800 focus-within:ring-2 focus-within:ring-primary/20 transition-all w-64 lg:w-96 h-8">
+          <Search className="h-3.5 w-3.5 text-zinc-500 mr-2" />
+          <Input
+            placeholder="Search tracker..."
+            className="border-none bg-transparent h-6 shadow-none focus-visible:ring-0 p-0 text-xs"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(v) => v && setViewMode(v as any)}
+          className="bg-zinc-100 dark:bg-zinc-900 p-0.5 rounded-lg border h-8"
+        >
+          <ToggleGroupItem value="table" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
+            <TableIcon className="h-3.5 w-3.5 mr-2" />
+            <span className="text-xs font-medium">Table</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="tabs" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
+            <LayoutGrid className="h-3.5 w-3.5 mr-2" />
+            <span className="text-xs font-medium">Tabs</span>
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
     );
 
     return () => {
-        setLeftContent(null);
-        setRightContent(null);
+      setLeftContent(null);
+      setRightContent(null);
     };
   }, [setLeftContent, setRightContent, router, viewMode]);
 
@@ -171,27 +171,27 @@ export default function AndresTrackerPage() {
 
 
   if (loading) {
-      return <TablePageSkeleton />;
+    return <TablePageSkeleton />;
   }
 
-  const filteredData = data.filter((item) => 
-    Object.values(item).some(val => 
+  const filteredData = data.filter((item) =>
+    Object.values(item).some(val =>
       String(val).toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
-  
-  const transitData = filteredData.filter(row => 
+
+  const transitData = filteredData.filter(row =>
     ['on water', 'in_transit', 'in transit'].includes(row.status?.toLowerCase() || "")
   );
 
   // --- SECTIONED DATA ---
 
   const transitColumns: ColumnDef<TrackerRecord>[] = [
-    { 
-      accessorKey: "poNo", 
+    {
+      accessorKey: "poNo",
       header: "VB PO Number",
       cell: ({ row }) => (
-        <Link 
+        <Link
           href={`/admin/purchase-orders/${row.original.poId}`}
           className="hover:underline text-inherit font-bold"
         >
@@ -207,18 +207,18 @@ export default function AndresTrackerPage() {
     { accessorKey: "BOLNumber", header: "BOL Number" },
     { accessorKey: "carrier", header: "Carrier Name" },
     { accessorKey: "vessellTrip", header: "Vessel Name / Voyage" },
-    { 
-      accessorKey: "updatedETA", 
+    {
+      accessorKey: "updatedETA",
       header: "Updated ETA",
       cell: ({ row }) => row.original.updatedETA ? format(new Date(row.original.updatedETA), "MM/dd/yy") : "-"
     },
-    { 
-      accessorKey: "estimatedDuties", 
+    {
+      accessorKey: "estimatedDuties",
       header: "Estimated Duties",
       cell: ({ row }) => row.original.estimatedDuties ? `$${row.original.estimatedDuties.toLocaleString()}` : "$0"
     },
-    { 
-      accessorKey: "status", 
+    {
+      accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
         const val = row.original.status || "Pending";
@@ -227,9 +227,9 @@ export default function AndresTrackerPage() {
         return (
           <span className={cn(
             "font-bold uppercase tracking-tighter text-[9px]",
-            isTransit ? "text-blue-600 dark:text-blue-400" : 
-            isArrived ? "text-green-600 dark:text-green-400" : 
-            "text-zinc-500"
+            isTransit ? "text-blue-600 dark:text-blue-400" :
+              isArrived ? "text-green-600 dark:text-green-400" :
+                "text-zinc-500"
           )}>
             {val.replace(/_/g, ' ')}
           </span>
@@ -246,19 +246,19 @@ export default function AndresTrackerPage() {
     { accessorKey: "lotSerial", header: "Lot/Serial" },
     { accessorKey: "qty", header: "Qty" },
     { accessorKey: "type", header: "Type" },
-    { 
-      accessorKey: "inventoryDate", 
+    {
+      accessorKey: "inventoryDate",
       header: "Inventory Date",
       cell: ({ row }) => row.original.inventoryDate ? format(new Date(row.original.inventoryDate), "MM/dd/yy") : "-"
     },
   ];
 
   const customsColumns: ColumnDef<TrackerRecord>[] = [
-    { 
-      accessorKey: "poNo", 
+    {
+      accessorKey: "poNo",
       header: "VB PO Number",
       cell: ({ row }) => (
-        <Link 
+        <Link
           href={`/admin/purchase-orders/${row.original.poId}`}
           className="hover:underline text-inherit font-bold"
         >
@@ -268,78 +268,30 @@ export default function AndresTrackerPage() {
     },
     { accessorKey: "carrierBookingRef", header: "Carrier Booking Ref#" },
     { accessorKey: "BOLNumber", header: "BOL Number" },
-    { 
-      accessorKey: "isManufacturerSecurityISF", 
+    {
+      accessorKey: "isManufacturerSecurityISF",
       header: "ISF/CB SA Filed Y/N",
       cell: ({ row }) => <span className="font-bold">{row.original.isManufacturerSecurityISF ? "Yes" : "No"}</span>
     },
-    { 
-      accessorKey: "ISF", 
+    {
+      accessorKey: "ISF",
       header: "ISF/CB SA Confirmation",
       cell: ({ row }) => <span className="font-bold">{row.original.ISF}</span>
     },
     { accessorKey: "trackingId", header: "Customs Tracking ID" },
-    { 
-      accessorKey: "customsStatus", 
+    {
+      accessorKey: "customsStatus",
       header: "Customs Status",
       cell: ({ row }) => <span className="block">{row.original.customsStatus}</span>
     },
     { accessorKey: "documentsRequired", header: "Documents Required" },
   ];
 
-  const lsbTransitColumns: ColumnDef<TrackerRecord>[] = [
-    { 
-      accessorKey: "poNo", 
-      header: "VB PO Number",
-      cell: ({ row }) => (
-        <Link 
-          href={`/admin/purchase-orders/${row.original.poId}`}
-          className="hover:underline text-inherit font-bold"
-        >
-          {row.original.poNo}
-        </Link>
-      )
-    },
-    { accessorKey: "customer", header: "Customer" },
-    { accessorKey: "customerPONo", header: "Cust PO#" },
-    { accessorKey: "qtyOrdered", header: "Qty Ordered" },
-    { accessorKey: "supplierLocationId", header: "Supplier Name" },
-    { accessorKey: "product", header: "Product Description" },
-    { accessorKey: "BOLNumber", header: "BOL Number" },
-    { accessorKey: "container", header: "Container #" },
-    { accessorKey: "carrier", header: "Carrier Name" },
-    { accessorKey: "vessellTrip", header: "Vessel Name / Voyage" },
-    { 
-      accessorKey: "updatedETA", 
-      header: "Updated ETA",
-      cell: ({ row }) => row.original.updatedETA ? format(new Date(row.original.updatedETA), "MM/dd/yy") : "-"
-    },
-    { 
-        accessorKey: "status", 
-        header: "Status",
-        cell: ({ row }) => {
-          const val = row.original.status || "Pending";
-          const isTransit = ['on water', 'in_transit', 'in transit'].includes(val.toLowerCase());
-          const isArrived = ['arrived', 'delivered'].includes(val.toLowerCase());
-          return (
-            <span className={cn(
-              "font-bold uppercase tracking-tighter text-[9px]",
-              isTransit ? "text-blue-600 dark:text-blue-400" : 
-              isArrived ? "text-green-600 dark:text-green-400" : 
-              "text-zinc-500"
-            )}>
-              {val.replace(/_/g, ' ')}
-            </span>
-          );
-        }
-      },
-    { accessorKey: "portofEntryShipto", header: "Entry Port" },
-  ];
 
   // --- REUSABLE COMPONENTS ---
 
-  const TableView = ({ columns, data, highlightColor }: { 
-    columns: ColumnDef<TrackerRecord>[], 
+  const TableView = ({ columns, data, highlightColor }: {
+    columns: ColumnDef<TrackerRecord>[],
     data: TrackerRecord[],
     highlightColor?: string
   }) => {
@@ -363,8 +315,8 @@ export default function AndresTrackerPage() {
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <TableHead 
-                      key={header.id} 
+                    <TableHead
+                      key={header.id}
                       className="p-[4px] text-[10px] font-bold tracking-tighter text-zinc-500 dark:text-white border-r border-b border-zinc-200 dark:border-zinc-800 align-middle leading-tight whitespace-normal break-words sticky top-0 z-20 bg-zinc-100 dark:bg-zinc-900"
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
@@ -378,8 +330,8 @@ export default function AndresTrackerPage() {
                 table.getRowModel().rows.map((row) => (
                   <TableRow key={row.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 group transition-colors">
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell 
-                        key={cell.id} 
+                      <TableCell
+                        key={cell.id}
                         className={cn(
                           "p-[4px] text-[10px] font-medium border-r border-b border-zinc-200/50 dark:border-zinc-800 transition-all duration-300 align-middle whitespace-normal break-words overflow-visible leading-tight",
                           highlightColor
@@ -401,29 +353,29 @@ export default function AndresTrackerPage() {
           </table>
         </div>
         <div className="flex items-center justify-between px-1">
-            <p className="text-xs text-muted-foreground">
-              Showing {table.getRowModel().rows.length} records.
-            </p>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => table.previousPage()} 
-                disabled={!table.getCanPreviousPage()}
-                className="h-8"
-              >
-                Previous
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => table.nextPage()} 
-                disabled={!table.getCanNextPage()}
-                className="h-8"
-              >
-                Next
-              </Button>
-            </div>
+          <p className="text-xs text-muted-foreground">
+            Showing {table.getRowModel().rows.length} records.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8"
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-8"
+            >
+              Next
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -431,39 +383,33 @@ export default function AndresTrackerPage() {
 
   const UnifiedTableView = () => {
     const allGroups = [
-      { 
+      {
         id: 'transit',
-        label: "Shipments In-Transit!", 
-        columns: transitColumns, 
-        className: "bg-green-100 text-green-900 dark:bg-green-900/10 dark:text-white" 
+        label: "Shipments In-Transit!",
+        columns: transitColumns,
+        className: "bg-green-100 text-green-900 dark:bg-green-900/10 dark:text-white"
       },
-      { 
+      {
         id: 'inventory',
-        label: "Inventory", 
-        columns: inventoryColumns, 
-        className: "bg-blue-100 text-blue-900 dark:bg-blue-900/10 dark:text-white" 
+        label: "Inventory",
+        columns: inventoryColumns,
+        className: "bg-blue-100 text-blue-900 dark:bg-blue-900/10 dark:text-white"
       },
-      { 
+      {
         id: 'customs',
-        label: "Customs", 
-        columns: customsColumns, 
-        className: "bg-orange-100 text-orange-900 dark:bg-orange-900/10 dark:text-white" 
-      },
-      { 
-        id: 'lsb',
-        label: "LSB Shipments In-Transit", 
-        columns: lsbTransitColumns, 
-        className: "bg-amber-100 text-amber-900 dark:bg-amber-900/10 dark:text-white" 
+        label: "Customs",
+        columns: customsColumns,
+        className: "bg-orange-100 text-orange-900 dark:bg-orange-900/10 dark:text-white"
       }
     ];
 
     const getColWidth = (header: any, groupId: string, colIdx: number) => {
       const isMin = minimizedGroups.has(groupId);
       if (isMin) return colIdx === 0 ? '70px' : '0px';
-      
+
       const h = String(header);
       const toReduce = [
-        "VB PO Number", "Cust PO#", "Qty Ordered", "BOL Number", 
+        "VB PO Number", "Cust PO#", "Qty Ordered", "BOL Number",
         "Carrier Name", "Updated ETA", "Estimated Duties", "Status",
         "VB #", "ISF/CB SA Filed Y/N", "ISF/CB SA Confirmation", "Qty", "Item #"
       ];
@@ -474,7 +420,8 @@ export default function AndresTrackerPage() {
 
     return (
       <div className="flex-1 min-h-0 flex flex-col border rounded-3xl bg-white dark:bg-zinc-950 shadow-2xl overflow-hidden h-full relative">
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           .genie-transition {
             transition: all 0.8s cubic-bezier(0.25, 1, 0.32, 1);
           }
@@ -491,17 +438,17 @@ export default function AndresTrackerPage() {
                 {allGroups.map((group, idx) => {
                   const isMin = minimizedGroups.has(group.id);
                   return (
-                    <TableHead 
-                      key={group.id} 
-                      colSpan={group.columns.length} 
+                    <TableHead
+                      key={group.id}
+                      colSpan={group.columns.length}
                       className={cn(
-                          "text-center font-black tracking-[0.1em] text-[12px] p-0 border-r-2 border-b-2 border-white dark:border-zinc-800 leading-[1.2] align-middle sticky top-0 z-30 genie-transition h-10",
-                          group.className,
-                          isMin && "w-[70px] min-w-[70px] max-w-[70px] border-r-4 border-r-zinc-300 dark:border-r-zinc-700"
+                        "text-center font-black tracking-[0.1em] text-[12px] p-0 border-r-2 border-b-2 border-white dark:border-zinc-800 leading-[1.2] align-middle sticky top-0 z-30 genie-transition h-10",
+                        group.className,
+                        isMin && "w-[70px] min-w-[70px] max-w-[70px] border-r-4 border-r-zinc-300 dark:border-r-zinc-700"
                       )}
                     >
                       <div className="relative h-full flex items-center justify-center group/header overflow-visible">
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); toggleGroup(group.id); }}
                           className="absolute left-1.5 top-1/2 -translate-y-1/2 z-50 p-1 rounded-full bg-white/40 dark:bg-black/40 hover:bg-white/80 dark:hover:bg-black/80 transition-all shadow-sm opacity-0 group-hover/header:opacity-100"
                         >
@@ -514,7 +461,7 @@ export default function AndresTrackerPage() {
                           {group.label}
                         </span>
                         {isMin && (
-                          <button 
+                          <button
                             onClick={() => toggleGroup(group.id)}
                             className="absolute inset-0 z-40 w-full h-full cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                           />
@@ -529,9 +476,9 @@ export default function AndresTrackerPage() {
                 {allGroups.map((group) => {
                   const isSectionMin = minimizedGroups.has(group.id);
                   return group.columns.map((col: any, colIdx) => (
-                    <TableHead 
-                      key={`${group.id}-${colIdx}`} 
-                      style={{ 
+                    <TableHead
+                      key={`${group.id}-${colIdx}`}
+                      style={{
                         width: getColWidth(col.header, group.id, colIdx),
                         minWidth: getColWidth(col.header, group.id, colIdx),
                         maxWidth: getColWidth(col.header, group.id, colIdx),
@@ -542,11 +489,11 @@ export default function AndresTrackerPage() {
                         overflow: 'hidden'
                       }}
                       className={cn(
-                          "genie-transition text-[10px] font-bold tracking-tighter text-zinc-500 dark:text-white border-b border-zinc-200 dark:border-zinc-800 align-middle leading-tight whitespace-normal break-words sticky top-[40px] z-20 bg-zinc-50 dark:bg-zinc-950",
-                          isSectionMin && colIdx === 0 && "bg-zinc-100/50 dark:bg-zinc-900/50 text-zinc-400 font-black text-[8px] px-1"
+                        "genie-transition text-[10px] font-bold tracking-tighter text-zinc-500 dark:text-white border-b border-zinc-200 dark:border-zinc-800 align-middle leading-tight whitespace-normal break-words sticky top-[40px] z-20 bg-zinc-50 dark:bg-zinc-950",
+                        isSectionMin && colIdx === 0 && "bg-zinc-100/50 dark:bg-zinc-900/50 text-zinc-400 font-black text-[8px] px-1"
                       )}
                     >
-                      {( !isSectionMin || colIdx === 0 ) && flexRender(col.header, {} as any)}
+                      {(!isSectionMin || colIdx === 0) && flexRender(col.header, {} as any)}
                     </TableHead>
                   ));
                 })}
@@ -559,9 +506,9 @@ export default function AndresTrackerPage() {
                     {allGroups.map((group) => {
                       const isSectionMin = minimizedGroups.has(group.id);
                       return group.columns.map((col: any, colIdx) => (
-                        <TableCell 
-                          key={`${rowIdx}-${group.id}-${colIdx}`} 
-                          style={{ 
+                        <TableCell
+                          key={`${rowIdx}-${group.id}-${colIdx}`}
+                          style={{
                             width: getColWidth(col.header, group.id, colIdx),
                             minWidth: getColWidth(col.header, group.id, colIdx),
                             maxWidth: getColWidth(col.header, group.id, colIdx),
@@ -577,12 +524,11 @@ export default function AndresTrackerPage() {
                             group.label === "Shipments In-Transit!" && !isSectionMin && "bg-green-500/[0.04] dark:bg-green-500/[0.12] text-green-950 dark:text-white",
                             group.label === "Inventory" && !isSectionMin && "bg-blue-500/[0.04] dark:bg-blue-500/[0.12] text-blue-950 dark:text-white",
                             group.label === "Customs" && !isSectionMin && "bg-orange-500/[0.04] dark:bg-orange-500/[0.12] text-orange-950 dark:text-white",
-                            group.label === "LSB Shipments In-Transit" && !isSectionMin && "bg-amber-500/[0.04] dark:bg-amber-500/[0.12] text-amber-950 dark:text-white",
                             isSectionMin && colIdx === 0 && "text-center"
                           )}
                         >
-                          {( !isSectionMin || colIdx === 0 ) && (col.cell 
-                            ? (col.cell as any)({ row: { original: row } }) 
+                          {(!isSectionMin || colIdx === 0) && (col.cell
+                            ? (col.cell as any)({ row: { original: row } })
                             : <span className="block leading-tight truncate">{String((row as any)[col.accessorKey] || "-")}</span>)}
                         </TableCell>
                       ));
@@ -591,10 +537,10 @@ export default function AndresTrackerPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={transitColumns.length + inventoryColumns.length + customsColumns.length + lsbTransitColumns.length} className="h-64 text-center">
+                  <TableCell colSpan={transitColumns.length + inventoryColumns.length + customsColumns.length} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center space-y-3 opacity-40">
-                        <Search className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm font-black uppercase tracking-widest text-muted-foreground">No matching entries found</p>
+                      <Search className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm font-black uppercase tracking-widest text-muted-foreground">No matching entries found</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -608,101 +554,84 @@ export default function AndresTrackerPage() {
 
   return (
     <div className="p-0 max-w-[1800px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">
-      
+
       {/* Stats Overview - Only in Tab mode */}
       {viewMode === "tabs" && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-shrink-0 p-4">
-            <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-                    <Ship className="h-12 w-12" />
-                </div>
-                <CardContent className="p-3.5 pt-6">
-                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">In-Transit</p>
-                    <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.length}</h3>
-                    <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary w-2/3 shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-                    </div>
-                </CardContent>
-            </Card>
-            <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-                    <Package className="h-12 w-12" />
-                </div>
-                <CardContent className="p-3.5 pt-6">
-                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Inventory</p>
-                    <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.qty > 0).length}</h3>
-                    <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 w-1/2" />
-                    </div>
-                </CardContent>
-            </Card>
-            <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-                    <ShieldCheck className="h-12 w-12" />
-                </div>
-                <CardContent className="p-3.5 pt-6">
-                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Customs</p>
-                    <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.customsStatus === "Cleared").length}</h3>
-                    <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 w-3/4" />
-                    </div>
-                </CardContent>
-            </Card>
-            <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-                    <Truck className="h-12 w-12" />
-                </div>
-                <CardContent className="p-3.5 pt-6">
-                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">LSB TRANSIT</p>
-                    <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.vbid).length}</h3>
-                    <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-500 w-1/4" />
-                    </div>
-                </CardContent>
-            </Card>
+          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
+              <Ship className="h-12 w-12" />
+            </div>
+            <CardContent className="p-3.5 pt-6">
+              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">In-Transit</p>
+              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.length}</h3>
+              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-primary w-2/3 shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
+              <Package className="h-12 w-12" />
+            </div>
+            <CardContent className="p-3.5 pt-6">
+              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Inventory</p>
+              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.qty > 0).length}</h3>
+              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 w-1/2" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
+              <ShieldCheck className="h-12 w-12" />
+            </div>
+            <CardContent className="p-3.5 pt-6">
+              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Customs</p>
+              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.customsStatus === "Cleared").length}</h3>
+              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 w-3/4" />
+              </div>
+            </CardContent>
+          </Card>
+
         </div>
       )}
 
 
       {/* Main Execution View */}
       <div className="flex-1 overflow-hidden min-h-0">
-          {viewMode === "table" ? (
-             <UnifiedTableView />
-          ) : (
-             <Tabs defaultValue="transit" className="w-full h-full flex flex-col">
-                <div className="bg-zinc-100/50 dark:bg-zinc-900/50 border rounded-2xl p-1 mb-4 w-fit flex-shrink-0 shadow-inner">
-                    <TabsList className="bg-transparent border-none p-0 h-10">
-                        <TabsTrigger value="transit" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                            <Ship className="h-4 w-4 mr-2" /> Shipments
-                        </TabsTrigger>
-                        <TabsTrigger value="inventory" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                            <Package className="h-4 w-4 mr-2" /> Inventory
-                        </TabsTrigger>
-                        <TabsTrigger value="customs" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                            <ShieldCheck className="h-4 w-4 mr-2" /> Customs
-                        </TabsTrigger>
-                        <TabsTrigger value="lsb" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                            <Truck className="h-4 w-4 mr-2" /> LSB Transit
-                        </TabsTrigger>
-                    </TabsList>
-                </div>
+        {viewMode === "table" ? (
+          <UnifiedTableView />
+        ) : (
+          <Tabs defaultValue="transit" className="w-full h-full flex flex-col">
+            <div className="bg-zinc-100/50 dark:bg-zinc-900/50 border rounded-2xl p-1 mb-4 w-fit flex-shrink-0 shadow-inner">
+              <TabsList className="bg-transparent border-none p-0 h-10">
+                <TabsTrigger value="transit" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
+                  <Ship className="h-4 w-4 mr-2" /> Shipments
+                </TabsTrigger>
+                <TabsTrigger value="inventory" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
+                  <Package className="h-4 w-4 mr-2" /> Inventory
+                </TabsTrigger>
+                <TabsTrigger value="customs" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
+                  <ShieldCheck className="h-4 w-4 mr-2" /> Customs
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-                <div className="flex-1 overflow-auto min-h-0 space-y-4">
-                    <TabsContent value="transit" className="mt-0 focus-visible:ring-0 h-full">
-                        <TableView columns={transitColumns} data={transitData} highlightColor="bg-green-500/[0.04] dark:bg-green-500/[0.12] text-green-950 dark:text-white" />
-                    </TabsContent>
-                    <TabsContent value="inventory" className="mt-0 focus-visible:ring-0 h-full">
-                        <TableView columns={inventoryColumns} data={filteredData} highlightColor="bg-blue-500/[0.04] dark:bg-blue-500/[0.12] text-blue-950 dark:text-white" />
-                    </TabsContent>
-                    <TabsContent value="customs" className="mt-0 focus-visible:ring-0 h-full">
-                        <TableView columns={customsColumns} data={filteredData} highlightColor="bg-orange-500/[0.04] dark:bg-orange-500/[0.12] text-orange-950 dark:text-white" />
-                    </TabsContent>
-                    <TabsContent value="lsb" className="mt-0 focus-visible:ring-0 h-full">
-                        <TableView columns={lsbTransitColumns} data={transitData} highlightColor="bg-purple-500/[0.04] dark:bg-purple-500/[0.12] text-purple-950 dark:text-white" />
-                    </TabsContent>
-                </div>
-             </Tabs>
-          )}
+            <div className="flex-1 overflow-auto min-h-0 space-y-4">
+              <TabsContent value="transit" className="mt-0 focus-visible:ring-0 h-full">
+                <TableView columns={transitColumns} data={transitData} highlightColor="bg-green-500/[0.04] dark:bg-green-500/[0.12] text-green-950 dark:text-white" />
+              </TabsContent>
+              <TabsContent value="inventory" className="mt-0 focus-visible:ring-0 h-full">
+                <TableView columns={inventoryColumns} data={filteredData} highlightColor="bg-blue-500/[0.04] dark:bg-blue-500/[0.12] text-blue-950 dark:text-white" />
+              </TabsContent>
+              <TabsContent value="customs" className="mt-0 focus-visible:ring-0 h-full">
+                <TableView columns={customsColumns} data={filteredData} highlightColor="bg-orange-500/[0.04] dark:bg-orange-500/[0.12] text-orange-950 dark:text-white" />
+              </TabsContent>
+            </div>
+          </Tabs>
+        )}
       </div>
     </div>
   );
