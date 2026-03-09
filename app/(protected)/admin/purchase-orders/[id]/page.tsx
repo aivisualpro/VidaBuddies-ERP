@@ -972,7 +972,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               <item.icon className="h-3.5 w-3.5 text-primary/70" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[9px] font-semibold uppercase text-muted-foreground/70 tracking-wider">{item.label}</p>
+                              <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">{item.label}</p>
                               <p className="text-xs font-bold text-foreground truncate uppercase" title={item.value || '-'}>{item.value || '-'}</p>
                             </div>
                           </div>
@@ -987,7 +987,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         </div>
                         <div className="grid grid-cols-4 gap-3">
                           <div className="col-span-2 min-w-0">
-                            <p className="text-[9px] font-semibold uppercase text-muted-foreground/70 tracking-wider">Name & Location</p>
+                            <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
                             <p className="text-xs font-bold text-foreground truncate" title={
                               (() => {
                                 const locName = supplierLocations[ship.supplierLocation] || ship.supplierLocation || '';
@@ -1007,11 +1007,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             </p>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[9px] font-semibold uppercase text-muted-foreground/70 tracking-wider">Supplier PO</p>
+                            <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
                             <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[9px] font-semibold uppercase text-muted-foreground/70 tracking-wider">PO Date</p>
+                            <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
                             <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
                           </div>
                         </div>
@@ -1054,13 +1054,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             { label: 'Updated ETA', value: formatDate(ship.updatedETA), highlight: true },
                           ].map((item, i) => (
                             <div key={i} className={cn("text-center py-1", i < 4 && 'border-r border-border/40')}>
-                              <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wider mb-0.5">{item.label}</p>
+                              <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">{item.label}</p>
                               <p className={cn("text-[10px] font-bold truncate px-1", item.highlight ? 'text-primary' : 'text-foreground')} title={item.value || '-'}>{item.value || '-'}</p>
                             </div>
                           ))}
                         </div>
                         <div className="border-t border-border/30 px-3 py-2">
-                          <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wider mb-0.5">Booking Ref</p>
+                          <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">Booking Ref</p>
                           <p className="text-[10px] font-bold text-foreground">{ship.carrierBookingRef || '-'}</p>
                         </div>
                       </div>
@@ -1083,7 +1083,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             ].map((item, i) => (
                               <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
                                 <p className="text-xs font-bold text-foreground">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
-                                <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
+                                <p className="text-[8px] font-bold uppercase text-foreground/50 tracking-wider">{item.label}</p>
                               </div>
                             ))}
                           </div>
@@ -1116,7 +1116,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <FileCheck className="h-3.5 w-3.5 text-primary/70" />
                           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Documentation & Compliance</p>
                         </div>
-                        <div className="grid grid-cols-5 gap-x-2 gap-y-2.5">
+                        <div className="grid grid-cols-5 gap-x-4 gap-y-4">
                           {[
                             { label: 'Arrival Notice', field: 'isArrivalNotice', value: ship.isArrivalNotice },
                             { label: 'Genset Req', field: 'isGensetRequired', value: ship.isGensetRequired },
@@ -1138,28 +1138,28 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               <Switch
                                 checked={!!item.value}
                                 onCheckedChange={(v) => updateShippingField(ship._cpoIdx, ship._shipIdx, item.field, v)}
-                                className="scale-[0.65] data-[state=checked]:bg-primary"
+                                className="scale-90 data-[state=checked]:bg-primary"
                               />
-                              <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wide text-center leading-tight">{item.label}</p>
+                              <p className="text-[9px] font-bold uppercase text-foreground/60 tracking-wide text-center leading-tight">{item.label}</p>
                             </div>
                           ))}
                         </div>
                         {/* Trucker Row */}
-                        <div className="mt-3 pt-2.5 border-t border-border/30 grid grid-cols-3 gap-3">
+                        <div className="mt-4 pt-3 border-t border-border/30 grid grid-cols-3 gap-3">
                           <div className="flex flex-col items-center gap-1">
                             <Switch
                               checked={!!ship.isTruckerReceivedDeliveryOrder}
                               onCheckedChange={(v) => updateShippingField(ship._cpoIdx, ship._shipIdx, 'isTruckerReceivedDeliveryOrder', v)}
-                              className="scale-[0.65] data-[state=checked]:bg-primary"
+                              className="scale-90 data-[state=checked]:bg-primary"
                             />
-                            <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wide">Trucker DO</p>
+                            <p className="text-[9px] font-bold uppercase text-foreground/60 tracking-wide">Trucker DO</p>
                           </div>
                           <div className="text-center">
-                            <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wider">Trucker Notified</p>
+                            <p className="text-[9px] font-bold uppercase text-foreground/60 tracking-wider">Trucker Notified</p>
                             <p className="text-[10px] font-bold text-foreground">{formatDate(ship.truckerNotifiedDate)}</p>
                           </div>
                           <div className="text-center">
-                            <p className="text-[8px] font-semibold uppercase text-muted-foreground/60 tracking-wider">Genset Inv</p>
+                            <p className="text-[9px] font-bold uppercase text-foreground/60 tracking-wider">Genset Inv</p>
                             <p className="text-[10px] font-bold text-foreground">{ship.gensetInv || '-'}</p>
                           </div>
                         </div>
@@ -1172,7 +1172,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             <User className="h-3 w-3 text-muted-foreground" />
                           </div>
                           <div>
-                            <p className="text-[8px] font-semibold uppercase text-muted-foreground/50 tracking-wider">Created By</p>
+                            <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider">Created By</p>
                             <p className="text-[10px] font-bold">{users[po.createdBy?.toLowerCase()] || po.createdBy || 'System'}</p>
                           </div>
                         </div>
