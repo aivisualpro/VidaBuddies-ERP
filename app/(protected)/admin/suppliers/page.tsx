@@ -165,7 +165,7 @@ export default function SuppliersPage() {
       const parts = [street, city, state, zip, country].filter(Boolean);
       currentLocation.fullAddress = parts.join(", ");
     }
-    
+
     // Auto-sync fields from fullAddress (Basic parsing)
     if (field === 'fullAddress') {
       const parts = value.split(',').map(s => s.trim());
@@ -196,10 +196,10 @@ export default function SuppliersPage() {
         const item = row.original;
         return (
           <div className="flex items-center gap-1.5">
-             <MapPin className="h-3 w-3 text-muted-foreground" />
-             <span className="font-medium text-xs">
-                {item.location?.length || 0}
-             </span>
+            <MapPin className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium text-xs">
+              {item.location?.length || 0}
+            </span>
           </div>
         );
       },
@@ -281,12 +281,11 @@ export default function SuppliersPage() {
                   <Hash className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="vbId"
-                    className="pl-9"
+                    className="pl-9 disabled:opacity-70 disabled:cursor-not-allowed bg-muted/50"
                     value={formData.vbId || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, vbId: e.target.value })
-                    }
-                    required
+                    placeholder={!editingItem ? "Auto-generated" : ""}
+                    disabled
+                    readOnly
                   />
                 </div>
               </div>
@@ -314,7 +313,7 @@ export default function SuppliersPage() {
                   <Plus className="mr-2 h-3 w-3" /> Add Location
                 </Button>
               </div>
-              
+
               <div className="space-y-4">
                 {formData.location?.map((loc, index) => (
                   <div key={index} className="grid gap-4 rounded-lg border p-4 relative">
@@ -327,14 +326,16 @@ export default function SuppliersPage() {
                     >
                       <Trash className="h-3 w-3" />
                     </Button>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="grid gap-2">
                         <Label>Location VB ID</Label>
                         <Input
                           value={loc.vbId || ""}
-                          onChange={(e) => handleLocationChange(index, "vbId", e.target.value)}
-                          placeholder="LOC-001"
+                          placeholder={!editingItem ? "Auto-generated" : ""}
+                          disabled
+                          readOnly
+                          className="disabled:opacity-70 disabled:cursor-not-allowed bg-muted/50"
                         />
                       </div>
                       <div className="grid gap-2">
@@ -405,8 +406,8 @@ export default function SuppliersPage() {
                     </div>
 
                     <div className="grid gap-2">
-                       <Label>Website</Label>
-                        <div className="relative">
+                      <Label>Website</Label>
+                      <div className="relative">
                         <Globe className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                           className="pl-9"
@@ -427,7 +428,7 @@ export default function SuppliersPage() {
             </div>
 
             <DialogFooter className="gap-2 sm:space-x-0">
-               <Button variant="outline" type="button" onClick={() => setIsSheetOpen(false)}>
+              <Button variant="outline" type="button" onClick={() => setIsSheetOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit">{editingItem ? "Save Changes" : "Create Supplier"}</Button>

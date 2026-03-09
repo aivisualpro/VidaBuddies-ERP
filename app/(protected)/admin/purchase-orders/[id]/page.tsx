@@ -190,7 +190,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [users, setUsers] = useState<Record<string, string>>({});
   const [locations, setLocations] = useState<Record<string, string>>({});
   const [customers, setCustomers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [supplierLocations, setSupplierLocations] = useState<Record<string, string>>({});
+  const [selectedSupplierForShipping, setSelectedSupplierForShipping] = useState<string>("");
   const [products, setProducts] = useState<Record<string, string>>({});
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [selectedCustomerForCPO, setSelectedCustomerForCPO] = useState<string>("");
@@ -271,6 +273,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       const response = await fetch("/api/admin/suppliers");
       const data = await response.json();
       if (Array.isArray(data)) {
+        setSuppliers(data);
+        // Also build a flat mapping for display in shipping cards
         const mapping: Record<string, string> = {};
         data.forEach((sup: any) => {
           if (sup.location && Array.isArray(sup.location)) {
@@ -286,6 +290,17 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     } catch (error) {
       console.error("Failed to fetch suppliers", error);
     }
+  };
+
+  // Get filtered locations for the selected supplier
+  const getSupplierLocationOptions = (): { id: string; name: string }[] => {
+    if (!selectedSupplierForShipping) return [];
+    const sup = suppliers.find((s: any) => s._id === selectedSupplierForShipping || s.vbId === selectedSupplierForShipping);
+    if (!sup?.location) return [];
+    return sup.location.filter((loc: any) => loc.vbId).map((loc: any) => ({
+      id: loc.vbId as string,
+      name: (loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId) as string,
+    }));
   };
 
   const fetchProducts = async () => {
@@ -567,6 +582,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       if (formattedData[k]) formattedData[k] = Number(formattedData[k]);
     });
 
+    // Convert products from comma-separated string to array
+    if (typeof formattedData.products === 'string') {
+      formattedData.products = formattedData.products.split(',').filter(Boolean);
+    }
+
     try {
       let body = {};
       if (editingShipping) {
@@ -847,6 +867,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               const existingShipCount = cpo.shipping?.length || 0;
                               const nextSvbid = `${cpo.poNo || ''}-${existingShipCount + 1}`;
                               setAutoSvbid(nextSvbid);
+                              setSelectedSupplierForShipping("");
                               setAddingShippingToCPO({ idx, poNo: cpo.poNo || '' });
                             }}
                           >
@@ -919,7 +940,17 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        onClick={() => setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship })}
+                        onClick={() => {
+                          // Auto-detect which supplier owns this location
+                          const locId = ship.supplierLocation;
+                          if (locId) {
+                            const matchedSup = suppliers.find((s: any) => s.location?.some((l: any) => l.vbId === locId));
+                            setSelectedSupplierForShipping(matchedSup?._id || matchedSup?.vbId || "");
+                          } else {
+                            setSelectedSupplierForShipping(ship.supplier || "");
+                          }
+                          setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship });
+                        }}
                       >
                         <Pencil className="h-3 w-3" />
                       </Button>
@@ -1049,8 +1080,22 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="grid grid-cols-5 gap-0 p-2">
                         {/* Product (Wider) */}
                         <div className="col-span-2 flex flex-col items-center justify-center text-center border-r border-border/50 px-2 py-1">
-                          <p className="text-[10px] font-black text-foreground whitespace-normal break-words leading-tight" title={products[ship.product] || ship.product}>
-                            {products[ship.product] || ship.product || '-'}
+                          <p className="text-[10px] font-black text-foreground whitespace-normal break-words leading-tight" title={
+                            (() => {
+                              const productIds = Array.isArray(ship.products) ? ship.products
+                                : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
+                                  : ship.product ? [ship.product] : [];
+                              return productIds.map((pid: string) => products[pid] || pid).join(', ');
+                            })()
+                          }>
+                            {(() => {
+                              const productIds = Array.isArray(ship.products) ? ship.products
+                                : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
+                                  : ship.product ? [ship.product] : [];
+                              return productIds.length > 0
+                                ? productIds.map((pid: string) => products[pid] || pid).join(', ')
+                                : '-';
+                            })()}
                           </p>
                         </div>
                         {/* Drums */}
@@ -1481,16 +1526,37 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         <span className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center text-[10px]">🏭</span>
                         Supplier Details
                       </h4>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="space-y-1">
-                          <Label className="text-xs">Supplier Location</Label>
-                          <select name="supplierLocation" className="w-full border rounded-md h-9 px-3 text-sm bg-background" defaultValue={editingShipping?.data?.supplierLocation}>
-                            <option value="">Select Location</option>
-                            {Object.entries(supplierLocations).map(([id, name]) => (
-                              <option key={id} value={id}>{name}</option>
+                          <Label className="text-xs">Supplier</Label>
+                          <select
+                            name="supplier"
+                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                            value={selectedSupplierForShipping}
+                            onChange={(e) => setSelectedSupplierForShipping(e.target.value)}
+                          >
+                            <option value="">Select Supplier</option>
+                            {suppliers.map((sup: any) => (
+                              <option key={sup._id} value={sup._id}>{sup.name} ({sup.vbId})</option>
                             ))}
                           </select>
                         </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Supplier Location</Label>
+                          <select
+                            name="supplierLocation"
+                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                            defaultValue={editingShipping?.data?.supplierLocation}
+                            disabled={!selectedSupplierForShipping}
+                          >
+                            <option value="">{selectedSupplierForShipping ? 'Select Location' : 'Select Supplier First'}</option>
+                            {getSupplierLocationOptions().map((loc) => (
+                              <option key={loc.id} value={loc.id}>{loc.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <Label className="text-xs">Supplier PO</Label>
                           <Input name="supplierPO" placeholder="Supplier Ref" className="text-sm" defaultValue={editingShipping?.data?.supplierPO} />
