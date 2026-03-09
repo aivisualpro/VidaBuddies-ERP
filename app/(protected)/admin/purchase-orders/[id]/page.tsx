@@ -1082,14 +1082,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         <div className="col-span-2 flex flex-col items-center justify-center text-center border-r border-border/50 px-2 py-1">
                           <p className="text-[10px] font-black text-foreground whitespace-normal break-words leading-tight" title={
                             (() => {
-                              const productIds = Array.isArray(ship.products) ? ship.products
+                              const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
                                 : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
                                   : ship.product ? [ship.product] : [];
                               return productIds.map((pid: string) => products[pid] || pid).join(', ');
                             })()
                           }>
                             {(() => {
-                              const productIds = Array.isArray(ship.products) ? ship.products
+                              const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
                                 : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
                                   : ship.product ? [ship.product] : [];
                               return productIds.length > 0
@@ -1146,12 +1146,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <p className="text-[9px] font-black text-foreground truncate w-full">{ship.grossWeightKG || 0}</p>
                           <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Gross KG</p>
                         </div>
-                        {/* Tico VB */}
-                        <div className="flex flex-col items-center gap-1 text-center px-1">
-                          <Tag className="h-3.5 w-3.5 text-primary" />
-                          <p className="text-[9px] font-black text-foreground truncate w-full">{ship.ticoVB || '-'}</p>
-                          <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Tico VB</p>
-                        </div>
+
                       </div>
                     </div>
 
@@ -1495,10 +1490,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <Label className="text-xs">BOL Number</Label>
                           <Input name="BOLNumber" placeholder="Bill of Lading No" className="text-sm" defaultValue={editingShipping?.data?.BOLNumber} />
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Tico VB</Label>
-                          <Input name="ticoVB" placeholder="Tico VB ref" className="text-sm" defaultValue={editingShipping?.data?.ticoVB} />
-                        </div>
+
                       </div>
                       {/* Products - Searchable Multi-select */}
                       <div className="mt-4">
@@ -1508,13 +1500,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         <ProductMultiSelect
                           products={products}
                           initialSelected={
-                            editingShipping?.data?.products
-                              ? (typeof editingShipping.data.products === 'string'
+                            (editingShipping?.data?.products && Array.isArray(editingShipping.data.products) && editingShipping.data.products.length > 0)
+                              ? editingShipping.data.products
+                              : (typeof editingShipping?.data?.products === 'string' && editingShipping.data.products)
                                 ? editingShipping.data.products.split(',').filter(Boolean)
-                                : Array.isArray(editingShipping.data.products)
-                                  ? editingShipping.data.products
-                                  : editingShipping.data.product ? [editingShipping.data.product] : [])
-                              : (editingShipping?.data?.product ? [editingShipping.data.product] : [])
+                                : (editingShipping?.data?.product ? [editingShipping.data.product] : [])
                           }
                         />
                       </div>

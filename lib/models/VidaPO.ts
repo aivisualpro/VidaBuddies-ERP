@@ -18,6 +18,7 @@ export interface IVidaPOShipping {
   dateOfLanding?: Date;
   ETA?: Date;
   product?: string;
+  products?: string[];
   drums?: number;
   pallets?: number;
   gallons?: number;
@@ -136,6 +137,7 @@ const VidaPOShippingSchema: Schema = new Schema({
   dateOfLanding: { type: Date },
   ETA: { type: Date },
   product: { type: String },
+  products: [{ type: String }],
   drums: { type: Number },
   pallets: { type: Number },
   gallons: { type: Number },
