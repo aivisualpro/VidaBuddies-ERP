@@ -113,6 +113,14 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
         return;
       }
 
+      // Check if shipment is disconnected (delivered)
+      if (data._disconnected) {
+        toast.info(`${containerNo} — Tracking Disconnected`, {
+          description: "This shipment is delivered. Live tracking has been permanently disconnected."
+        });
+        return;
+      }
+
       setTrackingData(prev => ({ ...prev, [containerNo]: data }));
       toast.success(`Updated tracking for ${containerNo}`);
     } catch (error: any) {
@@ -124,9 +132,9 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
 
   const trackAll = () => {
     containers.forEach(c => {
-      // Small delay to avoid hammering the API if there are many
-      // In a real prod environment we'd use a queue or batch endpoint
-      if (c.containerNo) {
+      // Skip delivered shipments — they are disconnected from live tracking
+      const isDelivered = (c.status || '').toLowerCase() === 'delivered';
+      if (c.containerNo && !isDelivered) {
         trackContainer(c.containerNo);
       }
     });
@@ -280,15 +288,19 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                   <TableRow key={idx} className="h-auto">
                     <TableCell className="p-1 align-middle whitespace-normal">
                       <div className="flex flex-col gap-1 items-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5"
-                          onClick={() => trackContainer(container.containerNo)}
-                          disabled={isLoading || !container.containerNo}
-                        >
-                          <IconRefresh className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-                        </Button>
+                        {(container.status || '').toLowerCase() === 'delivered' ? (
+                          <span title="Tracking disconnected — shipment delivered" className="text-[8px] font-bold text-muted-foreground/60 uppercase">N/A</span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => trackContainer(container.containerNo)}
+                            disabled={isLoading || !container.containerNo}
+                          >
+                            <IconRefresh className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+                          </Button>
+                        )}
                         {data?.latlong && (
                           <Button
                             variant="ghost"

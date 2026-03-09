@@ -12,6 +12,12 @@ export async function GET(request: Request) {
 
   try {
     const data = await refreshContainerTracking(container);
+
+    // If the shipment is delivered, it's disconnected from live tracking
+    if (data && (data as any)._disconnected) {
+      return NextResponse.json(data, { status: 200 });
+    }
+
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('SeaRates Error:', error);

@@ -22,17 +22,48 @@ export async function refreshContainerTracking(container: string) {
     throw new Error('Container number is required');
   }
 
-  // 1. Fetch live data from SeaRates
-  const data = await getSeaRatesTracking(container);
-
-  // 2. Connect to DB and find the relevant PO containing this container
+  // 0. Connect to DB first and check if this shipment is already Delivered.
+  //    Once delivered, the container number can be reused by other businesses,
+  //    so we MUST NOT track it anymore to avoid returning someone else's data.
   await connectToDatabase();
 
   const pos = await VidaPO.find({
     "customerPO.shipping.containerNo": container
   }).lean();
 
-  if (pos && pos.length > 0) {
+  if (!pos || pos.length === 0) {
+    throw new Error(`No shipment found for container ${container}`);
+  }
+
+  // Check if ANY matching shipping record is already Delivered
+  for (const po of pos) {
+    if (po.customerPO) {
+      // @ts-ignore
+      for (const cpo of po.customerPO) {
+        if (cpo.shipping) {
+          for (const ship of cpo.shipping) {
+            if (ship.containerNo === container) {
+              const status = (ship.status || '').toLowerCase().trim();
+              if (status === 'delivered' || status === 'arrived') {
+                // DISCONNECTED: This shipment is delivered — do not call SeaRates
+                return {
+                  _disconnected: true,
+                  message: `Container ${container} is marked Delivered. Live tracking has been disconnected.`,
+                  status: 'Delivered',
+                  container
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 1. Fetch live data from SeaRates (only for non-delivered shipments)
+  const data = await getSeaRatesTracking(container);
+
+  if (pos.length > 0) {
     for (const po of pos) {
       let shippingRecord = null;
 
@@ -105,7 +136,7 @@ export async function refreshContainerTracking(container: string) {
             }
           );
 
-          // Create a notification
+          // Create a notification (but NOT for delivered — those are disconnected above)
           await VidaNotification.create({
             title: `Shipment Update: ${container}`,
             message: `Status: ${data.status || 'Unknown'}. Last event: ${data.last_event_status || 'N/A'} at ${data.last_event_location || 'unknown location'}.`,

@@ -30,10 +30,10 @@ export async function login(userData: any) {
 
   // Save the session in a cookie — 30 days so PWA stays logged in
   const cookieStore = await cookies();
-  cookieStore.set("vb_session", session, { 
-    expires, 
-    httpOnly: true, 
-    secure: process.env.NODE_ENV === "production", 
+  cookieStore.set("vb_session", session, {
+    expires,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: 'lax',
     path: '/'
   });
@@ -58,17 +58,24 @@ export async function updateSession(request: NextRequest) {
   const session = request.cookies.get("vb_session")?.value;
   if (!session) return null;
 
-  // Refresh the session so it doesn't expire — rolling 30-day window
-  const parsed = await decryptLocal(session);
-  parsed.expires = new Date(Date.now() + SESSION_DURATION_MS);
-  const res = NextResponse.next();
-  res.cookies.set({
-    name: "vb_session",
-    value: await encrypt(parsed),
-    httpOnly: true,
-    expires: parsed.expires,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: 'lax'
-  });
-  return res;
+  try {
+    // Refresh the session so it doesn't expire — rolling 30-day window
+    const parsed = await decryptLocal(session);
+    parsed.expires = new Date(Date.now() + SESSION_DURATION_MS);
+    const res = NextResponse.next();
+    res.cookies.set({
+      name: "vb_session",
+      value: await encrypt(parsed),
+      httpOnly: true,
+      expires: parsed.expires,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: 'lax'
+    });
+    return res;
+  } catch (e) {
+    // Invalid/corrupted session cookie — clear it and redirect to login
+    const res = NextResponse.redirect(new URL("/login", request.nextUrl));
+    res.cookies.set("vb_session", "", { expires: new Date(0), path: '/' });
+    return res;
+  }
 }
