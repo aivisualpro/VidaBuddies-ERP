@@ -835,7 +835,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingCPO({ idx, data: cpo });
-                              setSelectedCustomerForCPO(cpo.customerPONo || "");
+                              setSelectedCustomerForCPO(cpo.customer || "");
                               setSelectedLocationForCPO(cpo.customerLocation || "");
                               setSelectedWarehouseForCPO(cpo.warehouse || "");
                               setSelectedUOMForCPO(cpo.UOM || "");
