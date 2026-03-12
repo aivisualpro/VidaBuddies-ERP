@@ -1276,8 +1276,22 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 <Input name="qtyOrdered" type="number" defaultValue={editingCPO?.data?.qtyOrdered} />
               </div>
               <div className="space-y-1">
-                <Label>Received</Label>
-                <Input name="qtyReceived" type="number" defaultValue={editingCPO?.data?.qtyReceived} />
+                <Label>Received (Auto-computed)</Label>
+                <Input 
+                  name="qtyReceived" 
+                  type="number" 
+                  readOnly 
+                  className="bg-muted cursor-not-allowed"
+                  value={
+                    editingCPO?.data?.shipping?.reduce((acc: number, ship: any) => {
+                      const s = (ship.status || '').toLowerCase().trim();
+                      if (s === 'delivered' || s === 'arrived') {
+                        return acc + (Number(ship.drums) || 0);
+                      }
+                      return acc;
+                    }, 0) || 0
+                  } 
+                />
               </div>
               <div className="space-y-1">
                 <Label>UOM</Label>
