@@ -59,6 +59,7 @@ import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
+import { useUserDataStore } from "@/store/useUserDataStore";
 
 const UOM_OPTIONS = [
   { value: "EA", label: "EA (Each)" },
@@ -193,6 +194,7 @@ function ProductMultiSelect({ products, initialSelected }: { products: Record<st
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { refetchPurchaseOrders } = useUserDataStore();
   const [po, setPO] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<Record<string, string>>({});
@@ -221,6 +223,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; poNo?: string; svbid?: string; title?: string } | null>(null);
+
+  const [isEditPOOpen, setIsEditPOOpen] = useState(false);
+  const [editPOData, setEditPOData] = useState<Partial<PurchaseOrder>>({});
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -626,6 +631,27 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }
   };
 
+  const handleEditPOSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPOData || !po) return;
+    setActionLoading(true);
+    try {
+      const response = await fetch(`/api/admin/purchase-orders/${po._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editPOData),
+      });
+      if (!response.ok) throw new Error("Failed to edit PO");
+      toast.success("Purchase Order updated successfully");
+      setIsEditPOOpen(false);
+      fetchPO();
+      refetchPurchaseOrders();
+    } catch (e) {
+       toast.error("Failed to update extra PO fields");
+    } finally {
+       setActionLoading(false);
+    }
+  };
 
   // Update Header with Actions
   useEffect(() => {
@@ -647,7 +673,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
     setRightContent(
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" className="h-8" onClick={() => toast.info("Edit Purchase Order")}>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => {
+          setEditPOData({
+            ...po,
+            date: po.date ? new Date(po.date).toISOString().split('T')[0] : ""
+          });
+          setIsEditPOOpen(true);
+        }}>
           <Pencil className="h-3.5 w-3.5 mr-2" />
           Edit
         </Button>
@@ -1674,6 +1706,93 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         users={users}
       />
 
+      <Dialog open={isEditPOOpen} onOpenChange={setIsEditPOOpen}>
+        <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Order</DialogTitle>
+            <DialogDescription className="sr-only">Update purchase order details</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditPOSubmit} className="grid gap-6 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="vbpoNo">VB PO #</Label>
+                <div className="relative">
+                  <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="vbpoNo"
+                    className="pl-9"
+                    value={editPOData.vbpoNo || ""}
+                    onChange={(e) =>
+                      setEditPOData({ ...editPOData, vbpoNo: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="date">Date</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="date"
+                    type="date"
+                    className="pl-9"
+                    value={editPOData.date || ""}
+                    onChange={(e) =>
+                      setEditPOData({ ...editPOData, date: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="orderType">Order Type</Label>
+                <select
+                  id="orderType"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editPOData.orderType || ""}
+                  onChange={(e) =>
+                    setEditPOData({ ...editPOData, orderType: e.target.value })
+                  }
+                  required
+                >
+                  <option value="" disabled>Select type...</option>
+                  <option value="Export">Export</option>
+                  <option value="Import">Import</option>
+                  <option value="Dropship">Dropship</option>
+                  <option value="Inventory">Inventory</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="category">Category</Label>
+                <select
+                  id="category"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editPOData.category || ""}
+                  onChange={(e) =>
+                    setEditPOData({ ...editPOData, category: e.target.value })
+                  }
+                  required
+                >
+                  <option value="" disabled>Select category...</option>
+                  <option value="CONVENTIONAL">Conventional</option>
+                  <option value="ORGANIC">Organic</option>
+                </select>
+              </div>
+            </div>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setIsEditPOOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={actionLoading}>
+                {actionLoading ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }
