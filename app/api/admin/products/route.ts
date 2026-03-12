@@ -10,7 +10,7 @@ function generateVbId(): string {
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    const items = await VidaProduct.find({});
+    const items = await VidaProduct.find({}).lean();
     return NextResponse.json(items);
   } catch (error) {
     console.error("Error fetching products:", error);

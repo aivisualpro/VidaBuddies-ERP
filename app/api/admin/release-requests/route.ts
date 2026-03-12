@@ -12,16 +12,19 @@ export async function GET() {
   try {
     await connectToDatabase();
     const requests = await VidaReleaseRequest.find()
-      .populate("warehouse")
-      .populate("customer")
-      .populate("requestedBy")
+      .populate("warehouse", "name")
+      .populate("customer", "name location")
+      .populate("requestedBy", "name email")
       .populate({
          path: 'releaseOrderProducts.product',
-         model: 'VidaProduct'
+         model: 'VidaProduct',
+         select: 'name vbId'
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     return NextResponse.json(requests);
   } catch (error: any) {
+    console.error("Release Requests GET Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

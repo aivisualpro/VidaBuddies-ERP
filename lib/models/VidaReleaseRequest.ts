@@ -52,6 +52,9 @@ const VidaReleaseRequestSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Index for the main listing query which sorts by createdAt descending
+VidaReleaseRequestSchema.index({ createdAt: -1 });
+
 const VidaReleaseRequest: Model<IVidaReleaseRequest> = mongoose.models.VidaReleaseRequest || mongoose.model<IVidaReleaseRequest>('VidaReleaseRequest', VidaReleaseRequestSchema);
 
 export default VidaReleaseRequest;

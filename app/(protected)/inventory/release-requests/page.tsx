@@ -58,6 +58,8 @@ export default function ReleaseRequestsPage() {
   const [users, setUsers] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
+  const [formDataLoading, setFormDataLoading] = useState(false);
+  const [formDataLoaded, setFormDataLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ReleaseRequest | null>(null);
   
@@ -85,32 +87,53 @@ export default function ReleaseRequestsPage() {
 
   const [formData, setFormData] = useState<Partial<ReleaseRequest>>(defaultFormData);
 
-  const fetchData = async () => {
-    setLoading(true);
+  // Phase 1: Fetch only release requests (fast page load)
+  const fetchReleaseRequests = async () => {
     try {
-      const [requestsRes, productsRes, warehousesRes, customersRes, usersRes] = await Promise.all([
-        fetch("/api/admin/release-requests"),
+      const res = await fetch("/api/admin/release-requests");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const items = await res.json();
+      setData(items);
+    } catch (error: any) {
+      console.error("Failed to fetch release requests:", error);
+      toast.error(`Failed to load release requests: ${error.message}`);
+    }
+  };
+
+  // Phase 2: Lazy-load form dropdown data (only when dialog opens)
+  const fetchFormData = async () => {
+    if (formDataLoaded) return; // Already loaded, skip
+    setFormDataLoading(true);
+    try {
+      const [productsRes, warehousesRes, customersRes, usersRes] = await Promise.all([
         fetch("/api/admin/products"),
         fetch("/api/admin/warehouse"),
-        fetch("/api/admin/customers"), // Assuming endpoint exists
-        fetch("/api/admin/users"),     // Assuming endpoint exists
+        fetch("/api/admin/customers"),
+        fetch("/api/admin/users"),
       ]);
 
-      if (requestsRes.ok) setData(await requestsRes.json());
-      if (productsRes.ok) setProducts((await productsRes.json()).sort((a: any, b: any) => a.name.localeCompare(b.name)));
-      if (warehousesRes.ok) setWarehouses((await warehousesRes.json()).sort((a: any, b: any) => a.name.localeCompare(b.name)));
+      if (productsRes.ok) setProducts((await productsRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
+      if (warehousesRes.ok) setWarehouses((await warehousesRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
       if (customersRes.ok) setCustomers(await customersRes.json());
       if (usersRes.ok) setUsers(await usersRes.json());
-      
+      setFormDataLoaded(true);
     } catch (error) {
-      toast.error("Failed to fetch data");
+      toast.error("Failed to load form data");
     } finally {
-      setLoading(false);
+      setFormDataLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    const load = async () => {
+      setLoading(true);
+      await fetchReleaseRequests();
+      setLoading(false);
+    };
+    load();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -142,7 +165,7 @@ export default function ReleaseRequestsPage() {
 
       toast.success(editingItem ? "Update successful" : "Creation successful");
       setIsDialogOpen(false);
-      fetchData();
+      fetchReleaseRequests();
     } catch (error) {
       toast.error("An error occurred while saving");
       console.error(error);
@@ -157,7 +180,7 @@ export default function ReleaseRequestsPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Deleted successfully");
-      fetchData();
+      fetchReleaseRequests();
     } catch (error) {
       toast.error("Failed to delete item");
     }
@@ -168,6 +191,7 @@ export default function ReleaseRequestsPage() {
     setProductSearch("");
     setFormData(defaultFormData);
     setIsDialogOpen(true);
+    fetchFormData(); // Lazy-load dropdown data on first dialog open
   };
 
   const openEditDialog = (item: ReleaseRequest) => {
@@ -183,6 +207,7 @@ export default function ReleaseRequestsPage() {
       releaseOrderProducts: item.releaseOrderProducts.length > 0 ? item.releaseOrderProducts : defaultFormData.releaseOrderProducts
     });
     setIsDialogOpen(true);
+    fetchFormData(); // Lazy-load dropdown data on first dialog open
   };
 
   // Helper for Product Rows
@@ -293,6 +318,12 @@ export default function ReleaseRequestsPage() {
             </DialogDescription>
           </DialogHeader>
           
+          {formDataLoading && (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mr-3" />
+              Loading form data...
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-8 py-4">
             
             {/* SECTION 1: General Info */}

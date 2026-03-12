@@ -5,7 +5,7 @@ import VidaCustomer from "@/lib/models/VidaCustomer";
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    const items = await VidaCustomer.find({});
+    const items = await VidaCustomer.find({}).lean();
     return NextResponse.json(items);
   } catch (error) {
     console.error("Error fetching customers:", error);

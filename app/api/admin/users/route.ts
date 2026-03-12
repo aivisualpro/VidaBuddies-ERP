@@ -5,7 +5,7 @@ import VidaUser from "@/lib/models/VidaUser";
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    const items = await VidaUser.find({});
+    const items = await VidaUser.find({}).lean();
     return NextResponse.json(items);
   } catch (error) {
     console.error("Error fetching users:", error);
