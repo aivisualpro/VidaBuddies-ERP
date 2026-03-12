@@ -3,10 +3,15 @@ import connectToDatabase from "@/lib/db";
 import VidaReleaseRequest from "@/lib/models/VidaReleaseRequest";
 import VidaProduct from "@/lib/models/VidaProduct";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
+import VidaCustomer from "@/lib/models/VidaCustomer";
+import VidaUser from "@/lib/models/VidaUser";
 import { getSession } from "@/lib/auth";
 
 // Force dynamic to ensure fresh data
 export const dynamic = "force-dynamic";
+
+// Ensure all populated models are registered (prevents tree-shaking in production)
+const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser };
 
 export async function GET() {
   try {
@@ -17,7 +22,7 @@ export async function GET() {
       .populate("requestedBy", "name email")
       .populate({
          path: 'releaseOrderProducts.product',
-         model: 'VidaProduct',
+         model: _models.VidaProduct.modelName,
          select: 'name vbId'
       })
       .sort({ createdAt: -1 })
