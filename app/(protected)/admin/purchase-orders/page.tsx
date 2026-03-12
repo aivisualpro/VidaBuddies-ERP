@@ -382,6 +382,39 @@ export default function PurchaseOrdersPage() {
       },
     },
     {
+      id: "completion",
+      header: "Completion",
+      cell: ({ row }) => {
+        let totalOrdered = 0;
+        let totalReceived = 0;
+        row.original.customerPO?.forEach((cpo: any) => {
+          totalOrdered += Number(cpo.qtyOrdered) || 0;
+          totalReceived += Number(cpo.qtyReceived) || 0;
+        });
+
+        const percent = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+        
+        return (
+          <div className="w-20 group relative">
+            <div className="flex items-center justify-between text-[10px] font-bold mb-1">
+              <span className={percent >= 100 ? "text-emerald-600 dark:text-emerald-400" : percent > 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
+                {percent}%
+              </span>
+              <span className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity absolute right-0 -top-4 whitespace-nowrap bg-white/90 dark:bg-black/90 px-1 py-0.5 rounded shadow border">
+                {totalReceived.toLocaleString()} / {totalOrdered.toLocaleString()}
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden shadow-inner">
+              <div 
+                className={`h-full transition-all duration-700 ease-out rounded-full ${percent >= 100 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : percent > 50 ? 'bg-blue-500' : percent > 0 ? 'bg-amber-400' : 'bg-transparent'}`}
+                style={{ width: `${Math.min(percent, 100)}%` }}
+              />
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       id: "timeline",
       header: "Timeline",
       cell: ({ row }) => {
