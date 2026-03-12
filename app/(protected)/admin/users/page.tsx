@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { UserForm } from "@/components/admin/user-form";
 import { Button } from "@/components/ui/button";
@@ -50,56 +51,44 @@ interface User {
 }
 
 export default function UsersPage() {
-  const [data, setData] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    users: rawUsers, 
+    isLoading,
+    refetchUsers
+  } = useUserDataStore();
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<User | null>(null);
 
   const router = useRouter();
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/users");
-      const users = await response.json();
-      if (Array.isArray(users)) {
-        const sortedUsers = users.sort((a: User, b: User) => {
-             // 1. Primary Sort: Serial No
-             const serialA = a.serialNo ? String(a.serialNo).trim() : "";
-             const serialB = b.serialNo ? String(b.serialNo).trim() : "";
+  const data = useMemo(() => {
+    return [...rawUsers].sort((a: any, b: any) => {
+      // 1. Primary Sort: Serial No
+      const serialA = a.serialNo ? String(a.serialNo).trim() : "";
+      const serialB = b.serialNo ? String(b.serialNo).trim() : "";
 
-             if (serialA && serialB) {
-                 // Try numeric sort first if both look like numbers
-                 const numA = Number(serialA);
-                 const numB = Number(serialB);
-                 if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
-                     return numA - numB;
-                 }
-                 // Alpha-numeric sort strings (e.g. A1 vs A2)
-                 if (serialA !== serialB) {
-                    return serialA.localeCompare(serialB, undefined, { numeric: true });
-                 }
-             }
-             
-             // Put items WITH serialNo before items WITHOUT
-             if (serialA && !serialB) return -1;
-             if (!serialA && serialB) return 1;
-
-             // 2. Secondary Sort: Name
-             return (a.name || "").localeCompare(b.name || "");
-        });
-        setData(sortedUsers);
+      if (serialA && serialB) {
+          // Try numeric sort first if both look like numbers
+          const numA = Number(serialA);
+          const numB = Number(serialB);
+          if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+              return numA - numB;
+          }
+          // Alpha-numeric sort strings (e.g. A1 vs A2)
+          if (serialA !== serialB) {
+            return serialA.localeCompare(serialB, undefined, { numeric: true });
+          }
       }
-    } catch (error) {
-      toast.error("Failed to fetch users");
-    } finally {
-      setLoading(false);
-    }
-  };
+      
+      // Put items WITH serialNo before items WITHOUT
+      if (serialA && !serialB) return -1;
+      if (!serialA && serialB) return 1;
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+      // 2. Secondary Sort: Name
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }, [rawUsers]);
 
   const handleSubmit = async (formData: Partial<User>) => {
     try {
@@ -118,7 +107,7 @@ export default function UsersPage() {
 
       toast.success(editingItem ? "User updated successfully" : "User created successfully");
       setIsSheetOpen(false);
-      fetchUsers();
+      refetchUsers();
     } catch (error) {
        toast.error("Failed to save user");
     }
@@ -135,7 +124,7 @@ export default function UsersPage() {
                     });
                     if (!response.ok) throw new Error("Failed to delete user");
                     toast.success("User deleted successfully");
-                    fetchUsers();
+                    refetchUsers();
                 } catch (error) {
                     toast.error("Failed to delete user");
                 }
@@ -212,10 +201,9 @@ export default function UsersPage() {
               onCheckedChange={async (checked) => {
                  try {
                     // Optimistic update
-                    const updatedData = data.map(u => 
+                    useUserDataStore.setState({ users: rawUsers.map(u => 
                       u._id === row.original._id ? { ...u, isActive: checked } : u
-                    );
-                    setData(updatedData);
+                    )});
 
                     const response = await fetch(`/api/admin/users/${row.original._id}`, {
                        method: "PUT",
@@ -229,7 +217,7 @@ export default function UsersPage() {
                     toast.success(`User ${checked ? 'activated' : 'deactivated'}`);
                  } catch (err) {
                     toast.error("Failed to update status");
-                    fetchUsers(); // Revert on failure
+                    refetchUsers(); // Revert on failure
                  }
               }}
            />
@@ -290,7 +278,7 @@ export default function UsersPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 
@@ -301,7 +289,7 @@ export default function UsersPage() {
          columns={columns} 
          title="Users" 
          onAdd={() => openAddSheet()} 
-         loading={loading}
+         loading={isLoading}
          showColumnToggle={false}
       />
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>

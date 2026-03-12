@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,9 +49,25 @@ function normalizeStatus(raw: string): string {
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
-  const [data, setData] = useState<PurchaseOrder[]>([]);
-  const [users, setUsers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  
+  // Connect to global store
+  const { purchaseOrders, users: rawUsers, isLoading, refetchPurchaseOrders } = useUserDataStore();
+  
+  // Sort latest on top
+  const data = useMemo(() => {
+    return [...purchaseOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [purchaseOrders]);
+
+  const users = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    if (Array.isArray(rawUsers)) {
+      rawUsers.forEach((u: any) => {
+        if(u.email) mapping[u.email.toLowerCase()] = u.name;
+      });
+    }
+    return mapping;
+  }, [rawUsers]);
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PurchaseOrder | null>(null);
 
@@ -72,40 +89,7 @@ export default function PurchaseOrdersPage() {
     date: new Date().toISOString().split('T')[0],
   });
 
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch("/api/admin/users");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        const mapping: Record<string, string> = {};
-        data.forEach((u: any) => {
-          mapping[u.email.toLowerCase()] = u.name;
-        });
-        setUsers(mapping);
-      }
-    } catch (error) {
-      console.error("Failed to fetch users", error);
-    }
-  };
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/purchase-orders");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        // Sort latest on top
-        const sortedItems = [...items].sort((a, b) =>
-          new Date(b.date).getTime() - new Date(a.date).getTime()
-        );
-        setData(sortedItems);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch purchase orders");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // After data loads, fetch email counts
   useEffect(() => {
@@ -154,8 +138,6 @@ export default function PurchaseOrdersPage() {
   };
 
   useEffect(() => {
-    fetchItems();
-    fetchUsers();
     fetchTimelineCounts();
   }, []);
 
@@ -177,7 +159,7 @@ export default function PurchaseOrdersPage() {
 
       toast.success(editingItem ? "Purchase Order updated" : "Purchase Order created");
       setIsSheetOpen(false);
-      fetchItems();
+      refetchPurchaseOrders();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -191,7 +173,7 @@ export default function PurchaseOrdersPage() {
         body: JSON.stringify({ [field]: value }),
       });
       if (!response.ok) throw new Error("Failed");
-      setData(prev => prev.map(po => po._id === id ? { ...po, [field]: value } : po));
+      refetchPurchaseOrders();
       toast.success(`Updated ${field}`);
     } catch {
       toast.error(`Failed to update ${field}`);
@@ -206,7 +188,7 @@ export default function PurchaseOrdersPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Purchase Order deleted");
-      fetchItems();
+      refetchPurchaseOrders();
     } catch (error) {
       toast.error("Failed to delete purchase order");
     }
@@ -456,7 +438,7 @@ export default function PurchaseOrdersPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 
@@ -469,8 +451,8 @@ export default function PurchaseOrdersPage() {
     if (filterOrderType && po.orderType !== filterOrderType) return false;
     if (filterCategory && po.category !== filterCategory) return false;
     if (filterShipStatus) {
-      const hasStatus = po.customerPO?.some(cpo =>
-        cpo.shipping?.some(ship => normalizeStatus(ship.status || '') === filterShipStatus)
+      const hasStatus = po.customerPO?.some((cpo: any) =>
+        cpo.shipping?.some((ship: any) => normalizeStatus(ship.status || '') === filterShipStatus)
       );
       if (!hasStatus) return false;
     }

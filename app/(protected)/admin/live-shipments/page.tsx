@@ -1,16 +1,11 @@
+"use client";
 
-import connectToDatabase from "@/lib/db";
-import VidaPO from "@/lib/models/VidaPO";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { LiveShipmentsTable } from "@/components/admin/live-shipments-table";
+import { TablePageSkeleton } from "@/components/skeletons";
 
-export default async function Page() {
-  await connectToDatabase();
-
-  // Get all POs that have any shipping records
-  const rawShipments = await VidaPO.find(
-    { "customerPO.shipping.0": { $exists: true } },
-    { "customerPO.shipping": 1, "customerPO.customer": 1, "customerPO.customerPONo": 1, "customerPO.poNo": 1, "vbpoNo": 1 }
-  ).lean();
+export default function LiveShipmentsPage() {
+  const { purchaseOrders: rawShipments, isLoading } = useUserDataStore();
 
   const containers: Array<{
     id: string;
@@ -37,9 +32,9 @@ export default async function Page() {
   }
 
   rawShipments.forEach((po: any) => {
-    if (po.customerPO) {
+    if (po.customerPO && Array.isArray(po.customerPO)) {
       po.customerPO.forEach((cpo: any) => {
-        if (cpo.shipping) {
+        if (cpo.shipping && Array.isArray(cpo.shipping)) {
           cpo.shipping.forEach((ship: any) => {
             const hasContainer = ship.containerNo && ship.containerNo.toLowerCase() !== "tbd";
             containers.push({
@@ -68,6 +63,10 @@ export default async function Page() {
     seen.add(key);
     return true;
   });
+
+  if (isLoading) {
+    return <TablePageSkeleton />;
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto h-full">

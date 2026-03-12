@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,8 +49,12 @@ import { TablePageSkeleton } from "@/components/skeletons";
 
 
 export default function CustomersPage() {
-  const [data, setData] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    customers: data, 
+    isLoading,
+    refetchCustomers
+  } = useUserDataStore();
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Customer | null>(null);
 
@@ -59,24 +64,6 @@ export default function CustomersPage() {
     location: [],
   });
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/customers");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setData(items);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch customers");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +83,7 @@ export default function CustomersPage() {
 
       toast.success(editingItem ? "Customer updated" : "Customer created");
       setIsSheetOpen(false);
-      fetchItems();
+      refetchCustomers();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -110,7 +97,7 @@ export default function CustomersPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Customer deleted");
-      fetchItems();
+      refetchCustomers();
     } catch (error) {
       toast.error("Failed to delete customer");
     }
@@ -260,7 +247,7 @@ export default function CustomersPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 

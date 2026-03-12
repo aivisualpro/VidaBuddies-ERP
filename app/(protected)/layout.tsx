@@ -7,6 +7,7 @@ import { getSession, logout } from "@/lib/auth";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 import { redirect } from "next/navigation";
+import { StoreInitializer } from "@/store/StoreInitializer";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -42,6 +43,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           } as React.CSSProperties
         }
       >
+        <StoreInitializer />
         <AppSidebar variant="inset" />
         <SidebarInset className="flex flex-col h-full overflow-hidden bg-background shadow-none border-none m-0">
           <SiteHeader />

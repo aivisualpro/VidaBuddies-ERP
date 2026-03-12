@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
 import { useEffect, useState } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,9 +57,14 @@ interface Category {
 
 export default function ProductsPage() {
   const router = useRouter();
-  const [data, setData] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  const { 
+    products: data, 
+    categories, 
+    isLoading,
+    refetchProducts
+  } = useUserDataStore();
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Product | null>(null);
 
@@ -68,37 +73,6 @@ export default function ProductsPage() {
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/products");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setData(items);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch products");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch("/api/admin/categories");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setCategories(items);
-      }
-    } catch (error) {
-      console.error("Failed to fetch categories");
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-    fetchCategories();
-  }, []);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return;
@@ -108,7 +82,7 @@ export default function ProductsPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Product deleted");
-      fetchItems();
+      refetchProducts();
     } catch (error) {
       toast.error("Failed to delete product");
     }
@@ -226,7 +200,7 @@ export default function ProductsPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <ProductsPageSkeleton />;
   }
 
@@ -302,7 +276,7 @@ export default function ProductsPage() {
                       
                       {expandedCategories.includes(cat.category) && (
                         <div className="pl-4 space-y-1 border-l ml-4 border-border/50">
-                           {cat.subcategories?.map((sub, idx) => {
+                           {cat.subcategories?.map((sub: any, idx: number) => {
                              const subCount = data.filter(p => p.category === cat.category && p.subcategory === sub.subcategory).length;
                              const isSubActive = selectedSubcategory === sub.subcategory;
                              
@@ -363,7 +337,7 @@ export default function ProductsPage() {
         initialData={editingItem} 
         categories={categories}
         allProducts={data}
-        onSuccess={fetchItems}
+        onSuccess={refetchProducts}
       />
     </div>
   );

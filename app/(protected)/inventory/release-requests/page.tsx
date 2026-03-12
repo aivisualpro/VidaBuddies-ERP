@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 
@@ -132,16 +133,22 @@ function ProductCombobox({ products, value, onChange }: { products: any[]; value
 }
 
 export default function ReleaseRequestsPage() {
-  const [data, setData] = useState<ReleaseRequest[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [carriers, setCarriers] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-  const [formDataLoading, setFormDataLoading] = useState(false);
-  const [formDataLoaded, setFormDataLoaded] = useState(false);
+  const { 
+    releaseRequests: rawData, 
+    products, 
+    warehouses, 
+    customers, 
+    users, 
+    carriers, 
+    isLoading,
+    refetchReleaseRequests,
+    refetchCarriers
+  } = useUserDataStore();
+
+  const data = useMemo(() => {
+    return [...rawData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [rawData]);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ReleaseRequest | null>(null);
   
@@ -174,56 +181,7 @@ export default function ReleaseRequestsPage() {
 
   const [formData, setFormData] = useState<Partial<ReleaseRequest>>(defaultFormData);
 
-  // Phase 1: Fetch only release requests (fast page load)
-  const fetchReleaseRequests = async () => {
-    try {
-      const res = await fetch("/api/admin/release-requests");
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || `HTTP ${res.status}`);
-      }
-      const items = await res.json();
-      setData(items);
-    } catch (error: any) {
-      console.error("Failed to fetch release requests:", error);
-      toast.error(`Failed to load release requests: ${error.message}`);
-    }
-  };
 
-  // Phase 2: Lazy-load form dropdown data (only when dialog opens)
-  const fetchFormData = async () => {
-    if (formDataLoaded) return; // Already loaded, skip
-    setFormDataLoading(true);
-    try {
-      const [productsRes, warehousesRes, customersRes, usersRes, carriersRes] = await Promise.all([
-        fetch("/api/admin/products"),
-        fetch("/api/admin/warehouse"),
-        fetch("/api/admin/customers"),
-        fetch("/api/admin/users"),
-        fetch("/api/admin/carriers"),
-      ]);
-
-      if (productsRes.ok) setProducts((await productsRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
-      if (warehousesRes.ok) setWarehouses((await warehousesRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
-      if (customersRes.ok) setCustomers(await customersRes.json());
-      if (usersRes.ok) setUsers(await usersRes.json());
-      if (carriersRes.ok) setCarriers(await carriersRes.json());
-      setFormDataLoaded(true);
-    } catch (error) {
-      toast.error("Failed to load form data");
-    } finally {
-      setFormDataLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      await fetchReleaseRequests();
-      setLoading(false);
-    };
-    load();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,7 +212,7 @@ export default function ReleaseRequestsPage() {
 
       toast.success(editingItem ? "Update successful" : "Creation successful");
       setIsDialogOpen(false);
-      fetchReleaseRequests();
+      refetchReleaseRequests();
     } catch (error) {
       toast.error("An error occurred while saving");
       console.error(error);
@@ -273,7 +231,7 @@ export default function ReleaseRequestsPage() {
             });
             if (!response.ok) throw new Error("Failed to delete");
             toast.success("Deleted successfully");
-            fetchReleaseRequests();
+            refetchReleaseRequests();
           } catch (error) {
             toast.error("Failed to delete item");
           }
@@ -290,7 +248,6 @@ export default function ReleaseRequestsPage() {
     setEditingItem(null);
     setFormData(defaultFormData);
     setIsDialogOpen(true);
-    fetchFormData();
   };
 
   const openEditDialog = (item: ReleaseRequest) => {
@@ -311,7 +268,6 @@ export default function ReleaseRequestsPage() {
         : defaultFormData.releaseOrderProducts
     });
     setIsDialogOpen(true);
-    fetchFormData();
   };
 
   // Helper for Product Rows
@@ -446,7 +402,7 @@ export default function ReleaseRequestsPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 
@@ -473,12 +429,6 @@ export default function ReleaseRequestsPage() {
             </DialogDescription>
           </DialogHeader>
           
-          {formDataLoading && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mr-3" />
-              Loading form data...
-            </div>
-          )}
           <form onSubmit={handleSubmit} className="space-y-8 py-4">
             
             {/* SECTION 1: General Info */}
@@ -712,7 +662,7 @@ export default function ReleaseRequestsPage() {
                                              });
                                              if (!res.ok) throw new Error("Failed to create carrier");
                                              const newCarrier = await res.json();
-                                             setCarriers(prev => [...prev, newCarrier].sort((a, b) => a.name.localeCompare(b.name)));
+                                             await refetchCarriers();
                                              setFormData({ ...formData, carrier: newCarrier.name });
                                              setCarrierPopoverOpen(false);
                                              setCarrierSearch("");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,8 +155,11 @@ function SortableSubcategoryRow({
 
 
 export default function CategoriesPage() {
-  const [data, setData] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    categories: data, 
+    isLoading,
+    refetchCategories
+  } = useUserDataStore();
   
   // Edit/Add Sheet State
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -174,24 +178,6 @@ export default function CategoriesPage() {
     })
   );
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/categories");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setData(items);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch categories");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +202,7 @@ export default function CategoriesPage() {
 
       toast.success(editingItem ? "Category updated" : "Category created");
       setIsSheetOpen(false);
-      fetchItems();
+      refetchCategories();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -232,7 +218,7 @@ export default function CategoriesPage() {
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Category deleted");
       if (viewingItem?._id === id) setViewingItem(null);
-      fetchItems();
+      refetchCategories();
     } catch (error) {
       toast.error("Failed to delete category");
     }
@@ -240,7 +226,7 @@ export default function CategoriesPage() {
 
   const handleStatusToggle = async (item: Category, checked: boolean) => {
     // Optimistic update
-    setData(prev => prev.map(c => c._id === item._id ? { ...c, isOnWebsite: checked } : c));
+    useUserDataStore.setState({ categories: data.map(c => c._id === item._id ? { ...c, isOnWebsite: checked } : c) });
     
     try {
        const response = await fetch(`/api/admin/categories/${item._id}`, {
@@ -252,7 +238,7 @@ export default function CategoriesPage() {
       toast.success("Status updated");
     } catch (error) {
        toast.error("Failed to update status");
-       fetchItems(); // Revert on error
+       refetchCategories(); // Revert on error
     }
   }
 
@@ -264,7 +250,7 @@ export default function CategoriesPage() {
     const updatedCategory = { ...category, subcategories: newSubcategories };
 
     // Optimistic update
-    setData(prev => prev.map(c => c._id === category._id ? updatedCategory : c));
+    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
     setViewingItem(updatedCategory);
 
     try {
@@ -277,7 +263,7 @@ export default function CategoriesPage() {
       toast.success("Subcategory status updated");
     } catch (error) {
         toast.error("Failed to update status");
-        fetchItems(); 
+        refetchCategories(); 
     }
   }
 
@@ -350,7 +336,7 @@ export default function CategoriesPage() {
   };
 
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 
@@ -416,7 +402,7 @@ export default function CategoriesPage() {
     newSubcategories[subIndex] = { ...newSubcategories[subIndex], icon: url };
     const updatedCategory = { ...category, subcategories: newSubcategories };
     
-    setData(prev => prev.map(c => c._id === category._id ? updatedCategory : c));
+    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
     setViewingItem(updatedCategory);
 
     try {
@@ -428,7 +414,7 @@ export default function CategoriesPage() {
       toast.success("Image updated");
     } catch (error) {
         toast.error("Failed to update image");
-        fetchItems(); 
+        refetchCategories(); 
     }
   };
 
@@ -438,7 +424,7 @@ export default function CategoriesPage() {
     newSubcategories[subIndex] = { ...newSubcategories[subIndex], subcategory: name };
     const updatedCategory = { ...category, subcategories: newSubcategories };
     
-    setData(prev => prev.map(c => c._id === category._id ? updatedCategory : c));
+    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
     setViewingItem(updatedCategory);
 
     try {
@@ -449,7 +435,7 @@ export default function CategoriesPage() {
       });
     } catch (error) {
         toast.error("Failed to update name");
-        fetchItems(); 
+        refetchCategories(); 
     }
   };
 
@@ -466,7 +452,7 @@ export default function CategoriesPage() {
         subcategories: [...(viewingItem.subcategories || []), newSub] 
      };
 
-     setData(prev => prev.map(c => c._id === viewingItem._id ? updatedCategory : c));
+     useUserDataStore.setState({ categories: data.map(c => c._id === viewingItem._id ? updatedCategory : c) });
      setViewingItem(updatedCategory);
 
      try {
@@ -478,7 +464,7 @@ export default function CategoriesPage() {
        toast.success("Subcategory added");
      } catch (error) {
          toast.error("Failed to add subcategory");
-         fetchItems();
+         refetchCategories();
      }
   };
 

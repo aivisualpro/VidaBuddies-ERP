@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +43,12 @@ import { Plus, Globe } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
 export default function SuppliersPage() {
-  const [data, setData] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    suppliers: data, 
+    isLoading,
+    refetchSuppliers
+  } = useUserDataStore();
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Supplier | null>(null);
 
@@ -53,24 +58,6 @@ export default function SuppliersPage() {
     location: [],
   });
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/suppliers");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setData(items);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch suppliers");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +77,7 @@ export default function SuppliersPage() {
 
       toast.success(editingItem ? "Supplier updated" : "Supplier created");
       setIsSheetOpen(false);
-      fetchItems();
+      refetchSuppliers();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -104,7 +91,7 @@ export default function SuppliersPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Supplier deleted");
-      fetchItems();
+      refetchSuppliers();
     } catch (error) {
       toast.error("Failed to delete supplier");
     }
@@ -252,7 +239,7 @@ export default function SuppliersPage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 

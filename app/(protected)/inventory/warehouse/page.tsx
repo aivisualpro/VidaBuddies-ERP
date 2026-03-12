@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,8 +26,12 @@ interface Warehouse {
 }
 
 export default function WarehousePage() {
-  const [data, setData] = useState<Warehouse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    warehouses: data, 
+    isLoading,
+    refetchWarehouses
+  } = useUserDataStore();
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Warehouse | null>(null);
 
@@ -35,24 +40,6 @@ export default function WarehousePage() {
     address: "",
   });
 
-  const fetchItems = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/warehouse");
-      const items = await response.json();
-      if (Array.isArray(items)) {
-        setData(items);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch warehouses");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +59,7 @@ export default function WarehousePage() {
 
       toast.success(editingItem ? "Warehouse updated" : "Warehouse created");
       setIsSheetOpen(false);
-      fetchItems();
+      refetchWarehouses();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -86,7 +73,7 @@ export default function WarehousePage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Warehouse deleted");
-      fetchItems();
+      refetchWarehouses();
     } catch (error) {
       toast.error("Failed to delete warehouse");
     }
@@ -160,7 +147,7 @@ export default function WarehousePage() {
     },
   ];
 
-  if (loading) {
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 

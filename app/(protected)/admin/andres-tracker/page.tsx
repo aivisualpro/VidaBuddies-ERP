@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import {
   ColumnDef,
   flexRender,
@@ -87,8 +88,8 @@ interface TrackerRecord {
 }
 
 export default function AndresTrackerPage() {
-  const [data, setData] = useState<TrackerRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { andresTracker: data, isLoading } = useUserDataStore();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "tabs">("table");
   const router = useRouter();
@@ -151,26 +152,10 @@ export default function AndresTrackerPage() {
     };
   }, [setLeftContent, setRightContent, router, viewMode]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/andres-tracker");
-      if (!response.ok) throw new Error("Failed to fetch data");
-      const result = await response.json();
-      setData(result);
-    } catch (error) {
-      toast.error("Failed to load tracker data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
 
-  if (loading) {
+
+  if (isLoading) {
     return <TablePageSkeleton />;
   }
 
