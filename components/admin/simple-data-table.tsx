@@ -43,6 +43,9 @@ interface SimpleDataTableProps<TData, TValue> {
   title?: string;
   loading?: boolean;
   headerExtra?: React.ReactNode;
+  globalFilter?: string;
+  onGlobalFilterChange?: (value: string) => void;
+  globalFilterFn?: (row: any, columnId: string, filterValue: string) => boolean;
 }
 
 export function SimpleDataTable<TData, TValue>({
@@ -55,6 +58,9 @@ export function SimpleDataTable<TData, TValue>({
   title,
   loading,
   headerExtra,
+  globalFilter: externalGlobalFilter,
+  onGlobalFilterChange,
+  globalFilterFn,
 }: SimpleDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -75,12 +81,15 @@ export function SimpleDataTable<TData, TValue>({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    ...(externalGlobalFilter !== undefined && { globalFilterFn: globalFilterFn || "includesString" }),
     state: {
       sorting,
       columnFilters,
       columnVisibility,
       rowSelection,
+      ...(externalGlobalFilter !== undefined && { globalFilter: externalGlobalFilter }),
     },
+    ...(onGlobalFilterChange && { onGlobalFilterChange }),
     initialState: {
       pagination: {
         pageSize: 25,
@@ -94,7 +103,14 @@ export function SimpleDataTable<TData, TValue>({
     setActions(
       <div className="flex items-center gap-2">
         {headerExtra}
-        {searchKey && (
+        {externalGlobalFilter !== undefined && onGlobalFilterChange ? (
+          <Input
+            placeholder="Search..."
+            value={externalGlobalFilter}
+            onChange={(event) => onGlobalFilterChange(event.target.value)}
+            className="max-w-sm h-8"
+          />
+        ) : searchKey ? (
           <Input
             placeholder={`Filter by ${searchKey}...`}
             value={
@@ -105,7 +121,7 @@ export function SimpleDataTable<TData, TValue>({
             }
             className="max-w-sm h-8"
           />
-        )}
+        ) : null}
         {showColumnToggle && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -162,6 +178,8 @@ export function SimpleDataTable<TData, TValue>({
     onAdd,
     showColumnToggle,
     headerExtra,
+    externalGlobalFilter,
+    onGlobalFilterChange,
     // Add these dependencies to ensure updates when filters/visibility change
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(table.getState().columnFilters),

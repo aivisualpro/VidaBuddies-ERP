@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +65,68 @@ interface ReleaseRequest {
   createdAt: string;
 }
 
+// Self-contained product combobox — each row has its own state
+function ProductCombobox({ products, value, onChange }: { products: any[]; value: string; onChange: (val: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const selectedProduct = products.find(p => p._id === value);
+  const filtered = search
+    ? products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    : products;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between h-8 px-2 font-normal text-left"
+        >
+          <span className="truncate">
+            {selectedProduct?.name || <span className="text-muted-foreground">Select product...</span>}
+          </span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[350px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search products..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            <CommandEmpty>No products found.</CommandEmpty>
+            <CommandGroup>
+              {filtered.map((p) => (
+                <CommandItem
+                  key={p._id}
+                  value={p._id}
+                  onSelect={() => {
+                    onChange(p._id);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 shrink-0",
+                      value === p._id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <span className="truncate">{p.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function ReleaseRequestsPage() {
   const [data, setData] = useState<ReleaseRequest[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -79,8 +141,11 @@ export default function ReleaseRequestsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ReleaseRequest | null>(null);
   
+  // Search & filter states
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [warehouseFilter, setWarehouseFilter] = useState<string>("all");
+  
   // Search states for dropdowns
-  const [productSearch, setProductSearch] = useState("");
   const [carrierSearch, setCarrierSearch] = useState("");
   const [carrierPopoverOpen, setCarrierPopoverOpen] = useState(false);
 
@@ -192,31 +257,40 @@ export default function ReleaseRequestsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this release request?")) return;
-    try {
-      const response = await fetch(`/api/admin/release-requests/${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) throw new Error("Failed to delete");
-      toast.success("Deleted successfully");
-      fetchReleaseRequests();
-    } catch (error) {
-      toast.error("Failed to delete item");
-    }
+  const handleDelete = (id: string) => {
+    toast.warning("Are you sure you want to delete this release request?", {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            const response = await fetch(`/api/admin/release-requests/${id}`, {
+              method: "DELETE",
+            });
+            if (!response.ok) throw new Error("Failed to delete");
+            toast.success("Deleted successfully");
+            fetchReleaseRequests();
+          } catch (error) {
+            toast.error("Failed to delete item");
+          }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
+    });
   };
 
   const openAddDialog = () => {
     setEditingItem(null);
-    setProductSearch("");
     setFormData(defaultFormData);
     setIsDialogOpen(true);
-    fetchFormData(); // Lazy-load dropdown data on first dialog open
+    fetchFormData();
   };
 
   const openEditDialog = (item: ReleaseRequest) => {
     setEditingItem(item);
-    setProductSearch("");
     setFormData({
       ...item,
       warehouse: item.warehouse?._id || item.warehouse,
@@ -224,10 +298,16 @@ export default function ReleaseRequestsPage() {
       customer: item.customer?._id || item.customer,
       date: item.date ? new Date(item.date).toISOString().split('T')[0] : "",
       scheduledPickupDate: item.scheduledPickupDate ? new Date(item.scheduledPickupDate).toISOString().split('T')[0] : "",
-      releaseOrderProducts: item.releaseOrderProducts.length > 0 ? item.releaseOrderProducts : defaultFormData.releaseOrderProducts
+      releaseOrderProducts: item.releaseOrderProducts.length > 0
+        ? item.releaseOrderProducts.map(p => ({
+            product: typeof p.product === 'object' ? (p.product as any)?._id || '' : p.product,
+            qty: p.qty,
+            lotSerial: p.lotSerial,
+          }))
+        : defaultFormData.releaseOrderProducts
     });
     setIsDialogOpen(true);
-    fetchFormData(); // Lazy-load dropdown data on first dialog open
+    fetchFormData();
   };
 
   // Helper for Product Rows
@@ -255,9 +335,52 @@ export default function ReleaseRequestsPage() {
   // Get selected Customer object to show locations
   const selectedCustomer = customers.find(c => c._id === formData.customer);
 
-  if (loading) {
-    return <TablePageSkeleton />;
-  }
+  // Derive unique warehouses from loaded data for filter
+  const warehouseList = useMemo(() => {
+    const map = new Map<string, string>();
+    data.forEach(d => {
+      if (d.warehouse?._id && d.warehouse?.name) {
+        map.set(d.warehouse._id, d.warehouse.name);
+      }
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [data]);
+
+  // Filter data by warehouse
+  const filteredData = useMemo(() => {
+    if (warehouseFilter === "all") return data;
+    return data.filter(d => d.warehouse?._id === warehouseFilter);
+  }, [data, warehouseFilter]);
+
+  // Custom global filter that searches across key fields
+  const globalFilterFn = useCallback((row: any, _columnId: string, filterValue: string) => {
+    const search = filterValue.toLowerCase();
+    const d = row.original as ReleaseRequest;
+    return [
+      d.poNo,
+      d.customer?.name,
+      d.warehouse?.name,
+      d.carrier,
+      d.createdBy,
+      d.contact,
+      d.date ? format(new Date(d.date), "MMM dd, yyyy") : "",
+    ].some(val => val?.toLowerCase().includes(search));
+  }, []);
+
+  // Header extra: warehouse filter dropdown
+  const headerExtra = (
+    <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+      <SelectTrigger className="h-8 w-[180px] text-xs">
+        <SelectValue placeholder="All Warehouses" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All Warehouses</SelectItem>
+        {warehouseList.map(([id, name]) => (
+          <SelectItem key={id} value={id}>{name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   const columns: ColumnDef<ReleaseRequest>[] = [
     {
@@ -319,14 +442,22 @@ export default function ReleaseRequestsPage() {
     },
   ];
 
+  if (loading) {
+    return <TablePageSkeleton />;
+  }
+
   return (
     <div className="w-full h-full overflow-hidden">
       <SimpleDataTable
         columns={columns}
-        data={data}
-        searchKey="poNo"
+        data={filteredData}
         onAdd={openAddDialog}
         title="Release Requests"
+        showColumnToggle={false}
+        globalFilter={globalSearch}
+        onGlobalFilterChange={setGlobalSearch}
+        globalFilterFn={globalFilterFn}
+        headerExtra={headerExtra}
       />
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -470,30 +601,11 @@ export default function ReleaseRequestsPage() {
                             {formData.releaseOrderProducts?.map((row, idx) => (
                                 <tr key={idx} className="bg-background">
                                     <td className="p-2">
-                                         <Select 
-                                            value={row.product} 
-                                            onValueChange={(val) => updateProductRow(idx, 'product', val)}
-                                         >
-                                            <SelectTrigger className="w-full border-none shadow-none h-8">
-                                                <SelectValue placeholder="Search Product..." />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-[300px]">
-                                                <div className="p-2 pb-1 sticky top-0 bg-background z-10">
-                                                  <Input
-                                                    placeholder="Filter products..."
-                                                    value={productSearch}
-                                                    onChange={(e) => setProductSearch(e.target.value)}
-                                                    onKeyDown={(e: any) => e.stopPropagation()}
-                                                    className="h-8"
-                                                  />
-                                                </div>
-                                                {products
-                                                  .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                                                  .map((p) => (
-                                                    <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                         <ProductCombobox
+                                           products={products}
+                                           value={row.product}
+                                           onChange={(val) => updateProductRow(idx, 'product', val)}
+                                         />
                                     </td>
                                     <td className="p-2">
                                         <Input 
