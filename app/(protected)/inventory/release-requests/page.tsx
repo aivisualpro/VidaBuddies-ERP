@@ -97,7 +97,11 @@ function ProductCombobox({ products, value, onChange }: { products: any[]; value
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList 
+            className="pointer-events-auto"
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
             <CommandEmpty>No products found.</CommandEmpty>
             <CommandGroup>
               {filtered.map((p) => (
@@ -665,7 +669,11 @@ export default function ReleaseRequestsPage() {
                                  value={carrierSearch}
                                  onValueChange={setCarrierSearch}
                                />
-                               <CommandList>
+                               <CommandList
+                                 className="pointer-events-auto"
+                                 onWheel={(e) => e.stopPropagation()}
+                                 onTouchMove={(e) => e.stopPropagation()}
+                               >
                                  <CommandEmpty className="p-0" />
                                  <CommandGroup>
                                    {carriers
