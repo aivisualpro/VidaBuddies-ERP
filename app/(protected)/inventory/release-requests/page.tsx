@@ -20,11 +20,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Plus, X, Hash, Truck, MapPin } from "lucide-react";
+import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
 import { TablePageSkeleton } from "@/components/skeletons";
+import { cn } from "@/lib/utils";
 
 interface IReleaseOrderProduct {
   product: string;
@@ -56,6 +71,7 @@ export default function ReleaseRequestsPage() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [carriers, setCarriers] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [formDataLoading, setFormDataLoading] = useState(false);
@@ -65,6 +81,8 @@ export default function ReleaseRequestsPage() {
   
   // Search states for dropdowns
   const [productSearch, setProductSearch] = useState("");
+  const [carrierSearch, setCarrierSearch] = useState("");
+  const [carrierPopoverOpen, setCarrierPopoverOpen] = useState(false);
 
   const defaultFormData: Partial<ReleaseRequest> = {
     poNo: "",
@@ -108,17 +126,19 @@ export default function ReleaseRequestsPage() {
     if (formDataLoaded) return; // Already loaded, skip
     setFormDataLoading(true);
     try {
-      const [productsRes, warehousesRes, customersRes, usersRes] = await Promise.all([
+      const [productsRes, warehousesRes, customersRes, usersRes, carriersRes] = await Promise.all([
         fetch("/api/admin/products"),
         fetch("/api/admin/warehouse"),
         fetch("/api/admin/customers"),
         fetch("/api/admin/users"),
+        fetch("/api/admin/carriers"),
       ]);
 
       if (productsRes.ok) setProducts((await productsRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
       if (warehousesRes.ok) setWarehouses((await warehousesRes.json()).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
       if (customersRes.ok) setCustomers(await customersRes.json());
       if (usersRes.ok) setUsers(await usersRes.json());
+      if (carriersRes.ok) setCarriers(await carriersRes.json());
       setFormDataLoaded(true);
     } catch (error) {
       toast.error("Failed to load form data");
@@ -514,11 +534,85 @@ export default function ReleaseRequestsPage() {
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                          <Label>Carrier</Label>
-                         <Input 
-                            value={formData.carrier || ""}
-                            onChange={(e) => setFormData({...formData, carrier: e.target.value})}
-                            placeholder="Carrier Name"
-                         />
+                         <Popover open={carrierPopoverOpen} onOpenChange={setCarrierPopoverOpen}>
+                           <PopoverTrigger asChild>
+                             <Button
+                               variant="outline"
+                               role="combobox"
+                               aria-expanded={carrierPopoverOpen}
+                               className="w-full justify-between font-normal"
+                             >
+                               {formData.carrier || "Select Carrier..."}
+                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                             </Button>
+                           </PopoverTrigger>
+                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                             <Command shouldFilter={false}>
+                               <CommandInput
+                                 placeholder="Search carriers..."
+                                 value={carrierSearch}
+                                 onValueChange={setCarrierSearch}
+                               />
+                               <CommandList>
+                                 <CommandEmpty className="p-0" />
+                                 <CommandGroup>
+                                   {carriers
+                                     .filter(c => c.name.toLowerCase().includes(carrierSearch.toLowerCase()))
+                                     .map((c) => (
+                                       <CommandItem
+                                         key={c._id}
+                                         value={c.name}
+                                         onSelect={() => {
+                                           setFormData({ ...formData, carrier: c.name });
+                                           setCarrierPopoverOpen(false);
+                                           setCarrierSearch("");
+                                         }}
+                                       >
+                                         <Check
+                                           className={cn(
+                                             "mr-2 h-4 w-4",
+                                             formData.carrier === c.name ? "opacity-100" : "opacity-0"
+                                           )}
+                                         />
+                                         {c.name}
+                                       </CommandItem>
+                                     ))}
+                                 </CommandGroup>
+                                 {carrierSearch.trim() && !carriers.some(c => c.name.toLowerCase() === carrierSearch.trim().toLowerCase()) && (
+                                   <>
+                                     <CommandSeparator />
+                                     <CommandGroup>
+                                       <CommandItem
+                                         onSelect={async () => {
+                                           try {
+                                             const res = await fetch("/api/admin/carriers", {
+                                               method: "POST",
+                                               headers: { "Content-Type": "application/json" },
+                                               body: JSON.stringify({ name: carrierSearch.trim() }),
+                                             });
+                                             if (!res.ok) throw new Error("Failed to create carrier");
+                                             const newCarrier = await res.json();
+                                             setCarriers(prev => [...prev, newCarrier].sort((a, b) => a.name.localeCompare(b.name)));
+                                             setFormData({ ...formData, carrier: newCarrier.name });
+                                             setCarrierPopoverOpen(false);
+                                             setCarrierSearch("");
+                                             toast.success(`Carrier "${newCarrier.name}" added`);
+                                           } catch {
+                                             toast.error("Failed to add carrier");
+                                           }
+                                         }}
+                                         className="text-primary"
+                                       >
+                                         <Plus className="mr-2 h-4 w-4" />
+                                         Add &quot;{carrierSearch.trim()}&quot;
+                                       </CommandItem>
+                                     </CommandGroup>
+                                   </>
+                                 )}
+                               </CommandList>
+                             </Command>
+                           </PopoverContent>
+                         </Popover>
                       </div>
                       <div className="space-y-2">
                          <Label>Requested Date/Time</Label>
