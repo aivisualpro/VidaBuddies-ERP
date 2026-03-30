@@ -8,13 +8,12 @@ interface UserDataState {
   releaseRequests: any[];
   products: any[];
   categories: any[];
+  users: any[];
+  carriers: any[];
   warehouses: any[];
   suppliers: any[];
   customers: any[];
-  users: any[];
-  carriers: any[];
   andresTracker: any[];
-  liveShipments: any[];
 
   // Action methods
   fetchInitialData: () => Promise<void>;
@@ -32,7 +31,6 @@ interface UserDataState {
   refetchUsers: () => Promise<void>;
   refetchCarriers: () => Promise<void>;
   refetchAndresTracker: () => Promise<void>;
-  refetchLiveShipments: () => Promise<void>;
 }
 
 export const useUserDataStore = create<UserDataState>((set, get) => ({
@@ -49,7 +47,6 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   users: [],
   carriers: [],
   andresTracker: [],
-  liveShipments: [],
 
   resetStore: () => set({
     isInitialized: false,
@@ -64,7 +61,6 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
     users: [],
     carriers: [],
     andresTracker: [],
-    liveShipments: [],
   }),
 
   fetchInitialData: async () => {
@@ -72,7 +68,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
     set({ isLoading: true });
     try {
       // Parallelize to be instant
-      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres, live] = await Promise.all([
+      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres] = await Promise.all([
         fetch("/api/admin/purchase-orders").then(r => r.json()),
         fetch("/api/admin/release-requests").then(r => r.json()),
         fetch("/api/admin/products").then(r => r.json()),
@@ -82,8 +78,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         fetch("/api/admin/customers").then(r => r.json()),
         fetch("/api/admin/users").then(r => r.json()),
         fetch("/api/admin/carriers").then(r => r.ok ? r.json() : []), // Handle 404s gracefully just in case
-        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : []),
-        fetch("/api/admin/live-shipments").then(r => r.ok ? r.json() : [])
+        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : [])
       ]);
       set({
         purchaseOrders: pos,
@@ -96,7 +91,6 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         users: usrs,
         carriers: cars,
         andresTracker: andres,
-        liveShipments: live,
         isInitialized: true,
         isLoading: false
       });
@@ -109,7 +103,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   refreshData: async () => {
     set({ isLoading: true });
     try {
-      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres, live] = await Promise.all([
+      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres] = await Promise.all([
         fetch("/api/admin/purchase-orders").then(r => r.json()),
         fetch("/api/admin/release-requests").then(r => r.json()),
         fetch("/api/admin/products").then(r => r.json()),
@@ -119,8 +113,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         fetch("/api/admin/customers").then(r => r.json()),
         fetch("/api/admin/users").then(r => r.json()),
         fetch("/api/admin/carriers").then(r => r.ok ? r.json() : []),
-        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : []),
-        fetch("/api/admin/live-shipments").then(r => r.ok ? r.json() : [])
+        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : [])
       ]);
       set({
         purchaseOrders: pos,
@@ -133,7 +126,6 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         users: usrs,
         carriers: cars,
         andresTracker: andres,
-        liveShipments: live,
         isLoading: false
       });
     } catch (error) {
@@ -181,9 +173,5 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   refetchAndresTracker: async () => {
     const res = await fetch("/api/admin/andres-tracker");
     if (res.ok) set({ andresTracker: await res.json() });
-  },
-  refetchLiveShipments: async () => {
-    const res = await fetch("/api/admin/live-shipments");
-    if (res.ok) set({ liveShipments: await res.json() });
   }
 }));
