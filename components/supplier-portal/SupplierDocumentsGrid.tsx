@@ -530,11 +530,11 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   };
 
   return (
-    <div className="space-y-0">
-      <div className="flex flex-col md:flex-row gap-0 md:gap-0">
+    <div className="space-y-0 md:h-[calc(100vh-160px)] flex flex-col">
+      <div className="flex flex-col md:flex-row gap-0 md:gap-0 md:h-full md:overflow-hidden">
         {/* Category Sidebar - Desktop */}
-        <div className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-border pr-0">
-          <div className="p-3 border-b border-border">
+        <div className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-border pr-0 md:h-full md:overflow-y-auto pb-6">
+          <div className="p-3 border-b border-border sticky top-0 bg-background z-10">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -617,9 +617,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 md:flex md:flex-col md:h-full md:overflow-hidden pb-8 md:pb-0">
           {/* Instructions Banner */}
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4">
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4 shrink-0">
             <div className="flex items-start gap-3">
               <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                 <Info className="h-4 w-4 text-white" />
@@ -637,17 +637,18 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           </div>
 
           {/* Desktop Table View */}
-          <div className="rounded-r-xl border border-border bg-card overflow-x-auto shadow-sm hidden md:block">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/95 backdrop-blur-sm uppercase text-[10px] font-black tracking-widest text-muted-foreground border-b border-border sticky top-0 z-10">
-                <tr>
-                  <th className="px-4 py-3 min-w-[300px]">Document Name</th>
-                  <th className="px-4 py-3 min-w-[100px]">Status</th>
-                  <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
-                  <th className="px-4 py-3 min-w-[320px]">Notes</th>
-                  <th className="px-4 py-3 text-right min-w-[140px]">Action</th>
-                </tr>
-              </thead>
+          <div className="rounded-r-xl border border-border bg-card shadow-sm hidden md:flex md:flex-col md:flex-1 md:overflow-hidden mb-6">
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/95 backdrop-blur-sm uppercase text-[10px] font-black tracking-widest text-muted-foreground border-b border-border sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-3 min-w-[300px]">Document Name</th>
+                    <th className="px-4 py-3 min-w-[100px]">Status</th>
+                    <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
+                    <th className="px-4 py-3 min-w-[320px]">Notes</th>
+                    <th className="px-4 py-3 text-right min-w-[140px]">Action</th>
+                  </tr>
+                </thead>
               <tbody className="divide-y divide-border/50">
                 {Object.entries(groupedDocs).map(([category, docs]) => (
                   <React.Fragment key={category}>
@@ -678,6 +679,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Mobile Card View */}
