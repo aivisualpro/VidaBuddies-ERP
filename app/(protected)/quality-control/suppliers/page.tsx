@@ -196,7 +196,7 @@ export default function SuppliersPage() {
       header: "Details",
       cell: ({ row }) => (
         <Button variant="outline" size="sm" asChild>
-          <Link href={`/admin/suppliers/${row.original._id}`}>
+          <Link href={`/quality-control/suppliers/${row.original._id}`}>
             View Details
           </Link>
         </Button>

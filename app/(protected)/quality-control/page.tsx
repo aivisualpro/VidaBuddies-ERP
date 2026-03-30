@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import SuppliersPage from "./suppliers/page";
 
 // Mock Data representing the Quality Control state
 const MOCK_SUPPLIERS = [
@@ -207,57 +208,10 @@ export default function QualityControlPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="suppliers" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Supplier Master List</CardTitle>
-              <CardDescription>
-                Unified database with supplier details and top-level approval status.
-              </CardDescription>
-              <div className="flex w-full max-w-sm items-center space-x-2 pt-2">
-                <Input type="text" placeholder="Search suppliers..." />
-                <Button type="submit" variant="secondary">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Supplier Name</TableHead>
-                    <TableHead>Country/Site</TableHead>
-                    <TableHead>Approval Status</TableHead>
-                    <TableHead>Pending Actions</TableHead>
-                    <TableHead className="text-right"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {MOCK_SUPPLIERS.map((sup) => (
-                    <TableRow key={sup.id}>
-                      <TableCell className="font-medium">{sup.name}</TableCell>
-                      <TableCell>{sup.country}</TableCell>
-                      <TableCell>
-                        <Badge variant={sup.status === "Approved" ? "default" : "outline"}>
-                          {sup.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1 text-xs">
-                          {sup.pendingDocs > 0 && <span className="text-orange-500">{sup.pendingDocs} pending reviews</span>}
-                          {sup.expiringDocs > 0 && <span className="text-red-500">{sup.expiringDocs} expiring/expired</span>}
-                          {sup.pendingDocs === 0 && sup.expiringDocs === 0 && <span className="text-muted-foreground">Up to date</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm">View Profile</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        <TabsContent value="suppliers" className="h-[750px] overflow-hidden rounded-xl bg-card border shadow-sm p-4">
+          <div className="h-full overflow-y-auto w-full">
+            <SuppliersPage />
+          </div>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">

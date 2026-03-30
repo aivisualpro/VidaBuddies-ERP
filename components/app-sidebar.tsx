@@ -73,11 +73,6 @@ const data = {
       url: "/admin/customers",
       icon: IconBuildingStore,
     },
-    {
-      name: "Suppliers",
-      url: "/admin/suppliers",
-      icon: IconTruck,
-    },
   ],
   inventory: [
     {
@@ -109,7 +104,7 @@ const data = {
     },
     {
       name: "Quality Control",
-      url: "/admin/quality-control",
+      url: "/quality-control",
       icon: IconCheckbox,
     },
   ],
