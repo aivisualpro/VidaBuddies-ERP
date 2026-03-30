@@ -33,10 +33,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       body.portalPassword = encryptPassword(body.portalPassword);
     }
     
-    const updatedItem = await VidaSupplier.findByIdAndUpdate(id, body, { new: true });
+    const updatedItem = await VidaSupplier.findByIdAndUpdate(id, body, { new: true }).lean();
     if (!updatedItem) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    
+    if (updatedItem.portalPassword) {
+      updatedItem.portalPassword = decryptPassword(updatedItem.portalPassword as string);
+    }
+    
     return NextResponse.json(updatedItem);
   } catch (error) {
     console.error("Error updating supplier:", error);

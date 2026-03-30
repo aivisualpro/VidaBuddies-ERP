@@ -4,8 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
 import {
@@ -59,6 +59,9 @@ const REQUIRED_DOCS = [
   { category: "Quality & HACCP Documentation", name: "Batch Coding Procedure" }
 ];
 
+// Extract unique categories preserving order
+const CATEGORIES = [...new Set(REQUIRED_DOCS.map(d => d.category))];
+
 interface LogEntry {
   action: string;
   by: string;
@@ -73,6 +76,7 @@ interface DocumentData {
   supplierNotes?: string;
   adminNotes?: string;
   isVerified?: boolean;
+  isNA?: boolean;
   logs?: LogEntry[];
 }
 
@@ -90,6 +94,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   const [activeFileLink, setActiveFileLink] = useState<string | undefined>(undefined);
   const [activeLogType, setActiveLogType] = useState<'attachments' | 'notes'>('attachments');
 
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const loadDocuments = async () => {
     try {
       const response = await fetch(`/api/admin/suppliers/${supplierId}`);
@@ -100,7 +107,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         const statesMap: Record<string, DocumentData> = {};
         if (data.documents) {
           data.documents.forEach((d: any) => {
-            // Need to cleanly format the date for input typical YYYY-MM-DD
             if (d.expiryDate) {
               d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
             }
@@ -123,43 +129,37 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     if (supplierName) {
       setLeftContent(
         <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
-          {supplierName} <span className="text-primary/40">/ DOCUMENTS</span>
+          <span className="hidden md:inline">{supplierName} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">DOCUMENTS</span>
         </h1>
       );
     }
   }, [supplierName, setLeftContent]);
 
   const updateDocumentData = async (docName: string, updates: Partial<DocumentData>, logAction?: string) => {
-    // Optimistic update
     setDocStates(prev => ({
       ...prev,
-      [docName]: {
-        ...(prev[docName] || { name: docName }),
-        ...updates
-      }
+      [docName]: { ...prev[docName], ...updates, name: docName }
     }));
 
     try {
-      const payload = { docName, logAction, ...updates };
       const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docName, ...updates, logAction }),
       });
+
+      if (!response.ok) throw new Error("Failed to update document");
       
-      if (!response.ok) throw new Error("Update failed");
       const updatedDocs = await response.json();
-      
       const statesMap: Record<string, DocumentData> = {};
       updatedDocs.forEach((d: any) => {
         if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
         statesMap[d.name] = d;
       });
       setDocStates(statesMap);
-      
+      savedStates.current = JSON.parse(JSON.stringify(statesMap));
     } catch (error) {
-      toast.error("Failed to save changes");
-      loadDocuments(); // Revert on failure
+      toast.error("Failed to save changes.");
     }
   };
 
@@ -193,7 +193,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     } finally {
       setUploadingDoc(null);
       if (fileInputRefs.current[docName]) {
-        fileInputRefs.current[docName]!.value = ''; // Reset input
+        fileInputRefs.current[docName]!.value = '';
       }
     }
   };
@@ -204,17 +204,24 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   };
 
   const getStatus = (docData?: DocumentData) => {
-    if (!docData || !docData.fileId) return { label: "NO", color: "text-orange-500", bg: "bg-orange-500/10 border-orange-500/20" };
-    if (docData.isVerified) return { label: "VERIFIED", color: "text-blue-500", bg: "bg-blue-500/10 border-blue-500/20" };
+    if (docData?.isNA) return { label: "N/A", color: "text-white", bg: "bg-zinc-500 border-zinc-600" };
+    if (!docData || !docData.fileId) return { label: "NO", color: "text-white", bg: "bg-orange-500 border-orange-600" };
+    if (docData.isVerified) return { label: "VERIFIED", color: "text-white", bg: "bg-blue-600 border-blue-700" };
     
     if (docData.expiryDate) {
       const expDate = new Date(docData.expiryDate);
       const today = new Date();
       if (expDate < today) {
-        return { label: "EXPIRED", color: "text-red-500", bg: "bg-red-500/10 border-red-500/20" };
+        return { label: "EXPIRED", color: "text-white", bg: "bg-red-600 border-red-700" };
       }
     }
-    return { label: "YES", color: "text-green-500", bg: "bg-green-500/10 border-green-500/20" };
+    return { label: "YES", color: "text-white", bg: "bg-green-600 border-green-700" };
+  };
+
+  const toggleNA = (docName: string) => {
+    const state = docStates[docName];
+    const newNA = !(state?.isNA);
+    updateDocumentData(docName, { isNA: newNA }, newNA ? 'Marked as N/A' : 'Unmarked N/A');
   };
 
   const openLogs = (docName: string, logs?: LogEntry[], fileLink?: string, type: 'attachments' | 'notes' = 'attachments') => {
@@ -230,143 +237,472 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     setIsLogsOpen(true);
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-black tracking-tight uppercase">Document Submission Form</h2>
+  // Filtered docs
+  const filteredDocs = useMemo(() => {
+    let docs = REQUIRED_DOCS;
+    if (selectedCategory) {
+      docs = docs.filter(d => d.category === selectedCategory);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      docs = docs.filter(d => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q));
+    }
+    return docs;
+  }, [selectedCategory, searchQuery]);
+
+  // Category counts
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, { total: number; completed: number }> = {};
+    CATEGORIES.forEach(cat => {
+      const catDocs = REQUIRED_DOCS.filter(d => d.category === cat);
+      counts[cat] = {
+        total: catDocs.length,
+        completed: catDocs.filter(d => docStates[d.name]?.fileId).length
+      };
+    });
+    return counts;
+  }, [docStates]);
+
+  // Group filtered docs by category, N/A docs pushed to end within each group
+  const groupedDocs = useMemo(() => {
+    const groups: Record<string, typeof REQUIRED_DOCS> = {};
+    filteredDocs.forEach(doc => {
+      if (!groups[doc.category]) groups[doc.category] = [];
+      groups[doc.category].push(doc);
+    });
+    // Sort each group: non-NA first, NA last
+    Object.keys(groups).forEach(cat => {
+      groups[cat].sort((a, b) => {
+        const aNA = docStates[a.name]?.isNA ? 1 : 0;
+        const bNA = docStates[b.name]?.isNA ? 1 : 0;
+        return aNA - bNA;
+      });
+    });
+    return groups;
+  }, [filteredDocs, docStates]);
+
+  const renderDocRow = (doc: typeof REQUIRED_DOCS[0], i: number) => {
+    const state = docStates[doc.name] || { name: doc.name };
+    const statusInfo = getStatus(state);
+    const isNA = !!state.isNA;
+    
+    return (
+      <tr key={i} className={`hover:bg-muted/10 transition-colors ${isNA ? 'opacity-40' : ''}`}>
+        <td className="px-4 py-2 font-medium text-foreground">
+          {state.fileLink ? (
+            <a href={state.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1.5">
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              {doc.name}
+            </a>
+          ) : (
+            doc.name
+          )}
+        </td>
+        <td className="px-4 py-2">
+          <div className={`inline-flex px-2 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${statusInfo.bg} ${statusInfo.color}`}>
+            {statusInfo.label}
+          </div>
+        </td>
+        <td className="px-4 py-2">
+          <div className="relative">
+            <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="date"
+              className="h-9 pl-8 text-xs bg-foreground/5 border-transparent focus-visible:ring-1"
+              value={state.expiryDate || ""}
+              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, expiryDate: e.target.value } }))}
+              onBlur={() => {
+                const saved = savedStates.current[doc.name];
+                if ((state.expiryDate || "") !== (saved?.expiryDate || "")) {
+                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], expiryDate: state.expiryDate };
+                  updateDocumentData(doc.name, { expiryDate: state.expiryDate }, `Updated Expiry Date: ${state.expiryDate || 'Cleared'}`);
+                }
+              }}
+              disabled={!isSupplierView && !!state.isVerified}
+            />
+          </div>
+        </td>
+        <td className="px-4 py-2">
+          <div className="space-y-1">
+            <Input
+              placeholder="Supplier Note..."
+              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${isSupplierView ? 'bg-foreground/5' : 'bg-transparent border-b-border rounded-none'}`}
+              value={state.supplierNotes || ""}
+              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, supplierNotes: e.target.value } }))}
+              onBlur={() => {
+                const saved = savedStates.current[doc.name];
+                if ((state.supplierNotes || "") !== (saved?.supplierNotes || "")) {
+                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], supplierNotes: state.supplierNotes };
+                  updateDocumentData(doc.name, { supplierNotes: state.supplierNotes }, "Updated Supplier Notes");
+                }
+              }}
+              disabled={!isSupplierView}
+            />
+            <Input
+              placeholder="Admin Note..."
+              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${!isSupplierView ? 'bg-primary/5 text-primary' : 'bg-transparent border-b-border rounded-none'}`}
+              value={state.adminNotes || ""}
+              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, adminNotes: e.target.value } }))}
+              onBlur={() => {
+                const saved = savedStates.current[doc.name];
+                if ((state.adminNotes || "") !== (saved?.adminNotes || "")) {
+                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], adminNotes: state.adminNotes };
+                  updateDocumentData(doc.name, { adminNotes: state.adminNotes }, "Updated Admin Notes");
+                }
+              }}
+              disabled={isSupplierView}
+            />
+          </div>
+        </td>
+        <td className="px-4 py-2 text-right">
+          <div className="flex items-center justify-end gap-1">
+            {isSupplierView && (
+              <Button variant="ghost" size="icon" className={`h-7 w-7 ${isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
+                {isNA ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
+               <Paperclip className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'notes')}>
+               <MessageSquare className="h-3.5 w-3.5" />
+            </Button>
+
+            {isSupplierView ? (
+              <>
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  ref={el => { fileInputRefs.current[doc.name] = el; }}
+                  onChange={(e) => handleFileUpload(e, doc.name)}
+                />
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="h-8 w-8 hover:bg-primary hover:text-primary-foreground border-primary/20"
+                  onClick={() => fileInputRefs.current[doc.name]?.click()}
+                  disabled={uploadingDoc === doc.name}
+                >
+                  {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                </Button>
+              </>
+            ) : (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 text-[10px] uppercase font-bold tracking-widest text-muted-foreground hover:text-blue-500"
+                onClick={() => verifyDoc(doc.name)}
+                disabled={!state.fileId || !!state.isVerified}
+              >
+                Verify
+              </Button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderMobileCard = (doc: typeof REQUIRED_DOCS[0], i: number) => {
+    const state = docStates[doc.name] || { name: doc.name };
+    const statusInfo = getStatus(state);
+    
+    return (
+      <div key={i} className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/80 border-b border-border">
+          <span className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground">{doc.category}</span>
+          <div className={`inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${statusInfo.bg} ${statusInfo.color}`}>
+            {statusInfo.label}
+          </div>
+        </div>
+        <div className="px-4 py-3 space-y-3">
+          <div className="font-semibold text-sm text-foreground leading-tight">
+            {state.fileLink ? (
+              <a href={state.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1.5">
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                {doc.name}
+              </a>
+            ) : (
+              doc.name
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-16 shrink-0">Expiry</span>
+            <div className="relative flex-1">
+              <Calendar className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="date"
+                className="h-8 pl-8 text-xs bg-foreground/5 border-transparent focus-visible:ring-1"
+                value={state.expiryDate || ""}
+                onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, expiryDate: e.target.value } }))}
+                onBlur={() => {
+                  const saved = savedStates.current[doc.name];
+                  if ((state.expiryDate || "") !== (saved?.expiryDate || "")) {
+                    savedStates.current[doc.name] = { ...savedStates.current[doc.name], expiryDate: state.expiryDate };
+                    updateDocumentData(doc.name, { expiryDate: state.expiryDate }, `Updated Expiry Date: ${state.expiryDate || 'Cleared'}`);
+                  }
+                }}
+                disabled={!isSupplierView && !!state.isVerified}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Input
+              placeholder="Supplier Note..."
+              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${isSupplierView ? 'bg-foreground/5' : 'bg-transparent border-b-border rounded-none'}`}
+              value={state.supplierNotes || ""}
+              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, supplierNotes: e.target.value } }))}
+              onBlur={() => {
+                const saved = savedStates.current[doc.name];
+                if ((state.supplierNotes || "") !== (saved?.supplierNotes || "")) {
+                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], supplierNotes: state.supplierNotes };
+                  updateDocumentData(doc.name, { supplierNotes: state.supplierNotes }, "Updated Supplier Notes");
+                }
+              }}
+              disabled={!isSupplierView}
+            />
+            <Input
+              placeholder="Admin Note..."
+              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${!isSupplierView ? 'bg-primary/5 text-primary' : 'bg-transparent border-b-border rounded-none'}`}
+              value={state.adminNotes || ""}
+              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, adminNotes: e.target.value } }))}
+              onBlur={() => {
+                const saved = savedStates.current[doc.name];
+                if ((state.adminNotes || "") !== (saved?.adminNotes || "")) {
+                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], adminNotes: state.adminNotes };
+                  updateDocumentData(doc.name, { adminNotes: state.adminNotes }, "Updated Admin Notes");
+                }
+              }}
+              disabled={isSupplierView}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-t border-border">
+          <div className="flex items-center gap-1">
+            {isSupplierView && (
+              <Button variant="ghost" size="icon" className={`h-8 w-8 ${state.isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={state.isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
+                {state.isNA ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'notes')}>
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-1">
+            {isSupplierView ? (
+              <>
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  ref={el => { if (!fileInputRefs.current[`m_${doc.name}`]) fileInputRefs.current[`m_${doc.name}`] = el; }}
+                  onChange={(e) => handleFileUpload(e, doc.name)}
+                />
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 text-xs font-bold uppercase tracking-widest hover:bg-primary hover:text-primary-foreground border-primary/30 gap-1.5"
+                  onClick={() => (fileInputRefs.current[`m_${doc.name}`] || fileInputRefs.current[doc.name])?.click()}
+                  disabled={uploadingDoc === doc.name}
+                >
+                  {uploadingDoc === doc.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  Upload
+                </Button>
+              </>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-blue-500 hover:border-blue-500/30 gap-1.5"
+                onClick={() => verifyDoc(doc.name)}
+                disabled={!state.fileId || !!state.isVerified}
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                Verify
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
+    );
+  };
 
-      <div className="rounded-xl border border-border bg-card overflow-x-auto shadow-sm pb-8">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-muted/40 uppercase text-[10px] font-black tracking-widest text-muted-foreground border-b border-border">
-            <tr>
-              <th className="px-4 py-3 min-w-[200px]">Category</th>
-              <th className="px-4 py-3 min-w-[300px]">Document Name</th>
-              <th className="px-4 py-3 min-w-[120px]">Status</th>
-              <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
-              <th className="px-4 py-3 min-w-[250px]">Notes</th>
-              <th className="px-4 py-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {REQUIRED_DOCS.map((doc, i) => {
-              const state = docStates[doc.name] || { name: doc.name };
-              const statusInfo = getStatus(state);
-              
+  return (
+    <div className="space-y-0">
+      <div className="flex flex-col md:flex-row gap-0 md:gap-0">
+        {/* Category Sidebar - Desktop */}
+        <div className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-border pr-0">
+          <div className="p-3 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="h-9 pl-8 text-xs bg-foreground/5 border-transparent focus-visible:ring-1 placeholder:text-[10px] placeholder:uppercase placeholder:tracking-widest"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`w-full text-left px-3 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-border/50 flex items-center justify-between ${
+                !selectedCategory ? 'bg-primary/10 text-primary border-l-2 border-l-primary' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <FolderOpen className="h-3.5 w-3.5" />
+                All Documents
+              </span>
+              <span className="text-[9px] font-black opacity-60">{REQUIRED_DOCS.length}</span>
+            </button>
+            {CATEGORIES.map(cat => {
+              const counts = categoryCounts[cat];
               return (
-                <tr key={i} className="hover:bg-muted/10 transition-colors">
-                  <td className="px-4 py-2 text-[11px] font-bold text-muted-foreground uppercase">{doc.category}</td>
-                  <td className="px-4 py-2 font-medium text-foreground">
-                    {state.fileLink ? (
-                      <a href={state.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1.5">
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                        {doc.name}
-                      </a>
-                    ) : (
-                      doc.name
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className={`inline-flex px-2 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${statusInfo.bg} ${statusInfo.color}`}>
-                      {statusInfo.label}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="relative">
-                      <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        type="date"
-                        className="h-9 pl-8 text-xs bg-foreground/5 border-transparent focus-visible:ring-1"
-                        value={state.expiryDate || ""}
-                        onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, expiryDate: e.target.value } }))}
-                        onBlur={() => {
-                          const saved = savedStates.current[doc.name];
-                          if ((state.expiryDate || "") !== (saved?.expiryDate || "")) {
-                            savedStates.current[doc.name] = { ...savedStates.current[doc.name], expiryDate: state.expiryDate };
-                            updateDocumentData(doc.name, { expiryDate: state.expiryDate }, `Updated Expiry Date: ${state.expiryDate || 'Cleared'}`);
-                          }
-                        }}
-                        disabled={!isSupplierView && !!state.isVerified}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="space-y-1">
-                      <Input
-                        placeholder="Supplier Note..."
-                        className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${isSupplierView ? 'bg-foreground/5' : 'bg-transparent border-b-border rounded-none'}`}
-                        value={state.supplierNotes || ""}
-                        onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, supplierNotes: e.target.value } }))}
-                        onBlur={() => {
-                          const saved = savedStates.current[doc.name];
-                          if ((state.supplierNotes || "") !== (saved?.supplierNotes || "")) {
-                            savedStates.current[doc.name] = { ...savedStates.current[doc.name], supplierNotes: state.supplierNotes };
-                            updateDocumentData(doc.name, { supplierNotes: state.supplierNotes }, "Updated Supplier Notes");
-                          }
-                        }}
-                        disabled={!isSupplierView}
-                      />
-                      <Input
-                        placeholder="Admin Note..."
-                        className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${!isSupplierView ? 'bg-primary/5 text-primary' : 'bg-transparent border-b-border rounded-none'}`}
-                        value={state.adminNotes || ""}
-                        onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, adminNotes: e.target.value } }))}
-                        onBlur={() => {
-                          const saved = savedStates.current[doc.name];
-                          if ((state.adminNotes || "") !== (saved?.adminNotes || "")) {
-                            savedStates.current[doc.name] = { ...savedStates.current[doc.name], adminNotes: state.adminNotes };
-                            updateDocumentData(doc.name, { adminNotes: state.adminNotes }, "Updated Admin Notes");
-                          }
-                        }}
-                        disabled={isSupplierView}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
-                         <Paperclip className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'notes')}>
-                         <MessageSquare className="h-3.5 w-3.5" />
-                      </Button>
-
-                      {isSupplierView ? (
-                        <>
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            ref={el => { fileInputRefs.current[doc.name] = el; }}
-                            onChange={(e) => handleFileUpload(e, doc.name)}
-                          />
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            className="h-8 w-8 hover:bg-primary hover:text-primary-foreground border-primary/20"
-                            onClick={() => fileInputRefs.current[doc.name]?.click()}
-                            disabled={uploadingDoc === doc.name}
-                          >
-                            {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 text-[10px] uppercase font-bold tracking-widest text-muted-foreground hover:text-blue-500"
-                          onClick={() => verifyDoc(doc.name)}
-                          disabled={!state.fileId || !!state.isVerified}
-                        >
-                          Verify
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                  className={`w-full text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b border-border/50 flex items-center justify-between gap-2 ${
+                    selectedCategory === cat ? 'bg-primary/10 text-primary border-l-2 border-l-primary' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                  }`}
+                >
+                  <span className="leading-tight">{cat}</span>
+                  <span className={`text-[9px] font-black shrink-0 ${counts.completed === counts.total ? 'text-green-500' : ''}`}>
+                    {counts.completed}/{counts.total}
+                  </span>
+                </button>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
+
+        {/* Mobile: Search + Category Pills */}
+        <div className="md:hidden space-y-3 mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search documents..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-10 pl-10 text-sm bg-foreground/5 border-transparent focus-visible:ring-1"
+            />
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                !selectedCategory ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
+              }`}
+            >
+              All ({REQUIRED_DOCS.length})
+            </button>
+            {CATEGORIES.map(cat => {
+              const counts = categoryCounts[cat];
+              const shortName = cat.split(' ')[0] + (cat.split(' ').length > 1 ? '...' : '');
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                    selectedCategory === cat ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
+                  }`}
+                >
+                  {shortName} ({counts.completed}/{counts.total})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 min-w-0">
+          {/* Instructions Banner */}
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Info className="h-4 w-4 text-white" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-foreground">Please complete this form and attach all applicable documents listed.</p>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> All certificates must be <span className="font-bold text-foreground">VALID</span> and <span className="font-bold text-foreground">NOT expired</span></li>
+                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> Clearly name files (Example: <span className="font-mono text-[11px] bg-foreground/5 px-1.5 py-0.5 rounded">ABC_Fruits_FSSC_22000_2025.pdf</span>)</li>
+                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> If a document is not applicable, mark <span className="inline-flex items-center gap-1 font-bold text-zinc-500"><Ban className="h-3 w-3" /> N/A</span></li>
+                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> Incomplete submissions may <span className="font-bold text-orange-500">delay approval</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="rounded-r-xl border border-border bg-card overflow-x-auto shadow-sm hidden md:block">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/95 backdrop-blur-sm uppercase text-[10px] font-black tracking-widest text-muted-foreground border-b border-border sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 min-w-[300px]">Document Name</th>
+                  <th className="px-4 py-3 min-w-[100px]">Status</th>
+                  <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
+                  <th className="px-4 py-3 min-w-[320px]">Notes</th>
+                  <th className="px-4 py-3 text-right min-w-[140px]">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {Object.entries(groupedDocs).map(([category, docs]) => (
+                  <React.Fragment key={category}>
+                    <tr>
+                      <td colSpan={5} className="px-4 py-2 bg-muted/30 border-y border-border">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-2">
+                            <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                            {category}
+                          </span>
+                          <span className="text-[9px] font-black text-muted-foreground/50">
+                            {categoryCounts[category]?.completed}/{categoryCounts[category]?.total}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {docs.map((doc, i) => renderDocRow(doc, i))}
+                  </React.Fragment>
+                ))}
+                {filteredDocs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <div className="text-muted-foreground/50 font-black uppercase text-[10px] tracking-widest">
+                        No documents match your search
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {Object.entries(groupedDocs).map(([category, docs]) => (
+              <div key={category} className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-2">
+                    <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                    {category}
+                  </span>
+                  <span className="text-[9px] font-black text-muted-foreground/50">
+                    {categoryCounts[category]?.completed}/{categoryCounts[category]?.total}
+                  </span>
+                </div>
+                {docs.map((doc, i) => renderMobileCard(doc, i))}
+              </div>
+            ))}
+            {filteredDocs.length === 0 && (
+              <div className="text-center py-12 border border-dashed rounded-xl bg-accent/5 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
+                No documents match your search
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>

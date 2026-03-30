@@ -27,7 +27,17 @@ export interface IVidaSupplierDocument {
   supplierNotes?: string;
   adminNotes?: string;
   isVerified?: boolean;
+  isNA?: boolean;
   logs: IVidaSupplierDocumentLog[];
+}
+
+export interface IVidaSurveyResponse {
+  templateId: string;
+  status: 'draft' | 'submitted';
+  answers: Record<string, any>;
+  submittedAt?: Date;
+  pdfLink?: string;
+  pdfFileId?: string;
 }
 
 export interface IVidaSupplier extends Document {
@@ -35,8 +45,15 @@ export interface IVidaSupplier extends Document {
   name: string;
   portalEmail?: string;
   portalPassword?: string;
+  manufacturingAddress?: string;
+  country?: string;
+  primaryContactName?: string;
+  communicationEmail?: string;
+  phone?: string;
+  productsSupplied?: string[];
   location: IVidaSupplierLocation[];
   documents?: IVidaSupplierDocument[];
+  surveyResponses?: IVidaSurveyResponse[];
 }
 
 const VidaSupplierLocationSchema: Schema = new Schema({
@@ -66,7 +83,17 @@ const VidaSupplierDocumentSchema: Schema = new Schema({
   supplierNotes: { type: String },
   adminNotes: { type: String },
   isVerified: { type: Boolean, default: false },
+  isNA: { type: Boolean, default: false },
   logs: [VidaSupplierDocumentLogSchema]
+});
+
+const VidaSurveyResponseSchema: Schema = new Schema({
+  templateId: { type: String, required: true },
+  status: { type: String, enum: ['draft', 'submitted'], default: 'draft' },
+  answers: { type: Schema.Types.Mixed, default: {} },
+  submittedAt: { type: Date },
+  pdfLink: { type: String },
+  pdfFileId: { type: String },
 });
 
 const VidaSupplierSchema: Schema = new Schema({
@@ -74,8 +101,15 @@ const VidaSupplierSchema: Schema = new Schema({
   name: { type: String, required: true },
   portalEmail: { type: String, required: false },
   portalPassword: { type: String, default: null },
+  manufacturingAddress: { type: String, default: '' },
+  country: { type: String, default: '' },
+  primaryContactName: { type: String, default: '' },
+  communicationEmail: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  productsSupplied: { type: [String], default: [] },
   location: [VidaSupplierLocationSchema],
-  documents: { type: [VidaSupplierDocumentSchema], default: [] }
+  documents: { type: [VidaSupplierDocumentSchema], default: [] },
+  surveyResponses: { type: [VidaSurveyResponseSchema], default: [] },
 });
 
 const VidaSupplier: Model<IVidaSupplier> = mongoose.models.VidaSupplier || mongoose.model<IVidaSupplier>('VidaSupplier', VidaSupplierSchema);

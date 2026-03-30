@@ -80,8 +80,10 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
     if (supplier) {
       setLeftContent(
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">{supplier.name}</h1>
-          <div className="flex gap-2">
+          <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
+            <span className="hidden md:inline">{supplier.name} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">DETAILS</span>
+          </h1>
+          <div className="hidden md:flex gap-2">
             <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black border border-primary/20">{supplier.vbId}</span>
             <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full font-black border uppercase tracking-tighter">{supplier.location?.length || 0} Locations</span>
           </div>
@@ -308,10 +310,10 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
     <TooltipProvider>
       <div className="flex flex-col h-full bg-background">
 
-      <div className="grid grid-cols-3 gap-6 p-0 h-full overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 p-0 md:h-full md:overflow-hidden">
         {/* Column 1: Locations */}
-        <div className="flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-col gap-4 md:overflow-y-auto md:pr-2 scrollbar-thin scrollbar-thumb-muted">
+          <div className="flex items-center gap-2 mb-1 md:mb-2">
             <MapPin className="h-4 w-4 text-primary" />
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Locations</span>
           </div>
@@ -319,7 +321,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
           <div className="space-y-4">
             {supplier.location && supplier.location.length > 0 ? (
               supplier.location.map((loc: SupplierLocation, idx) => (
-                <div key={loc._id || idx} className="group relative h-60 overflow-hidden rounded-3xl bg-card text-card-foreground border border-border shadow-none transition-all duration-500 hover:-translate-y-2 hover:border-primary/40">
+                <div key={loc._id || idx} className="group relative h-48 md:h-60 overflow-hidden rounded-2xl md:rounded-3xl bg-card text-card-foreground border border-border shadow-none transition-all duration-500 hover:-translate-y-2 hover:border-primary/40">
                   {/* Nano Banana Background Image - Better visibility for Light Theme */}
                   <img 
                     src="/images/nano_banana_bg.png" 
@@ -329,10 +331,10 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                   
 
                   {/* Main Content Area - 3 Row Structure */}
-                  <div className="absolute inset-0 p-8 flex flex-col justify-end gap-1.5 z-10">
+                  <div className="absolute inset-0 p-5 md:p-8 flex flex-col justify-end gap-1 md:gap-1.5 z-10">
                     <div className="space-y-1">
                       {/* 1st Row: Location Name */}
-                      <h3 className="text-2xl font-black leading-tight text-foreground uppercase tracking-tight">
+                      <h3 className="text-xl md:text-2xl font-black leading-tight text-foreground uppercase tracking-tight">
                         {loc.locationName || "Unnamed"}
                       </h3>
                       
@@ -344,12 +346,12 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                       </div>
                       
                       {/* 3rd Row: Full Address */}
-                      <p className="text-muted-foreground text-[11px] font-medium leading-relaxed line-clamp-2 max-w-[90%] uppercase tracking-widest pt-1">
+                      <p className="text-muted-foreground text-[10px] md:text-[11px] font-medium leading-relaxed line-clamp-2 max-w-[90%] uppercase tracking-widest pt-1">
                         {loc.fullAddress || `${loc.street}, ${loc.city}, ${loc.country}`}
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between pt-3">
+                    <div className="flex items-center justify-between pt-2 md:pt-3">
                       {/* Action Row with Tooltips */}
                       <div className="flex gap-2">
                         <Tooltip>
@@ -358,9 +360,9 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((loc.fullAddress || `${loc.street}, ${loc.city}, ${loc.country}`).replace(/\|/g, ' '))}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="h-10 w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20"
+                              className="h-9 w-9 md:h-10 md:w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20"
                             >
-                              <MapPin className="h-4.5 w-4.5" />
+                              <MapPin className="h-4 w-4" />
                             </a>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="bg-black text-white border-white/10 font-black uppercase text-[10px] tracking-widest">Directions</TooltipContent>
@@ -373,9 +375,9 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                                 href={(loc.website.startsWith('http') ? loc.website : `https://${loc.website}`).split('|')[0].trim()}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="h-10 w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20"
+                                className="h-9 w-9 md:h-10 md:w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20"
                               >
-                                <Globe className="h-4.5 w-4.5" />
+                                <Globe className="h-4 w-4" />
                               </a>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="bg-black text-white border-white/10 font-black uppercase text-[10px] tracking-widest">Website</TooltipContent>
@@ -389,7 +391,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                                 <Button 
                                   variant="ghost" 
                                   onClick={() => handleEditLocation(loc._id || idx.toString())}
-                                  className="h-10 w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20 p-0 opacity-0 group-hover:opacity-100 duration-300"
+                                  className="h-9 w-9 md:h-10 md:w-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-primary/20 p-0 md:opacity-0 md:group-hover:opacity-100 duration-300"
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -402,7 +404,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                                 <Button 
                                   variant="ghost" 
                                   onClick={() => handleDeleteLocation(loc._id || idx.toString())}
-                                  className="h-10 w-10 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-destructive/20 p-0 opacity-0 group-hover:opacity-100 duration-300"
+                                  className="h-9 w-9 md:h-10 md:w-10 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-none border border-destructive/20 p-0 md:opacity-0 md:group-hover:opacity-100 duration-300"
                                 >
                                   <Trash className="h-4 w-4" />
                                 </Button>
@@ -424,7 +426,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
           </div>
         </div>
 
-        <div className="bg-muted/10 rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group">
+        <div className="bg-muted/10 rounded-2xl md:rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group min-h-[160px] md:min-h-0">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
           <div className="text-center space-y-2 relative z-10">
              <div className="h-12 w-12 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -435,7 +437,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
           </div>
         </div>
 
-        <div className="bg-muted/10 rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group">
+        <div className="bg-muted/10 rounded-2xl md:rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group min-h-[160px] md:min-h-0">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
           <div className="text-center space-y-2 relative z-10">
             <div className="h-12 w-12 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
