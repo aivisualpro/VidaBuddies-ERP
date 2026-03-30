@@ -1235,7 +1235,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label>PO # (Internal)</Label>
-                <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required readOnly className="bg-muted cursor-not-allowed" />
+                <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required />
               </div>
               <div className="space-y-1">
                 <Label>Customer PO #</Label>
@@ -1410,7 +1410,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <Label className="text-xs">VBID</Label>
-                          <Input name="svbid" readOnly className="bg-muted cursor-not-allowed text-sm" defaultValue={editingShipping?.data?.svbid || (!editingShipping ? autoSvbid : '')} />
+                          <Input name="svbid" required className="text-sm" defaultValue={editingShipping?.data?.svbid || (!editingShipping ? autoSvbid : '')} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Status</Label>
