@@ -314,9 +314,9 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                       </div>
                     </TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      <Link prefetch={false} href={`/admin/purchase-orders/${container.id}`} className="hover:underline text-inherit">
+                      <span onClick={() => window.location.assign(`/admin/purchase-orders/${container.id}`)} className="hover:underline cursor-pointer text-inherit">
                         {container.vbid}
-                      </Link>
+                      </span>
                     </TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words" title={container.poNo}>
                       {container.poNo ? container.poNo.split(',')[0].trim() : "-"}

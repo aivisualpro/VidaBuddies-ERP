@@ -55,7 +55,7 @@ export function NavDocuments({
               isActive={pathname.startsWith(item.url)}
               tooltip={item.name}
             >
-              <Link href={item.url} prefetch={true}>
+              <Link href={item.url} prefetch={false}>
                 <item.icon />
                 <span>{item.name}</span>
               </Link>

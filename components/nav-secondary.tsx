@@ -31,7 +31,7 @@ export function NavSecondary({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
-                  <Link href={item.url} prefetch={true}>
+                  <Link href={item.url} prefetch={false}>
                     <item.icon />
                     <span>{item.title}</span>
                   </Link>
