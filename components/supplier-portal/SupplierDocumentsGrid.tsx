@@ -530,7 +530,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   };
 
   return (
-    <div className="space-y-0 md:h-[calc(100vh-160px)] flex flex-col">
+    <div className="space-y-0 md:h-[calc(100vh-100px)] flex flex-col">
       <div className="flex flex-col md:flex-row gap-0 md:gap-0 md:h-full md:overflow-hidden">
         {/* Category Sidebar - Desktop */}
         <div className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-border pr-0 md:h-full md:overflow-y-auto pb-6">
@@ -617,7 +617,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 min-w-0 md:flex md:flex-col md:h-full md:overflow-hidden pb-8 md:pb-0">
+        <div className="flex-1 min-w-0 md:flex md:flex-col md:h-full md:overflow-hidden pb-8 md:pb-0 md:pl-4 mt-4 md:mt-0">
           {/* Instructions Banner */}
           <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4 shrink-0">
             <div className="flex items-start gap-3">

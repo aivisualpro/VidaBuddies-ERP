@@ -60,7 +60,7 @@ export default function QualityControlLayout({ children }: { children: React.Rea
   return (
     <div className="flex-1 space-y-4">
       {!isDeepRoute && (
-        <div className="px-1 border-b">
+        <div className="border-b sticky top-0 bg-background z-20">
           <div className="flex h-10 items-center overflow-x-auto">
             <Link 
               href="/quality-control/dashboard" 

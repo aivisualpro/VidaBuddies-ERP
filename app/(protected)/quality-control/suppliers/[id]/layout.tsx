@@ -7,8 +7,8 @@ export default function AppAdminSupplierLayout({ children, params }: { children:
   const { id } = use(params);
   const activeTab = pathname.includes("/supply-survey") ? "supply-survey" : pathname.includes("/survey") ? "survey" : pathname.includes("/documents") ? "documents" : pathname.includes("/details") ? "details" : "dashboard";
   return (
-    <div className="flex-1 space-y-4">
-      <div className="px-1 border-b">
+    <div className="flex-1 flex flex-col pt-2">
+      <div className="border-b sticky top-0 z-20 bg-background">
         <div className="flex h-10 items-center overflow-x-auto gap-2">
           <Link href={`/quality-control/suppliers/${id}/dashboard`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'dashboard' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Dashboard</Link>
           <Link href={`/quality-control/suppliers/${id}/documents`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'documents' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Documents</Link>
@@ -17,7 +17,7 @@ export default function AppAdminSupplierLayout({ children, params }: { children:
           <Link href={`/quality-control/suppliers/${id}/details`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'details' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Details & Locations</Link>
         </div>
       </div>
-      <div className="flex-1 w-full h-full pb-10">
+      <div className="flex-1 w-full h-full pb-0 pt-2">
         {children}
       </div>
     </div>
