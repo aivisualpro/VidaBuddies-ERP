@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash, Hash, Factory, MapPin } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import Link from "next/link";
 
@@ -36,10 +37,12 @@ interface Supplier {
   _id: string;
   vbId: string;
   name: string;
+  portalEmail?: string;
+  portalPassword?: string;
   location: SupplierLocation[];
 }
 
-import { Plus, Globe } from "lucide-react";
+import { Plus, Globe, Eye, EyeOff, Key, Mail as MailIcon } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
 export default function SuppliersPage() {
@@ -51,10 +54,14 @@ export default function SuppliersPage() {
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Supplier | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
 
   const [formData, setFormData] = useState<Partial<Supplier>>({
     vbId: "",
     name: "",
+    portalEmail: "",
+    portalPassword: "",
     location: [],
   });
 
@@ -97,23 +104,39 @@ export default function SuppliersPage() {
     }
   };
 
-  const openAddSheet = () => {
+  const openAddSheet = React.useCallback(() => {
     setEditingItem(null);
     setFormData({
       vbId: "",
       name: "",
+      portalEmail: "",
+      portalPassword: "",
       location: [],
     });
+    setShowPassword(false);
     setIsSheetOpen(true);
-  };
+  }, []);
 
   const openEditSheet = (item: Supplier) => {
     setEditingItem(item);
     setFormData({
       ...item,
+      portalEmail: item.portalEmail || "",
+      portalPassword: item.portalPassword || "",
       location: item.location || [],
     });
+    setShowPassword(false);
     setIsSheetOpen(true);
+  };
+
+  const generatePassword = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let password = "Vb$";
+    for (let i = 0; i < 9; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setFormData({ ...formData, portalPassword: password });
+    setShowPassword(true);
   };
 
   const handleAddLocation = () => {
@@ -167,7 +190,7 @@ export default function SuppliersPage() {
     setFormData({ ...formData, location: newLocations });
   };
 
-  const columns: ColumnDef<Supplier>[] = [
+  const columns: ColumnDef<Supplier>[] = React.useMemo(() => [
     {
       accessorKey: "vbId",
       header: "VB ID",
@@ -190,17 +213,6 @@ export default function SuppliersPage() {
           </div>
         );
       },
-    },
-    {
-      id: "details",
-      header: "Details",
-      cell: ({ row }) => (
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/quality-control/suppliers/${row.original._id}`}>
-            View Details
-          </Link>
-        </Button>
-      ),
     },
     {
       id: "actions",
@@ -237,7 +249,7 @@ export default function SuppliersPage() {
         );
       },
     },
-  ];
+  ], []);
 
   if (isLoading) {
     return <TablePageSkeleton />;
@@ -250,6 +262,7 @@ export default function SuppliersPage() {
         data={data}
         searchKey="name"
         onAdd={openAddSheet}
+        onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
       />
 
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -289,6 +302,61 @@ export default function SuppliersPage() {
                     }
                     required
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="portalEmail">Portal Email (Login ID)</Label>
+                <div className="relative">
+                  <MailIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="portalEmail"
+                    type="email"
+                    className="pl-9"
+                    value={formData.portalEmail || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, portalEmail: e.target.value })
+                    }
+                    placeholder="supplier@example.com"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="portalPassword">Portal Password</Label>
+                <div className="relative flex items-center">
+                  <Key className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="portalPassword"
+                    type={showPassword ? "text" : "password"}
+                    className="pl-9 pr-24"
+                    value={formData.portalPassword || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, portalPassword: e.target.value })
+                    }
+                    placeholder="Leave empty to keep current"
+                  />
+                  <div className="absolute right-1 flex items-center gap-1">
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-7 w-7"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2"
+                      onClick={generatePassword}
+                    >
+                      Generate
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

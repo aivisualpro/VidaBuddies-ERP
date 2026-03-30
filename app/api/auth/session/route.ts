@@ -9,6 +9,10 @@ export async function GET() {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
+  if (session.role === "Supplier") {
+    return NextResponse.json({ authenticated: true, user: session });
+  }
+
   await connectToDatabase();
   const user = await VidaUser.findById(session.id);
 

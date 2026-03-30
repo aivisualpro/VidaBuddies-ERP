@@ -3,7 +3,9 @@ import { SignJWT } from "jose";
 import { login } from "@/lib/auth";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
+import VidaSupplier from "@/lib/models/VidaSupplier";
 import VerificationCode from "@/lib/models/VerificationCode";
+import { decryptPassword } from "@/lib/encryption";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { key } from "@/lib/auth-utils";
@@ -31,32 +33,56 @@ export async function POST(request: Request) {
 
     await connectToDatabase();
 
-    const user = await VidaUser.findOne({ email: email.toLowerCase() });
+    let user = await VidaUser.findOne({ email: email.toLowerCase() });
+    let isSupplier = false;
+    let supplierRef: any = null;
 
     if (!user || user.password !== password) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      // Check if it's a supplier
+      const supplier = await VidaSupplier.findOne({ portalEmail: email.toLowerCase() });
+      if (supplier && supplier.portalPassword) {
+         try {
+           const decrypted = decryptPassword(supplier.portalPassword);
+           if (decrypted === password) {
+              isSupplier = true;
+              supplierRef = supplier;
+           }
+         } catch(e) { console.error(e) }
+      }
+      
+      if (!isSupplier) {
+        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      }
     }
 
-    if (!user.isActive) {
+    if (!isSupplier && (!user || !user.isActive)) {
       return NextResponse.json({ error: "Your account is inactive. Please contact your administrator." }, { status: 403 });
     }
 
     // Build user data for session
-    const userData = {
-      id: user._id.toString(),
-      email: user.email,
-      name: user.name,
-      role: user.AppRole || "Manager",
-      avatar: user.profilePicture || "/logo.png",
+    const userData = isSupplier ? {
+      id: supplierRef._id.toString(),
+      email: supplierRef.portalEmail,
+      name: supplierRef.name,
+      role: "Supplier",
+      avatar: "/logo.png",
+      supplierId: supplierRef._id.toString(),
+    } : {
+      id: user!._id.toString(),
+      email: user!.email,
+      name: user!.name,
+      role: user!.AppRole || "Manager",
+      avatar: user!.profilePicture || "/logo.png",
     };
 
-    // If 2FA is NOT required for this user, log in directly
-    if (!user.isTwoFactorRequired) {
+    // Suppliers and users without 2FA bypass OTP
+    if (isSupplier || !user!.isTwoFactorRequired) {
       await login(userData);
-      console.log(`[Auth API] Direct login (no 2FA) for ${user.email}`);
+      console.log(`[Auth API] Direct login (no 2FA) for ${userData.email}`);
       return NextResponse.json({
         requiresVerification: false,
         user: userData,
+        redirectUrl: isSupplier ? `/${supplierRef._id}/dashboard` : undefined
       });
     }
 
@@ -66,13 +92,13 @@ export async function POST(request: Request) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Delete any previous codes for this user
-    await VerificationCode.deleteMany({ userId: user._id });
+    await VerificationCode.deleteMany({ userId: user!._id });
 
     // Store the new code
     await VerificationCode.create({
-      userId: user._id,
+      userId: user!._id,
       code,
-      email: user.email,
+      email: user!.email,
       expiresAt,
     });
 
@@ -81,7 +107,7 @@ export async function POST(request: Request) {
       try {
         await transporter.sendMail({
           from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
-          to: user.email,
+          to: user!.email,
           subject: "Your Vida Buddies Login Code",
           html: `
           <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #09090b; border-radius: 16px; overflow: hidden;">
@@ -117,8 +143,8 @@ export async function POST(request: Request) {
 
     // Create a short-lived verification token to tie the 2FA step to this user
     const verificationToken = await new SignJWT({
-      userId: user._id.toString(),
-      email: user.email,
+      userId: user!._id.toString(),
+      email: user!.email,
       purpose: "2fa",
     })
       .setProtectedHeader({ alg: "HS256" })
@@ -127,10 +153,10 @@ export async function POST(request: Request) {
       .sign(key);
 
     // Mask the email for display
-    const parts = user.email.split("@");
+    const parts = user!.email.split("@");
     const masked = parts[0].substring(0, 2) + "***@" + parts[1];
 
-    console.log(`[Auth API] 2FA code sent to ${user.email}`);
+    console.log(`[Auth API] 2FA code sent to ${user!.email}`);
     return NextResponse.json({
       requiresVerification: true,
       verificationToken,

@@ -1,7 +1,7 @@
 // Vida Buddies ERP — Service Worker
 // Provides offline caching and enables PWA installability
 
-const CACHE_NAME = 'vida-buddies-v1';
+const CACHE_NAME = 'vida-buddies-v2';
 
 // Assets to pre-cache on install
 const PRECACHE_ASSETS = [
@@ -49,6 +49,10 @@ self.addEventListener('fetch', (event) => {
 
   // Skip API routes — always go to network
   if (url.pathname.startsWith('/api/')) return;
+
+  // Skip Next.js internal assets — never cache compiled chunks
+  // This prevents stale Turbopack modules from being served from SW cache
+  if (url.pathname.startsWith('/_next/')) return;
 
   // For navigation requests (HTML pages) — network first, fallback to cache
   if (request.mode === 'navigate') {

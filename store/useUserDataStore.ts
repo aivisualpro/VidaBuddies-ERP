@@ -19,6 +19,7 @@ interface UserDataState {
   // Action methods
   fetchInitialData: () => Promise<void>;
   refreshData: () => Promise<void>;
+  resetStore: () => void;
   
   // Specific refetch methods if they only want to update one entity type after a mutation
   refetchPurchaseOrders: () => Promise<void>;
@@ -36,7 +37,7 @@ interface UserDataState {
 
 export const useUserDataStore = create<UserDataState>((set, get) => ({
   isInitialized: false,
-  isLoading: true,
+  isLoading: false,
   
   purchaseOrders: [],
   releaseRequests: [],
@@ -49,6 +50,22 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   carriers: [],
   andresTracker: [],
   liveShipments: [],
+
+  resetStore: () => set({
+    isInitialized: false,
+    isLoading: false,
+    purchaseOrders: [],
+    releaseRequests: [],
+    products: [],
+    categories: [],
+    warehouses: [],
+    suppliers: [],
+    customers: [],
+    users: [],
+    carriers: [],
+    andresTracker: [],
+    liveShipments: [],
+  }),
 
   fetchInitialData: async () => {
     if (get().isInitialized) return;

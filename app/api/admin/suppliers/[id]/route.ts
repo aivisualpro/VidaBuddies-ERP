@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaSupplier from "@/lib/models/VidaSupplier";
+import { encryptPassword, decryptPassword } from "@/lib/encryption";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     await connectToDatabase();
-    const item = await VidaSupplier.findById(id);
+    const item = await VidaSupplier.findById(id).lean();
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    
+    if (item.portalPassword) {
+      item.portalPassword = decryptPassword(item.portalPassword as string);
+    }
+    
     return NextResponse.json(item);
   } catch (error) {
     console.error("Error fetching supplier:", error);
@@ -22,6 +28,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     await connectToDatabase();
     const body = await req.json();
+    
+    if (body.portalPassword) {
+      body.portalPassword = encryptPassword(body.portalPassword);
+    }
+    
     const updatedItem = await VidaSupplier.findByIdAndUpdate(id, body, { new: true });
     if (!updatedItem) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });

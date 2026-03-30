@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function NavUser({
   user: initialUser,
+  isSupplier = false,
 }: {
   user: {
     name: string
@@ -42,6 +43,7 @@ export function NavUser({
     id?: string
     role?: string
   }
+  isSupplier?: boolean
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
@@ -49,7 +51,7 @@ export function NavUser({
   const [user, setUser] = useState({
     ...initialUser,
     id: "679e2a44ea73db1789c62981", // Fallback ID
-    role: "Administrator"         // Fallback Role
+    role: "User"         // Fallback Role - Secure by default
   })
 
   useEffect(() => {
@@ -94,6 +96,23 @@ export function NavUser({
               <Skeleton className="h-4 w-24" />
             </div>
           </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
+
+  if (isSupplier || user.role === "Supplier") {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            onClick={handleLogout}
+            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent flex justify-center"
+            tooltip="Log out"
+          >
+            <IconLogout className="size-5 shrink-0" />
+          </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
     )

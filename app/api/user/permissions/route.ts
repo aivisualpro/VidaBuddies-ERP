@@ -14,6 +14,14 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
     
+    if (session.role === "Supplier") {
+      return NextResponse.json({ 
+        role: "Supplier",
+        isSupplier: true,
+        permissions: [] 
+      });
+    }
+
     // 1. Get User to find their Role Name
     const user = await VidaUser.findById(session.id).select('AppRole');
     if (!user) {

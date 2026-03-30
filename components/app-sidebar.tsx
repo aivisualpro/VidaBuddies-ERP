@@ -126,19 +126,27 @@ const data = {
 let sidebarCache: {
   permissions: any[];
   isAdmin: boolean;
+  isSupplier: boolean;
   shipmentCount: number;
   timestamp: number;
 } | null = null;
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ isSupplierProp = false, ...props }: React.ComponentProps<typeof Sidebar> & { isSupplierProp?: boolean }) {
   const [reports, setReports] = React.useState(data.reports);
   const [permissions, setPermissions] = React.useState<any[]>([]);
   const [isAdmin, setIsAdmin] = React.useState(false);
-  const [loadingPermissions, setLoadingPermissions] = React.useState(true);
+  const [isSupplier, setIsSupplier] = React.useState(isSupplierProp);
+  const [loadingPermissions, setLoadingPermissions] = React.useState(!isSupplierProp);
 
   React.useEffect(() => {
+    if (isSupplierProp) {
+        setIsSupplier(true);
+        setLoadingPermissions(false);
+        return; // Suppliers don't need any admin sidebar permissions or counts
+    }
+
     const fetchData = async () => {
       // Check cache first
       const now = Date.now();
@@ -160,6 +168,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         let shipmentCount = 0;
         let fetchedPermissions: any[] = [];
         let fetchedIsAdmin = false;
+        let fetchedIsSupplier = false;
 
         // Fetch Live Shipments Count
         const countRes = await fetch('/api/admin/live-shipments/count');
@@ -179,19 +188,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         const permRes = await fetch('/api/user/permissions');
         if (permRes.ok) {
           const data = await permRes.json();
-          fetchedPermissions = data.permissions || [];
-          setPermissions(fetchedPermissions);
           
-          if (data.role === 'Super Admin') {
-            fetchedIsAdmin = true;
-            setIsAdmin(true);
+          if (data.isSupplier) {
+            fetchedIsSupplier = true;
+            setIsSupplier(true);
+          } else {
+            fetchedPermissions = data.permissions || [];
+            if (data.role === 'Super Admin') {
+              fetchedIsAdmin = true;
+            }
           }
+          
+          setPermissions(fetchedPermissions);
+          setIsAdmin(fetchedIsAdmin);
         }
 
         // Update cache
         sidebarCache = {
           permissions: fetchedPermissions,
           isAdmin: fetchedIsAdmin,
+          isSupplier: fetchedIsSupplier,
           shipmentCount,
           timestamp: Date.now(),
         };
@@ -207,6 +223,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const filterItems = (items: any[]) => {
     if (loadingPermissions) return []; // Show nothing while loading to prevent flash
+    if (isSupplier) return []; // Suppliers see nothing in sidebar
     if (isAdmin) return items; // Super Admin sees all
 
     return items.filter(item => {
@@ -221,8 +238,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
       
       // Fallback: If no permission record exists for this module, what to do?
-      // Legacy behavior: Visible if not restricted.
-      return true; 
+      // Defaulting to FALSE prevents unauthorized users from seeing everything if their permission load failed or is incomplete.
+      return false; 
     });
   };
 
@@ -273,7 +290,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         {filteredSecondary.length > 0 && <NavSecondary items={filteredSecondary} className="mt-auto" />}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={data.user} isSupplier={isSupplier} />
       </SidebarFooter>
     </Sidebar>
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaSupplier from "@/lib/models/VidaSupplier";
 import crypto from "crypto";
+import { encryptPassword, decryptPassword } from "@/lib/encryption";
 
 function generateVbId(): string {
   return `VB-${crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 5)}`;
@@ -10,8 +11,12 @@ function generateVbId(): string {
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    const items = await VidaSupplier.find({});
-    return NextResponse.json(items);
+    const items = await VidaSupplier.find({}).lean();
+    const itemsDecrypted = items.map(item => ({
+      ...item,
+      portalPassword: item.portalPassword ? decryptPassword(item.portalPassword as string) : null
+    }));
+    return NextResponse.json(itemsDecrypted);
   } catch (error) {
     console.error("Error fetching suppliers:", error);
     return NextResponse.json({ error: "Failed to fetch suppliers" }, { status: 500 });
@@ -22,6 +27,10 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
+
+    if (body.portalPassword) {
+      body.portalPassword = encryptPassword(body.portalPassword);
+    }
 
     // Auto-generate vbId for the supplier
     if (!body.vbId) {
