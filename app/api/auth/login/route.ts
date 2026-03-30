@@ -4,11 +4,20 @@ import { login } from "@/lib/auth";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 import VerificationCode from "@/lib/models/VerificationCode";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { key } from "@/lib/auth-utils";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.office365.com",
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: false, // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: { ciphers: "SSLv3" },
+});
 
 function generate6DigitCode(): string {
   return crypto.randomInt(100000, 999999).toString();
@@ -68,11 +77,12 @@ export async function POST(request: Request) {
     });
 
     // Send code via email
-    const { error: emailError } = await resend.emails.send({
-      from: "Vida Buddies <info@app.vidabuddies.com>",
-      to: [user.email],
-      subject: "Your Vida Buddies Login Code",
-      html: `
+    try {
+      await transporter.sendMail({
+        from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: "Your Vida Buddies Login Code",
+        html: `
         <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #09090b; border-radius: 16px; overflow: hidden;">
           <div style="background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 40px 30px 40px; text-align: center;">
             <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 64px; height: 64px; margin-bottom: 16px;" />
@@ -98,9 +108,8 @@ export async function POST(request: Request) {
           </div>
         </div>
       `,
-    });
-
-    if (emailError) {
+      });
+    } catch (emailError: any) {
       console.error("[Auth API] Email send error:", emailError);
       return NextResponse.json({ error: "Failed to send verification code. Please try again." }, { status: 500 });
     }

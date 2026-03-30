@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { getDrive } from "@/lib/google-drive";
 import connectToDatabase from "@/lib/db";
 import EmailRecord from "@/lib/models/EmailRecord";
 import { getSession } from "@/lib/auth";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.office365.com",
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: false, // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: { ciphers: "SSLv3" },
+});
 
 /**
  * POST — Send email with Google Drive file attachments
@@ -84,10 +93,13 @@ export async function POST(request: NextRequest) {
     const sentBySignature = `<br/><br/><div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 16px; color: #6b7280; font-size: 13px;">Sent by<br/><strong style="color: #374151;">${senderName}</strong><br/>${senderEmail}</div>`;
     const fullBody = body.replace(/\n/g, "<br/>") + sentBySignature;
 
-    // Send via Resend
-    const fromAddress = "Vida Buddies <info@app.vidabuddies.com>";
+    // Send via Nodemailer
+    const fromAddress = `"Vida Buddies Notification" <${process.env.SMTP_USER}>`;
+    const replyTo = senderEmail;
+    
     const emailPayload: any = {
       from: fromAddress,
+      replyTo: replyTo,
       to: toAddresses,
       subject,
       html: fullBody,
@@ -106,12 +118,12 @@ export async function POST(request: NextRequest) {
     let error = "";
 
     try {
-      const result = await resend.emails.send(emailPayload);
-      resendEmailId = result.data?.id || "";
+      const info = await transporter.sendMail(emailPayload);
+      resendEmailId = info.messageId || "";
     } catch (sendErr: any) {
       status = "failed";
       error = sendErr.message || "Failed to send";
-      console.error("[Email API] Resend error:", sendErr);
+      console.error("[Email API] Nodemailer error:", sendErr);
     }
 
     // Save email record to database

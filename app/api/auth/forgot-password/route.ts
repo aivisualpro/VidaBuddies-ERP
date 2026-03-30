@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.office365.com",
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: false, // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: { ciphers: "SSLv3" },
+});
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
@@ -18,11 +26,12 @@ export async function POST(request: Request) {
     }
 
     // Prepare the email template
-    const { data, error } = await resend.emails.send({
-      from: "Vida Buddies Support <info@app.vidabuddies.com>",
-      to: [user.email],
-      subject: "Your Vida Buddies Password Recovery",
-      html: `
+    try {
+      await transporter.sendMail({
+        from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: "Your Vida Buddies Password Recovery",
+        html: `
         <div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; rounded-xl">
           <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 80px; height: 80px;" />
@@ -48,10 +57,9 @@ export async function POST(request: Request) {
           </p>
         </div>
       `,
-    });
-
-    if (error) {
-      console.error("Resend error:", error);
+      });
+    } catch (emailError: any) {
+      console.error("[Email API] Nodemailer error:", emailError);
       return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
     }
 
