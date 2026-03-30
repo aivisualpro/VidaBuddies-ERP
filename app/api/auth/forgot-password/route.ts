@@ -25,44 +25,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "If an active account exists with that email, the password has been sent." });
     }
 
-    // Prepare the email template in the background (fire and forget)
-    (async () => {
-      try {
-        await transporter.sendMail({
-          from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
-          to: user.email,
-          subject: "Your Vida Buddies Password Recovery",
-          html: `
-          <div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; rounded-xl">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 80px; height: 80px;" />
-            </div>
-            <h2 style="color: #18181b; text-align: center;">Password Recovery</h2>
-            <p style="color: #52525b; font-size: 16px; line-height: 24px;">
-              Hello <strong>${user.name}</strong>,
-            </p>
-            <p style="color: #52525b; font-size: 16px; line-height: 24px;">
-              You requested to recover your password for the Vida Buddies ERP system.
-            </p>
-            <div style="background-color: #f4f4f5; padding: 20px; border-radius: 12px; text-align: center; margin: 30px 0;">
-              <p style="margin: 0; color: #71717a; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Your Current Password</p>
-              <p style="margin: 10px 0 0 0; color: #18181b; font-size: 24px; font-weight: bold;">${user.password}</p>
-            </div>
-            <div style="text-align: center; margin-top: 40px;">
-              <a href="https://vidabuddies.com/login" style="background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Log In to Dashboard</a>
-            </div>
-            <hr style="margin-top: 50px; border: 0; border-top: 1px solid #e4e4e7;" />
-            <p style="color: #a1a1aa; font-size: 12px; text-align: center; margin-top: 20px;">
-              If you did not request this email, please ignore it or contact your administrator.
-              <br />© ${new Date().getFullYear()} Vida Buddies. All rights reserved.
-            </p>
+    // Send the email directly (await to ensure Vercel doesn't kill the lambda)
+    try {
+      await transporter.sendMail({
+        from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: "Your Vida Buddies Password Recovery",
+        html: `
+        <div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e4e7; rounded-xl">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 80px; height: 80px;" />
           </div>
-        `,
-        });
-      } catch (emailError: any) {
-        console.error("[Email API] Nodemailer error (Background):", emailError);
-      }
-    })();
+          <h2 style="color: #18181b; text-align: center;">Password Recovery</h2>
+          <p style="color: #52525b; font-size: 16px; line-height: 24px;">
+            Hello <strong>${user.name}</strong>,
+          </p>
+          <p style="color: #52525b; font-size: 16px; line-height: 24px;">
+            You requested to recover your password for the Vida Buddies ERP system.
+          </p>
+          <div style="background-color: #f4f4f5; padding: 20px; border-radius: 12px; text-align: center; margin: 30px 0;">
+            <p style="margin: 0; color: #71717a; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Your Current Password</p>
+            <p style="margin: 10px 0 0 0; color: #18181b; font-size: 24px; font-weight: bold;">${user.password}</p>
+          </div>
+          <div style="text-align: center; margin-top: 40px;">
+            <a href="https://vidabuddies.com/login" style="background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Log In to Dashboard</a>
+          </div>
+          <hr style="margin-top: 50px; border: 0; border-top: 1px solid #e4e4e7;" />
+          <p style="color: #a1a1aa; font-size: 12px; text-align: center; margin-top: 20px;">
+            If you did not request this email, please ignore it or contact your administrator.
+            <br />© ${new Date().getFullYear()} Vida Buddies. All rights reserved.
+          </p>
+        </div>
+      `,
+      });
+    } catch (emailError: any) {
+      console.error("[Email API] Nodemailer error:", emailError);
+    }
 
     return NextResponse.json({ message: "Password sent successfully" });
   } catch (error: any) {

@@ -102,44 +102,42 @@ export async function POST(request: Request) {
       expiresAt,
     });
 
-    // Send code via email in the background (fire and forget)
-    (async () => {
-      try {
-        await transporter.sendMail({
-          from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
-          to: user!.email,
-          subject: "Your Vida Buddies Login Code",
-          html: `
-          <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #09090b; border-radius: 16px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 40px 30px 40px; text-align: center;">
-              <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 64px; height: 64px; margin-bottom: 16px;" />
-              <h1 style="color: #fafafa; font-size: 22px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.5px;">Verification Code</h1>
-              <p style="color: #71717a; font-size: 14px; margin: 0;">Enter this code to complete your login</p>
+    // Send code via email directly (await to ensure Vercel doesn't kill the lambda)
+    try {
+      await transporter.sendMail({
+        from: `"Vida Buddies Notification" <${process.env.SMTP_USER}>`,
+        to: user!.email,
+        subject: "Your Vida Buddies Login Code",
+        html: `
+        <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #09090b; border-radius: 16px; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 40px 30px 40px; text-align: center;">
+            <img src="https://vidabuddies.com/logo.png" alt="Vida Buddies" style="width: 64px; height: 64px; margin-bottom: 16px;" />
+            <h1 style="color: #fafafa; font-size: 22px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.5px;">Verification Code</h1>
+            <p style="color: #71717a; font-size: 14px; margin: 0;">Enter this code to complete your login</p>
+          </div>
+          <div style="padding: 40px;">
+            <div style="background: linear-gradient(135deg, #1c1c21 0%, #18181b 100%); border: 1px solid #27272a; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px;">
+              <p style="margin: 0 0 12px 0; color: #71717a; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">Your 6-Digit Code</p>
+              <div style="font-size: 40px; font-weight: 800; letter-spacing: 12px; color: #fafafa; font-family: 'SF Mono', 'Fira Code', monospace; padding: 8px 0;">${code}</div>
             </div>
-            <div style="padding: 40px;">
-              <div style="background: linear-gradient(135deg, #1c1c21 0%, #18181b 100%); border: 1px solid #27272a; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px;">
-                <p style="margin: 0 0 12px 0; color: #71717a; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">Your 6-Digit Code</p>
-                <div style="font-size: 40px; font-weight: 800; letter-spacing: 12px; color: #fafafa; font-family: 'SF Mono', 'Fira Code', monospace; padding: 8px 0;">${code}</div>
-              </div>
-              <div style="background: #1c1c21; border-radius: 12px; padding: 16px; border: 1px solid #27272a;">
-                <p style="color: #a1a1aa; font-size: 13px; margin: 0; line-height: 20px;">
-                  ⏱️ This code expires in <strong style="color: #fafafa;">10 minutes</strong>
-                </p>
-                <p style="color: #71717a; font-size: 12px; margin: 8px 0 0 0; line-height: 18px;">
-                  If you did not request this code, please ignore this email or contact your administrator immediately.
-                </p>
-              </div>
-            </div>
-            <div style="padding: 24px 40px; border-top: 1px solid #1c1c21; text-align: center;">
-              <p style="color: #52525b; font-size: 11px; margin: 0;">© ${new Date().getFullYear()} Vida Buddies. All rights reserved.</p>
+            <div style="background: #1c1c21; border-radius: 12px; padding: 16px; border: 1px solid #27272a;">
+              <p style="color: #a1a1aa; font-size: 13px; margin: 0; line-height: 20px;">
+                ⏱️ This code expires in <strong style="color: #fafafa;">10 minutes</strong>
+              </p>
+              <p style="color: #71717a; font-size: 12px; margin: 8px 0 0 0; line-height: 18px;">
+                If you did not request this code, please ignore this email or contact your administrator immediately.
+              </p>
             </div>
           </div>
-        `,
-        });
-      } catch (emailError: any) {
-        console.error("[Auth API] Email send error (Background):", emailError);
-      }
-    })();
+          <div style="padding: 24px 40px; border-top: 1px solid #1c1c21; text-align: center;">
+            <p style="color: #52525b; font-size: 11px; margin: 0;">© ${new Date().getFullYear()} Vida Buddies. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      });
+    } catch (emailError: any) {
+      console.error("[Auth API] Email send error:", emailError);
+    }
 
     // Create a short-lived verification token to tie the 2FA step to this user
     const verificationToken = await new SignJWT({

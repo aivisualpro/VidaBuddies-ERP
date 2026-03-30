@@ -314,7 +314,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                       </div>
                     </TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      <Link href={`/admin/purchase-orders/${container.id}`} className="hover:underline text-inherit">
+                      <Link prefetch={false} href={`/admin/purchase-orders/${container.id}`} className="hover:underline text-inherit">
                         {container.vbid}
                       </Link>
                     </TableCell>
