@@ -147,13 +147,21 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
     fetchPOs();
   }, []);
 
-  // Find POs related to this supplier
+  // Find POs related to this supplier (supplier field can be _id, vbId, or name)
   const relatedPOs = useMemo(() => {
     if (!supplier) return [];
+    const sId = supplier._id?.toLowerCase() || "";
     const sName = supplier.name?.toLowerCase() || "";
+    const sVbId = supplier.vbId?.toLowerCase() || "";
+
+    const matchesSupplier = (val: string) => {
+      const v = (val || "").toLowerCase();
+      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
+    };
+
     return purchaseOrders.filter(po =>
       po.customerPO?.some((cpo: any) =>
-        cpo.shipping?.some((s: any) => (s.supplier || "").toLowerCase().includes(sName))
+        cpo.shipping?.some((s: any) => matchesSupplier(s.supplier))
       )
     );
   }, [purchaseOrders, supplier]);
@@ -175,11 +183,19 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
   }, [relatedPOs, poSearch]);
 
   const getSupplierShipments = (po: any) => {
+    const sId = supplier?._id?.toLowerCase() || "";
     const sName = supplier?.name?.toLowerCase() || "";
+    const sVbId = supplier?.vbId?.toLowerCase() || "";
+
+    const matchesSupplier = (val: string) => {
+      const v = (val || "").toLowerCase();
+      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
+    };
+
     const records: any[] = [];
     po.customerPO?.forEach((cpo: any) => {
       cpo.shipping?.forEach((s: any) => {
-        if ((s.supplier || "").toLowerCase().includes(sName)) {
+        if (matchesSupplier(s.supplier)) {
           records.push({ ...s, customerPONo: cpo.poNo, customer: cpo.customer });
         }
       });
