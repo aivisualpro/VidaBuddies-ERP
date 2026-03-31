@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -39,11 +40,14 @@ interface Supplier {
   name: string;
   portalEmail?: string;
   portalPassword?: string;
+  isOrganic?: boolean;
   location: SupplierLocation[];
 }
 
-import { Plus, Globe, Eye, EyeOff, Key, Mail as MailIcon } from "lucide-react";
+import { Plus, Globe, Eye, EyeOff, Key, Mail as MailIcon, Leaf } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { TablePageSkeleton } from "@/components/skeletons";
+import { cn } from "@/lib/utils";
 
 export default function SuppliersPage() {
   const { 
@@ -129,6 +133,26 @@ export default function SuppliersPage() {
     setIsSheetOpen(true);
   };
 
+  const handleToggleOrganic = async (item: Supplier) => {
+    const newVal = !item.isOrganic;
+    try {
+      const res = await fetch(`/api/admin/suppliers/${item._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isOrganic: newVal }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(
+        newVal
+          ? `${item.name} tagged as Organic Certified 🌿`
+          : `${item.name} organic certification removed`
+      );
+      refetchSuppliers();
+    } catch {
+      toast.error("Failed to update organic status");
+    }
+  };
+
   const generatePassword = () => {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
     let password = "Vb$";
@@ -198,6 +222,33 @@ export default function SuppliersPage() {
     {
       accessorKey: "name",
       header: "Name",
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{item.name}</span>
+            {item.isOrganic && (
+              <div className="relative group">
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 transition-all duration-300 hover:shadow-md hover:shadow-emerald-200/50 dark:hover:shadow-emerald-900/50">
+                  <Image
+                    src="/organic certified.png"
+                    alt="Organic Certified"
+                    width={18}
+                    height={18}
+                    className="rounded-full"
+                  />
+                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider leading-none hidden sm:inline">Organic</span>
+                </div>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-foreground text-background text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                  🌿 Organic Certified Supplier
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-foreground" />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: "locations",
@@ -210,6 +261,28 @@ export default function SuppliersPage() {
             <span className="font-medium text-xs">
               {item.location?.length || 0}
             </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "organic",
+      header: "Organic",
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Switch
+              size="sm"
+              checked={item.isOrganic || false}
+              onCheckedChange={() => handleToggleOrganic(item)}
+              className={cn(
+                item.isOrganic && "data-[state=checked]:bg-emerald-600"
+              )}
+            />
+            {item.isOrganic && (
+              <Leaf className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 animate-in fade-in duration-300" />
+            )}
           </div>
         );
       },

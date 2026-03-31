@@ -51,6 +51,7 @@ export interface IVidaSupplier extends Document {
   communicationEmail?: string;
   phone?: string;
   productsSupplied?: string[];
+  isOrganic?: boolean;
   location: IVidaSupplierLocation[];
   documents?: IVidaSupplierDocument[];
   surveyResponses?: IVidaSurveyResponse[];
@@ -107,6 +108,7 @@ const VidaSupplierSchema: Schema = new Schema({
   communicationEmail: { type: String, default: '' },
   phone: { type: String, default: '' },
   productsSupplied: { type: [String], default: [] },
+  isOrganic: { type: Boolean, default: false },
   location: [VidaSupplierLocationSchema],
   documents: { type: [VidaSupplierDocumentSchema], default: [] },
   surveyResponses: { type: [VidaSurveyResponseSchema], default: [] },
