@@ -427,6 +427,7 @@ export default function ReleaseRequestsPage() {
         columns={columns}
         data={filteredData}
         onAdd={openAddDialog}
+        onRowClick={(item) => router.push(`/inventory/release-requests/${item._id}`)}
         title="Release Requests"
         showColumnToggle={false}
         globalFilter={globalSearch}

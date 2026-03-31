@@ -261,7 +261,7 @@ export default function ReleaseRequestDetailPage() {
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="px-6 pt-4">
+          <div className="px-6 pt-6">
             <TabsList className="grid w-full max-w-sm grid-cols-2">
               <TabsTrigger value="details" className="gap-2">
                 <FileText className="h-4 w-4" />
