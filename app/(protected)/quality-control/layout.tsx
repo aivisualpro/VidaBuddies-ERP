@@ -58,9 +58,9 @@ export default function QualityControlLayout({ children }: { children: React.Rea
                   : "dashboard";
 
   return (
-    <div className="flex-1 space-y-4">
+    <div className="flex-1 flex flex-col gap-0 h-full overflow-hidden">
       {!isDeepRoute && (
-        <div className="border-b sticky top-0 bg-background z-20">
+        <div className="border-b sticky top-0 bg-background z-20 shrink-0">
           <div className="flex h-10 items-center overflow-x-auto">
             <Link 
               href="/quality-control/dashboard" 
@@ -91,7 +91,7 @@ export default function QualityControlLayout({ children }: { children: React.Rea
       )}
       
       {activeTab === 'suppliers' && !isDeepRoute ? (
-        <div className="h-[750px] overflow-hidden rounded-xl bg-card border shadow-sm p-4">
+        <div className="flex-1 overflow-hidden rounded-xl bg-card border shadow-sm p-4 mt-4">
           <div className="h-full overflow-y-auto w-full">
             {children}
           </div>

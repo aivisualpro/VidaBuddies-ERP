@@ -329,7 +329,7 @@ export default function SuppliersPage() {
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full overflow-hidden">
       <SimpleDataTable
         columns={columns}
         data={data}
