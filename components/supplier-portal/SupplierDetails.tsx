@@ -425,11 +425,11 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-background">
+      <div className="bg-background" style={{ height: 'calc(100vh - 10rem)' }}>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 p-0 md:h-full md:overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 p-0 h-full overflow-hidden">
         {/* Column 1: Locations */}
-        <div className="flex flex-col gap-4 md:overflow-y-auto md:pr-2 scrollbar-thin scrollbar-thumb-muted">
+        <div className="flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
           <div className="flex items-center gap-2 mb-1 md:mb-2">
             <MapPin className="h-4 w-4 text-primary" />
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Locations</span>
