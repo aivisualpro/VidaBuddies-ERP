@@ -544,7 +544,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
         </div>
 
         {/* Column 2-3: Purchase Order History — Rich Shipping Cards */}
-        <div className="md:col-span-2 flex flex-col gap-3 md:overflow-y-auto md:pr-2 scrollbar-thin scrollbar-thumb-muted">
+        <div className="md:col-span-2 flex flex-col gap-3 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <ShoppingCart className="h-4 w-4 text-primary" />
