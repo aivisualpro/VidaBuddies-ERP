@@ -122,16 +122,46 @@ const data = {
   ],
 };
 
-// Global cache for sidebar data to prevent refetching on navigation
-let sidebarCache: {
+// localStorage keys
+const LS_KEY_PERMISSIONS = 'vb_sidebar_permissions';
+const LS_KEY_ADMIN = 'vb_sidebar_isAdmin';
+const LS_KEY_SUPPLIER = 'vb_sidebar_isSupplier';
+const LS_KEY_SHIPCOUNT = 'vb_sidebar_shipmentCount';
+const LS_KEY_TIMESTAMP = 'vb_sidebar_ts';
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Try to read from localStorage synchronously to prevent flash
+function getLocalStorageCache(): {
   permissions: any[];
   isAdmin: boolean;
   isSupplier: boolean;
   shipmentCount: number;
-  timestamp: number;
-} | null = null;
+} | null {
+  try {
+    const ts = localStorage.getItem(LS_KEY_TIMESTAMP);
+    if (!ts || Date.now() - parseInt(ts) > CACHE_DURATION) return null;
+    
+    return {
+      permissions: JSON.parse(localStorage.getItem(LS_KEY_PERMISSIONS) || '[]'),
+      isAdmin: localStorage.getItem(LS_KEY_ADMIN) === 'true',
+      isSupplier: localStorage.getItem(LS_KEY_SUPPLIER) === 'true',
+      shipmentCount: parseInt(localStorage.getItem(LS_KEY_SHIPCOUNT) || '0'),
+    };
+  } catch {
+    return null;
+  }
+}
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+function saveToLocalStorage(data: { permissions: any[]; isAdmin: boolean; isSupplier: boolean; shipmentCount: number }) {
+  try {
+    localStorage.setItem(LS_KEY_PERMISSIONS, JSON.stringify(data.permissions));
+    localStorage.setItem(LS_KEY_ADMIN, String(data.isAdmin));
+    localStorage.setItem(LS_KEY_SUPPLIER, String(data.isSupplier));
+    localStorage.setItem(LS_KEY_SHIPCOUNT, String(data.shipmentCount));
+    localStorage.setItem(LS_KEY_TIMESTAMP, String(Date.now()));
+  } catch { /* quota exceeded or private mode */ }
+}
 
 export function AppSidebar({ isSupplierProp = false, ...props }: React.ComponentProps<typeof Sidebar> & { isSupplierProp?: boolean }) {
   const [reports, setReports] = React.useState(data.reports);
@@ -140,38 +170,43 @@ export function AppSidebar({ isSupplierProp = false, ...props }: React.Component
   const [isSupplier, setIsSupplier] = React.useState(isSupplierProp);
   const [loadingPermissions, setLoadingPermissions] = React.useState(!isSupplierProp);
 
+  // Read localStorage BEFORE paint to prevent sidebar flash (client-only)
+  React.useLayoutEffect(() => {
+    if (isSupplierProp) return;
+    const cached = getLocalStorageCache();
+    if (cached) {
+      setPermissions(cached.permissions);
+      setIsAdmin(cached.isAdmin);
+      setIsSupplier(cached.isSupplier);
+      if (cached.shipmentCount > 0) {
+        setReports(prev => prev.map(item => 
+          item.name === "Live Shipments" ? { ...item, badge: cached.shipmentCount } : item
+        ));
+      }
+      setLoadingPermissions(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (isSupplierProp) {
         setIsSupplier(true);
         setLoadingPermissions(false);
-        return; // Suppliers don't need any admin sidebar permissions or counts
+        return;
     }
 
     const fetchData = async () => {
-      // Check cache first
-      const now = Date.now();
-      if (sidebarCache && (now - sidebarCache.timestamp) < CACHE_DURATION) {
-        setPermissions(sidebarCache.permissions);
-        setIsAdmin(sidebarCache.isAdmin);
-        if (sidebarCache.shipmentCount > 0) {
-          setReports(prev => prev.map(item => 
-            item.name === "Live Shipments" 
-              ? { ...item, badge: sidebarCache!.shipmentCount } 
-              : item
-          ));
-        }
-        setLoadingPermissions(false);
-        return;
-      }
-
       try {
         let shipmentCount = 0;
         let fetchedPermissions: any[] = [];
         let fetchedIsAdmin = false;
         let fetchedIsSupplier = false;
 
-        // Fetch Live Shipments Count
-        const countRes = await fetch('/api/admin/live-shipments/count');
+        // Fetch both in parallel
+        const [countRes, permRes] = await Promise.all([
+          fetch('/api/admin/live-shipments/count'),
+          fetch('/api/user/permissions'),
+        ]);
+
         if (countRes.ok) {
           const { count } = await countRes.json();
           shipmentCount = count;
@@ -184,8 +219,6 @@ export function AppSidebar({ isSupplierProp = false, ...props }: React.Component
           }
         }
 
-        // Fetch User Permissions
-        const permRes = await fetch('/api/user/permissions');
         if (permRes.ok) {
           const data = await permRes.json();
           
@@ -203,14 +236,13 @@ export function AppSidebar({ isSupplierProp = false, ...props }: React.Component
           setIsAdmin(fetchedIsAdmin);
         }
 
-        // Update cache
-        sidebarCache = {
+        // Save to localStorage for next refresh
+        saveToLocalStorage({
           permissions: fetchedPermissions,
           isAdmin: fetchedIsAdmin,
           isSupplier: fetchedIsSupplier,
           shipmentCount,
-          timestamp: Date.now(),
-        };
+        });
       } catch (error) {
         console.error("Failed to fetch sidebar data", error);
       } finally {

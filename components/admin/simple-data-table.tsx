@@ -46,6 +46,8 @@ interface SimpleDataTableProps<TData, TValue> {
   globalFilter?: string;
   onGlobalFilterChange?: (value: string) => void;
   globalFilterFn?: (row: any, columnId: string, filterValue: string) => boolean;
+  rowClassName?: (data: TData) => string;
+  rowDataId?: (data: TData) => string;
 }
 
 export function SimpleDataTable<TData, TValue>({
@@ -61,6 +63,8 @@ export function SimpleDataTable<TData, TValue>({
   globalFilter: externalGlobalFilter,
   onGlobalFilterChange,
   globalFilterFn,
+  rowClassName,
+  rowDataId,
 }: SimpleDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -224,8 +228,9 @@ export function SimpleDataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  data-row-id={rowDataId?.(row.original)}
                   onClick={() => onRowClick?.(row.original)}
-                  className={onRowClick ? "cursor-pointer" : ""}
+                  className={`${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row.original) || ""}`}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="py-0.5 h-8 text-[14px] font-normal">

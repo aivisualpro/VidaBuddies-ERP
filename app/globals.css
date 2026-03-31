@@ -229,3 +229,24 @@ body {
     @apply !rounded-none !shadow-none;
   }
 }
+
+/* Row highlight animation for back-navigation */
+@keyframes highlightRow {
+  0% { background-color: oklch(0.85 0.15 250); }
+  30% { background-color: oklch(0.9 0.1 250); }
+  100% { background-color: transparent; }
+}
+
+.dark .animate-highlight-row {
+  animation: highlightRowDark 3s ease-out forwards;
+}
+
+@keyframes highlightRowDark {
+  0% { background-color: oklch(0.35 0.12 250); }
+  30% { background-color: oklch(0.28 0.08 250); }
+  100% { background-color: transparent; }
+}
+
+.animate-highlight-row {
+  animation: highlightRow 3s ease-out forwards;
+}

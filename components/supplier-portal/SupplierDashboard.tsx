@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import { 
   FileText, AlertTriangle, CheckCircle, Clock, Save, Eye, EyeOff, 
-  RefreshCw, X, Plus, Lock, Building2, User, Mail, Phone, Globe, Package, Leaf 
+  RefreshCw, X, Plus, Lock, Building2, User, Mail, Phone, Globe, Package, Leaf, ArrowLeft 
 } from "lucide-react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 function generatePassword(length = 16): string {
   const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -50,7 +51,8 @@ interface SupplierProfile {
 }
 
 export function SupplierDashboard({ supplierId, isSupplierView = false }: { supplierId: string, isSupplierView?: boolean }) {
-  const { setLeftContent } = useHeaderActions();
+  const { setLeftContent, setRightContent } = useHeaderActions();
+  const router = useRouter();
   const [supplierName, setSupplierName] = useState<string>("");
   const [isOrganic, setIsOrganic] = useState(false);
   const [metrics, setMetrics] = useState({
@@ -131,8 +133,26 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
           )}
         </h1>
       );
+
+      if (!isSupplierView) {
+        setRightContent(
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5"
+            onClick={() => router.push(`/quality-control/suppliers?highlight=${supplierId}`)}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Suppliers
+          </Button>
+        );
+      }
     }
-  }, [supplierName, setLeftContent, isOrganic]);
+    return () => {
+      setLeftContent(null);
+      setRightContent(null);
+    };
+  }, [supplierName, setLeftContent, setRightContent, isOrganic, isSupplierView, supplierId, router]);
 
   const isDirty = originalProfile && JSON.stringify(profile) !== JSON.stringify(originalProfile);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Hash, Factory, MapPin } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Pencil, Trash, Hash, Factory, MapPin, Search } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import Link from "next/link";
 
@@ -60,6 +60,37 @@ export default function SuppliersPage() {
   const [editingItem, setEditingItem] = useState<Supplier | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // Highlight row when coming back from details
+  useEffect(() => {
+    const hid = searchParams.get('highlight');
+    if (hid) {
+      setHighlightId(hid);
+      // Scroll row into view after a short delay
+      setTimeout(() => {
+        const row = document.querySelector(`[data-row-id="${hid}"]`);
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      // Remove highlight after 3 seconds
+      const timer = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
+  // Filtered data
+  const filteredData = useMemo(() => {
+    if (!searchQuery.trim()) return data;
+    const q = searchQuery.toLowerCase();
+    return data.filter((s: any) =>
+      s.name?.toLowerCase().includes(q) ||
+      s.vbId?.toLowerCase().includes(q) ||
+      s.portalEmail?.toLowerCase().includes(q) ||
+      s.location?.some((l: any) => l.locationName?.toLowerCase().includes(q) || l.country?.toLowerCase().includes(q))
+    );
+  }, [data, searchQuery]);
 
   const [formData, setFormData] = useState<Partial<Supplier>>({
     vbId: "",
@@ -329,14 +360,28 @@ export default function SuppliersPage() {
   }
 
   return (
-    <div className="w-full h-full overflow-hidden">
-      <SimpleDataTable
-        columns={columns}
-        data={data}
-        searchKey="name"
-        onAdd={openAddSheet}
-        onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
-      />
+    <div className="w-full h-full overflow-hidden flex flex-col gap-3">
+      {/* Search Bar */}
+      <div className="shrink-0 relative">
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search suppliers by name, VB ID, email, location..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="h-10 pl-10 text-sm bg-foreground/5 border-transparent focus-visible:ring-1 placeholder:text-[11px] placeholder:uppercase placeholder:tracking-wider"
+        />
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        <SimpleDataTable
+          columns={columns}
+          data={filteredData}
+          onAdd={openAddSheet}
+          onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
+          rowClassName={(row) => row._id === highlightId ? 'animate-highlight-row' : ''}
+          rowDataId={(row) => row._id}
+        />
+      </div>
 
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

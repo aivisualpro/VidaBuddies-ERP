@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { DetailPageSkeleton } from "@/components/skeletons";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,16 @@ import {
   ChevronRight,
   Pencil,
   Trash,
-  ImagePlus
+  ImagePlus,
+  ShoppingCart,
+  Ship,
+  Calendar,
+  Anchor,
+  Search,
+  Package,
+  Loader2,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation";
@@ -65,6 +73,8 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [poSearch, setPoSearch] = useState("");
 
   // Dialog States
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -81,7 +91,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
       setLeftContent(
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
-            <span className="hidden md:inline">{supplier.name} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">DETAILS</span>
+            <span className="hidden md:inline">{supplier.name} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">HISTORY</span>
           </h1>
           <div className="hidden md:flex gap-2">
             <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black border border-primary/20">{supplier.vbId}</span>
@@ -125,6 +135,57 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
 
     fetchSupplier();
   }, [supplierId]);
+
+  // Fetch Purchase Orders
+  useEffect(() => {
+    const fetchPOs = async () => {
+      try {
+        const res = await fetch('/api/admin/purchase-orders');
+        if (res.ok) setPurchaseOrders(await res.json());
+      } catch { /* silent */ }
+    };
+    fetchPOs();
+  }, []);
+
+  // Find POs related to this supplier
+  const relatedPOs = useMemo(() => {
+    if (!supplier) return [];
+    const sName = supplier.name?.toLowerCase() || "";
+    return purchaseOrders.filter(po =>
+      po.customerPO?.some((cpo: any) =>
+        cpo.shipping?.some((s: any) => (s.supplier || "").toLowerCase().includes(sName))
+      )
+    );
+  }, [purchaseOrders, supplier]);
+
+  const filteredPOs = useMemo(() => {
+    if (!poSearch.trim()) return relatedPOs;
+    const q = poSearch.toLowerCase();
+    return relatedPOs.filter((po: any) =>
+      po.vbpoNo?.toLowerCase().includes(q) ||
+      po.category?.toLowerCase().includes(q) ||
+      po.customerPO?.some((c: any) =>
+        c.shipping?.some((s: any) =>
+          s.carrier?.toLowerCase().includes(q) ||
+          s.containerNo?.toLowerCase().includes(q) ||
+          s.vessellTrip?.toLowerCase().includes(q)
+        )
+      )
+    );
+  }, [relatedPOs, poSearch]);
+
+  const getSupplierShipments = (po: any) => {
+    const sName = supplier?.name?.toLowerCase() || "";
+    const records: any[] = [];
+    po.customerPO?.forEach((cpo: any) => {
+      cpo.shipping?.forEach((s: any) => {
+        if ((s.supplier || "").toLowerCase().includes(sName)) {
+          records.push({ ...s, customerPONo: cpo.poNo, customer: cpo.customer });
+        }
+      });
+    });
+    return records;
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, locationId: string) => {
     const file = e.target.files?.[0];
@@ -426,26 +487,123 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
           </div>
         </div>
 
-        <div className="bg-muted/10 rounded-2xl md:rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group min-h-[160px] md:min-h-0">
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-          <div className="text-center space-y-2 relative z-10">
-             <div className="h-12 w-12 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Hash className="h-6 w-6 text-muted-foreground" />
-             </div>
-             <p className="font-black uppercase text-[10px] tracking-[0.3em] text-muted-foreground opacity-50">Supply History</p>
-             <p className="text-xs text-muted-foreground">Coming Soon</p>
+        {/* Column 2-3: Purchase Order History */}
+        <div className="md:col-span-2 flex flex-col gap-3 md:overflow-y-auto md:pr-2 scrollbar-thin scrollbar-thumb-muted">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4 text-primary" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Purchase Order History</span>
+              <Badge variant="secondary" className="text-[9px] font-black px-1.5 py-0">{relatedPOs.length}</Badge>
+            </div>
           </div>
-        </div>
 
-        <div className="bg-muted/10 rounded-2xl md:rounded-[2.5rem] border border-dashed border-muted/50 flex items-center justify-center relative overflow-hidden group min-h-[160px] md:min-h-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-          <div className="text-center space-y-2 relative z-10">
-            <div className="h-12 w-12 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Building2 className="h-6 w-6 text-muted-foreground" />
-             </div>
-            <p className="font-black uppercase text-[10px] tracking-[0.3em] text-muted-foreground opacity-50">Supplier Insights</p>
-            <p className="text-xs text-muted-foreground">Coming Soon</p>
+          {/* Search */}
+          <div className="relative shrink-0">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search PO#, carrier, container..."
+              value={poSearch}
+              onChange={(e) => setPoSearch(e.target.value)}
+              className="h-9 pl-9 text-xs bg-foreground/5 border-transparent focus-visible:ring-1 placeholder:text-[10px] placeholder:uppercase placeholder:tracking-wider"
+            />
           </div>
+
+          {filteredPOs.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center min-h-[200px] border border-dashed rounded-xl bg-accent/5">
+              <div className="text-center space-y-2">
+                <ShoppingCart className="h-8 w-8 text-muted-foreground/20 mx-auto" />
+                <p className="font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
+                  {relatedPOs.length === 0 ? "No purchase orders found" : "No results match your search"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredPOs.map((po: any) => {
+                const shipments = getSupplierShipments(po);
+                return (
+                  <div
+                    key={po._id}
+                    className="rounded-xl border border-border bg-card overflow-hidden cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
+                    onClick={() => router.push(`/admin/purchase-orders/${po._id}`)}
+                  >
+                    {/* PO Header */}
+                    <div className="px-3 py-2 bg-muted/40 border-b border-border flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-primary">{po.vbpoNo}</span>
+                        {po.orderType && (
+                          <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0">
+                            {po.orderType}
+                          </Badge>
+                        )}
+                        {po.category && (
+                          <Badge variant="secondary" className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0">
+                            {po.category}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {po.date && (
+                          <span className="text-[9px] text-muted-foreground font-medium flex items-center gap-1">
+                            <Calendar className="h-2.5 w-2.5" />
+                            {new Date(po.date).toLocaleDateString()}
+                          </span>
+                        )}
+                        <ExternalLink className="h-3 w-3 text-muted-foreground/40" />
+                      </div>
+                    </div>
+
+                    {/* Shipments */}
+                    <div className="divide-y divide-border/50">
+                      {shipments.map((s: any, i: number) => (
+                        <div key={i} className="px-3 py-2 hover:bg-muted/10 text-[11px]">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="font-bold text-foreground shrink-0">{s.spoNo || "-"}</span>
+                              {s.status && (
+                                <Badge className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0 shrink-0 ${
+                                  s.status.toLowerCase().includes("transit")
+                                    ? "bg-blue-600 text-white"
+                                    : s.status.toLowerCase().includes("receiv")
+                                    ? "bg-green-600 text-white"
+                                    : s.status.toLowerCase().includes("standby")
+                                    ? "bg-yellow-600 text-white"
+                                    : s.status.toLowerCase().includes("order")
+                                    ? "bg-orange-500 text-white"
+                                    : "bg-zinc-500 text-white"
+                                }`}>
+                                  {s.status}
+                                </Badge>
+                              )}
+                              <div className="flex flex-wrap gap-1 min-w-0">
+                                {(s.products || (s.product ? [s.product] : [])).slice(0, 2).map((p: string, pi: number) => (
+                                  <span key={pi} className="text-[9px] font-bold px-1.5 py-0 bg-primary/10 text-primary rounded border border-primary/20 truncate max-w-[120px]">
+                                    {p}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
+                              {s.carrier && <span className="font-medium">{s.carrier}</span>}
+                              {s.ETA && (
+                                <span className="flex items-center gap-0.5">
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {new Date(s.ETA).toLocaleDateString()}
+                                </span>
+                              )}
+                              {s.drums != null && (
+                                <span><span className="font-bold text-foreground">{s.drums}</span> dr</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
