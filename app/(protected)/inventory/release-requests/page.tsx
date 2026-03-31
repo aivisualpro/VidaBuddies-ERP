@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +38,7 @@ import {
 } from "@/components/ui/command";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check } from "lucide-react";
+import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { TablePageSkeleton } from "@/components/skeletons";
@@ -57,6 +59,7 @@ interface ReleaseRequest {
   customer: any;
   contact: string;
   releaseOrderProducts: IReleaseOrderProduct[];
+  hasPickupInfo?: boolean;
   carrier: string;
   requestedPickupTime?: string;
   scheduledPickupDate?: string;
@@ -133,6 +136,7 @@ function ProductCombobox({ products, value, onChange }: { products: any[]; value
 }
 
 export default function ReleaseRequestsPage() {
+  const router = useRouter();
   const { 
     releaseRequests: rawData, 
     products, 
@@ -172,6 +176,7 @@ export default function ReleaseRequestsPage() {
       { product: "", qty: 0, lotSerial: "" },
       { product: "", qty: 0, lotSerial: "" }
     ],
+    hasPickupInfo: false,
     carrier: "",
     requestedPickupTime: "",
     scheduledPickupDate: "",
@@ -258,6 +263,7 @@ export default function ReleaseRequestsPage() {
       requestedBy: item.requestedBy?._id || item.requestedBy,
       customer: item.customer?._id || item.customer,
       date: item.date ? new Date(item.date).toISOString().split('T')[0] : "",
+      hasPickupInfo: item.hasPickupInfo || false,
       scheduledPickupDate: item.scheduledPickupDate ? new Date(item.scheduledPickupDate).toISOString().split('T')[0] : "",
       releaseOrderProducts: item.releaseOrderProducts.length > 0
         ? item.releaseOrderProducts.map(p => ({
@@ -381,7 +387,16 @@ export default function ReleaseRequestsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => openEditDialog(item)}
+              onClick={(e) => { e.stopPropagation(); router.push(`/inventory/release-requests/${item._id}`); }}
+              className="h-8 w-8 p-0"
+              title="View Details"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => { e.stopPropagation(); openEditDialog(item); }}
               className="h-8 w-8 p-0"
               title="Edit"
             >
@@ -390,7 +405,7 @@ export default function ReleaseRequestsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleDelete(item._id)}
+              onClick={(e) => { e.stopPropagation(); handleDelete(item._id); }}
               className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
               title="Delete"
             >
@@ -594,9 +609,22 @@ export default function ReleaseRequestsPage() {
                  </div>
             </div>
 
-            {/* SECTION 3: Pickup Details */}
+            {/* SECTION 3: Pickup & Instructions Toggle */}
             <div className="space-y-4">
-                 <h3 className="font-semibold text-lg flex items-center gap-2"><Truck className="w-4 h-4"/> Pickup Information</h3>
+                 <div className="flex items-center justify-between">
+                   <h3 className="font-semibold text-lg flex items-center gap-2"><Truck className="w-4 h-4"/> Pickup Information</h3>
+                   <div className="flex items-center gap-2">
+                     <Label htmlFor="pickup-toggle" className="text-sm text-muted-foreground">Include Pickup & Instructions</Label>
+                     <Switch
+                       id="pickup-toggle"
+                       checked={formData.hasPickupInfo || false}
+                       onCheckedChange={(checked) => setFormData({...formData, hasPickupInfo: checked})}
+                     />
+                   </div>
+                 </div>
+
+                 {formData.hasPickupInfo && (
+                 <div className="border rounded-lg p-4 space-y-6 bg-muted/20">
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                          <Label>Carrier</Label>
@@ -709,17 +737,19 @@ export default function ReleaseRequestsPage() {
                          />
                       </div>
                  </div>
-            </div>
 
-             {/* SECTION 4: Instructions */}
-            <div className="space-y-4">
-                 <h3 className="font-semibold text-lg flex items-center gap-2"><MapPin className="w-4 h-4"/> Instructions</h3>
-                 <Textarea 
-                    value={formData.instructions || ""}
-                    onChange={(e) => setFormData({...formData, instructions: e.target.value})}
-                    placeholder="Additional delivery or handling instructions..."
-                    className="min-h-[100px]"
-                 />
+                 {/* Instructions (inside the same box) */}
+                 <div className="space-y-3">
+                   <h4 className="font-semibold text-base flex items-center gap-2"><MapPin className="w-4 h-4"/> Instructions</h4>
+                   <Textarea 
+                      value={formData.instructions || ""}
+                      onChange={(e) => setFormData({...formData, instructions: e.target.value})}
+                      placeholder="Additional delivery or handling instructions..."
+                      className="min-h-[100px]"
+                   />
+                 </div>
+                 </div>
+                 )}
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
