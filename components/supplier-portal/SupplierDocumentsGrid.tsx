@@ -98,6 +98,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isOrganic, setIsOrganic] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -105,6 +106,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       if (response.ok) {
         const data = await response.json();
         setSupplierName(data.name || "");
+        setIsOrganic(!!data.isOrganic);
         
         const statesMap: Record<string, DocumentData> = {};
         if (data.documents) {
@@ -239,9 +241,19 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     setIsLogsOpen(true);
   };
 
+  // Effective docs list: filter out Organic Certificate if supplier is not organic
+  const effectiveDocs = useMemo(() => {
+    if (isOrganic) return REQUIRED_DOCS;
+    return REQUIRED_DOCS.filter(d => d.category !== 'Organic Certificate');
+  }, [isOrganic]);
+
+  const effectiveCategories = useMemo(() => {
+    return [...new Set(effectiveDocs.map(d => d.category))];
+  }, [effectiveDocs]);
+
   // Filtered docs
   const filteredDocs = useMemo(() => {
-    let docs = REQUIRED_DOCS;
+    let docs = effectiveDocs;
     if (selectedCategory) {
       docs = docs.filter(d => d.category === selectedCategory);
     }
@@ -250,20 +262,20 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       docs = docs.filter(d => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q));
     }
     return docs;
-  }, [selectedCategory, searchQuery]);
+  }, [selectedCategory, searchQuery, effectiveDocs]);
 
   // Category counts
   const categoryCounts = useMemo(() => {
     const counts: Record<string, { total: number; completed: number }> = {};
-    CATEGORIES.forEach(cat => {
-      const catDocs = REQUIRED_DOCS.filter(d => d.category === cat);
+    effectiveCategories.forEach(cat => {
+      const catDocs = effectiveDocs.filter(d => d.category === cat);
       counts[cat] = {
         total: catDocs.length,
         completed: catDocs.filter(d => docStates[d.name]?.fileId).length
       };
     });
     return counts;
-  }, [docStates]);
+  }, [docStates, effectiveDocs, effectiveCategories]);
 
   // Group filtered docs by category, N/A docs pushed to end within each group
   const groupedDocs = useMemo(() => {
@@ -550,9 +562,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                 <FolderOpen className="h-3.5 w-3.5" />
                 All Documents
               </span>
-              <span className="text-[9px] font-black opacity-60">{REQUIRED_DOCS.length}</span>
+              <span className="text-[9px] font-black opacity-60">{effectiveDocs.length}</span>
             </button>
-            {CATEGORIES.map(cat => {
+            {effectiveCategories.map(cat => {
               const counts = categoryCounts[cat];
               const isOrganic = cat === 'Organic Certificate';
               return (
@@ -600,9 +612,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                 !selectedCategory ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
               }`}
             >
-              All ({REQUIRED_DOCS.length})
+              All ({effectiveDocs.length})
             </button>
-            {CATEGORIES.map(cat => {
+            {effectiveCategories.map(cat => {
               const counts = categoryCounts[cat];
               const shortName = cat.split(' ')[0] + (cat.split(' ').length > 1 ? '...' : '');
               return (

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, logAction } = await req.json();
+    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction } = await req.json();
 
     await connectToDatabase();
     const supplier = await VidaSupplier.findById(id);
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         supplierNotes,
         adminNotes,
         isVerified,
+        isNA,
         logs: logAction ? [{ action: logAction, by: session.name || session.email || 'System', date: new Date() }] : []
       });
     } else {
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (supplierNotes !== undefined) doc.supplierNotes = supplierNotes;
       if (adminNotes !== undefined) doc.adminNotes = adminNotes;
       if (isVerified !== undefined) doc.isVerified = isVerified;
+      if (isNA !== undefined) doc.isNA = isNA;
 
       if (logAction) {
         doc.logs.push({

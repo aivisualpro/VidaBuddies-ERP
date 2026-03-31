@@ -5,9 +5,10 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 import { 
   FileText, AlertTriangle, CheckCircle, Clock, Save, Eye, EyeOff, 
-  RefreshCw, X, Plus, Lock, Building2, User, Mail, Phone, Globe, Package 
+  RefreshCw, X, Plus, Lock, Building2, User, Mail, Phone, Globe, Package, Leaf 
 } from "lucide-react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useEffect, useState, useRef } from "react";
@@ -51,6 +52,7 @@ interface SupplierProfile {
 export function SupplierDashboard({ supplierId, isSupplierView = false }: { supplierId: string, isSupplierView?: boolean }) {
   const { setLeftContent } = useHeaderActions();
   const [supplierName, setSupplierName] = useState<string>("");
+  const [isOrganic, setIsOrganic] = useState(false);
   const [metrics, setMetrics] = useState({
     total: 40,
     completed: 0,
@@ -78,6 +80,7 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
         if (response.ok) {
           const data = await response.json();
           setSupplierName(data.name || "");
+          setIsOrganic(!!data.isOrganic);
           
           const p: SupplierProfile = {
             name: data.name || '',
@@ -120,10 +123,16 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
       setLeftContent(
         <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
           <span className="hidden md:inline">{supplierName} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">DASHBOARD</span>
+          {isOrganic && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 ml-2">
+              <Image src="/organic certified.png" alt="Organic Certified" width={18} height={18} className="rounded-full" />
+              <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Organic</span>
+            </div>
+          )}
         </h1>
       );
     }
-  }, [supplierName, setLeftContent]);
+  }, [supplierName, setLeftContent, isOrganic]);
 
   const isDirty = originalProfile && JSON.stringify(profile) !== JSON.stringify(originalProfile);
 
@@ -231,14 +240,24 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
             <div className="text-2xl md:text-3xl font-black text-orange-500">{metrics.missing}</div>
           </CardContent>
         </Card>
-        <Card className="bg-card">
+        <Card className={`bg-card ${isOrganic ? 'border-emerald-200 dark:border-emerald-800' : ''}`}>
           <CardContent className="pt-4 pb-4 px-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Status</span>
-              <Clock className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                {isOrganic ? 'Organic' : 'Status'}
+              </span>
+              {isOrganic ? (
+                <Image src="/organic certified.png" alt="Organic" width={16} height={16} className="rounded-full" />
+              ) : (
+                <Clock className="h-3.5 w-3.5 text-primary" />
+              )}
             </div>
             <div className="text-sm md:text-lg font-black tracking-tight mt-1">
-              {metrics.missing > 0 ? (
+              {isOrganic ? (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Leaf className="h-4 w-4" /> CERTIFIED
+                </span>
+              ) : metrics.missing > 0 ? (
                 <span className="text-orange-500 flex items-center gap-1.5">⚠️ {metrics.status}</span>
               ) : (
                 <span className="text-green-500 flex items-center gap-1.5"><CheckCircle className="h-4 w-4"/> COMPLIANT</span>
