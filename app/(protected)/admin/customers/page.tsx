@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ export default function CustomersPage() {
     isLoading,
     refetchCustomers
   } = useUserDataStore();
+  const router = useRouter();
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Customer | null>(null);
@@ -200,17 +202,6 @@ export default function CustomersPage() {
       },
     },
     {
-      id: "details",
-      header: "Details",
-      cell: ({ row }) => (
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/admin/customers/${row.original._id}`}>
-            View Details
-          </Link>
-        </Button>
-      ),
-    },
-    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
@@ -258,6 +249,7 @@ export default function CustomersPage() {
         data={data}
         searchKey="name"
         onAdd={openAddSheet}
+        onRowClick={(row) => router.push(`/admin/customers/${row._id}`)}
       />
 
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>

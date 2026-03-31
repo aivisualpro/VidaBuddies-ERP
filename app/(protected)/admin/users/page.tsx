@@ -234,19 +234,6 @@ export default function UsersPage() {
       ),
     },
     {
-      id: "details",
-      cell: ({ row }) => (
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => router.push(`/admin/users/${row.original._id}`)}
-          className="h-8 w-8 p-0"
-        >
-          <FileText className="h-4 w-4" />
-        </Button>
-      ),
-    },
-    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
@@ -291,6 +278,7 @@ export default function UsersPage() {
          onAdd={() => openAddSheet()} 
          loading={isLoading}
          showColumnToggle={false}
+         onRowClick={(row) => router.push(`/admin/users/${row._id}`)}
       />
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
