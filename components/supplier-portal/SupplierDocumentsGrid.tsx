@@ -4,7 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2 } from "lucide-react";
+import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf } from "lucide-react";
+import Image from "next/image";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
@@ -56,7 +57,8 @@ const REQUIRED_DOCS = [
   { category: "Regulatory & Safety Documentation", name: "SGF / IRMA Participation Confirmation" },
   { category: "Food Safety Certifications", name: "FSSC 22000 Certificate (Valid to 2027)" },
   { category: "Quality & HACCP Documentation", name: "HACCP CCP Plan Sheet" },
-  { category: "Quality & HACCP Documentation", name: "Batch Coding Procedure" }
+  { category: "Quality & HACCP Documentation", name: "Batch Coding Procedure" },
+  { category: "Organic Certificate", name: "Organic Certificate" },
 ];
 
 // Extract unique categories preserving order
@@ -356,11 +358,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         </td>
         <td className="px-4 py-2 text-right">
           <div className="flex items-center justify-end gap-1">
-            {isSupplierView && (
-              <Button variant="ghost" size="icon" className={`h-7 w-7 ${isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
-                {isNA ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" className={`h-7 w-7 ${isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
+              {isNA ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
                <Paperclip className="h-3.5 w-3.5" />
             </Button>
@@ -368,25 +368,23 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                <MessageSquare className="h-3.5 w-3.5" />
             </Button>
 
-            {isSupplierView ? (
-              <>
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  ref={el => { fileInputRefs.current[doc.name] = el; }}
-                  onChange={(e) => handleFileUpload(e, doc.name)}
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="h-8 w-8 hover:bg-primary hover:text-primary-foreground border-primary/20"
-                  onClick={() => fileInputRefs.current[doc.name]?.click()}
-                  disabled={uploadingDoc === doc.name}
-                >
-                  {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                </Button>
-              </>
-            ) : (
+            <input 
+              type="file" 
+              className="hidden" 
+              ref={el => { fileInputRefs.current[doc.name] = el; }}
+              onChange={(e) => handleFileUpload(e, doc.name)}
+            />
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-8 w-8 hover:bg-primary hover:text-primary-foreground border-primary/20"
+              onClick={() => fileInputRefs.current[doc.name]?.click()}
+              disabled={uploadingDoc === doc.name}
+            >
+              {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            </Button>
+
+            {!isSupplierView && (
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -479,11 +477,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         </div>
         <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-t border-border">
           <div className="flex items-center gap-1">
-            {isSupplierView && (
-              <Button variant="ghost" size="icon" className={`h-8 w-8 ${state.isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={state.isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
-                {state.isNA ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" className={`h-8 w-8 ${state.isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={state.isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
+              {state.isNA ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -492,26 +488,24 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             </Button>
           </div>
           <div className="flex items-center gap-1">
-            {isSupplierView ? (
-              <>
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  ref={el => { if (!fileInputRefs.current[`m_${doc.name}`]) fileInputRefs.current[`m_${doc.name}`] = el; }}
-                  onChange={(e) => handleFileUpload(e, doc.name)}
-                />
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="h-8 text-xs font-bold uppercase tracking-widest hover:bg-primary hover:text-primary-foreground border-primary/30 gap-1.5"
-                  onClick={() => (fileInputRefs.current[`m_${doc.name}`] || fileInputRefs.current[doc.name])?.click()}
-                  disabled={uploadingDoc === doc.name}
-                >
-                  {uploadingDoc === doc.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  Upload
-                </Button>
-              </>
-            ) : (
+            <input 
+              type="file" 
+              className="hidden" 
+              ref={el => { if (!fileInputRefs.current[`m_${doc.name}`]) fileInputRefs.current[`m_${doc.name}`] = el; }}
+              onChange={(e) => handleFileUpload(e, doc.name)}
+            />
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="h-8 text-xs font-bold uppercase tracking-widest hover:bg-primary hover:text-primary-foreground border-primary/30 gap-1.5"
+              onClick={() => (fileInputRefs.current[`m_${doc.name}`] || fileInputRefs.current[doc.name])?.click()}
+              disabled={uploadingDoc === doc.name}
+            >
+              {uploadingDoc === doc.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Upload
+            </Button>
+
+            {!isSupplierView && (
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -560,15 +554,25 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             </button>
             {CATEGORIES.map(cat => {
               const counts = categoryCounts[cat];
+              const isOrganic = cat === 'Organic Certificate';
               return (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
                   className={`w-full text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b border-border/50 flex items-center justify-between gap-2 ${
-                    selectedCategory === cat ? 'bg-primary/10 text-primary border-l-2 border-l-primary' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                    selectedCategory === cat 
+                      ? isOrganic 
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-l-2 border-l-emerald-500'
+                        : 'bg-primary/10 text-primary border-l-2 border-l-primary' 
+                      : isOrganic
+                        ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                        : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                   }`}
                 >
-                  <span className="leading-tight">{cat}</span>
+                  <span className="leading-tight flex items-center gap-1.5">
+                    {isOrganic && <Image src="/organic certified.png" alt="" width={14} height={14} className="rounded-full" />}
+                    {cat}
+                  </span>
                   <span className={`text-[9px] font-black shrink-0 ${counts.completed === counts.total ? 'text-green-500' : ''}`}>
                     {counts.completed}/{counts.total}
                   </span>
@@ -650,13 +654,25 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                   </tr>
                 </thead>
               <tbody className="divide-y divide-border/50">
-                {Object.entries(groupedDocs).map(([category, docs]) => (
+                {Object.entries(groupedDocs).map(([category, docs]) => {
+                  const isOrganic = category === 'Organic Certificate';
+                  return (
                   <React.Fragment key={category}>
                     <tr>
-                      <td colSpan={5} className="px-4 py-2 bg-muted/30 border-y border-border">
+                      <td colSpan={5} className={`px-4 py-2 border-y border-border ${
+                        isOrganic 
+                          ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50' 
+                          : 'bg-muted/30'
+                      }`}>
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-2">
-                            <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                          <span className={`text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-2 ${
+                            isOrganic ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'
+                          }`}>
+                            {isOrganic ? (
+                              <Image src="/organic certified.png" alt="Organic" width={16} height={16} className="rounded-full" />
+                            ) : (
+                              <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                            )}
                             {category}
                           </span>
                           <span className="text-[9px] font-black text-muted-foreground/50">
@@ -667,7 +683,8 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                     </tr>
                     {docs.map((doc, i) => renderDocRow(doc, i))}
                   </React.Fragment>
-                ))}
+                  );
+                })}
                 {filteredDocs.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-12 text-center">
