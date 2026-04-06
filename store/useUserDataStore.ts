@@ -95,7 +95,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         isLoading: false
       });
     } catch (error) {
-       console.error("Store init failed", error);
+       console.warn("Store init failed check network:", error);
        set({ isLoading: false }); 
     }
   },
@@ -129,7 +129,7 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
         isLoading: false
       });
     } catch (error) {
-       console.error("Store refresh failed", error);
+       console.warn("Store refresh failed check network:", error);
        set({ isLoading: false });
     }
   },

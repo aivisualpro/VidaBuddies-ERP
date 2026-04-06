@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/auth";
 
-const protectedRoutes = ["/dashboard", "/admin", "/inventory"];
+const protectedRoutes = ["/dashboard", "/admin", "/inventory", "/profile"];
 
 export default async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
@@ -24,9 +24,9 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
   }
 
-  // If has cookie and is on login/home, go to dashboard
+  // If has cookie and is on login/home, go to profile
   if (sessionCookie && (path === "/login" || path === "/")) {
-    return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+    return NextResponse.redirect(new URL("/profile", req.nextUrl));
   }
 
   // Renew session on every page visit — rolling 30-day window

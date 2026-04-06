@@ -86,7 +86,7 @@ export default function LoginPage() {
       } else {
         // Direct login (fallback if 2FA is disabled)
         toast.success(`Welcome back, ${result.user.name}`);
-        window.location.href = result.redirectUrl || "/dashboard";
+        window.location.href = result.redirectUrl || "/profile";
       }
     } catch (err: any) {
       console.error("[Login Error]", err);
@@ -183,7 +183,7 @@ export default function LoginPage() {
       }
 
       toast.success(`Welcome back, ${result.user.name}`);
-      window.location.href = result.redirectUrl || "/dashboard";
+      window.location.href = result.redirectUrl || "/profile";
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
