@@ -67,30 +67,21 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
     if (get().isInitialized) return;
     set({ isLoading: true });
     try {
-      // Parallelize to be instant
-      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres] = await Promise.all([
-        fetch("/api/admin/purchase-orders").then(r => r.json()),
-        fetch("/api/admin/release-requests").then(r => r.json()),
-        fetch("/api/admin/products").then(r => r.json()),
-        fetch("/api/admin/categories").then(r => r.json()),
-        fetch("/api/admin/warehouse").then(r => r.json()),
-        fetch("/api/admin/suppliers").then(r => r.json()),
-        fetch("/api/admin/customers").then(r => r.json()),
-        fetch("/api/admin/users").then(r => r.json()),
-        fetch("/api/admin/carriers").then(r => r.ok ? r.json() : []), // Handle 404s gracefully just in case
-        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : [])
-      ]);
+      // Single consolidated request — 1 HTTP call, 1 DB connection
+      const res = await fetch("/api/admin/init");
+      if (!res.ok) throw new Error("Init fetch failed");
+      const data = await res.json();
       set({
-        purchaseOrders: pos,
-        releaseRequests: releases,
-        products: prods,
-        categories: cats,
-        warehouses: stores,
-        suppliers: sups,
-        customers: custs,
-        users: usrs,
-        carriers: cars,
-        andresTracker: andres,
+        purchaseOrders: data.purchaseOrders || [],
+        releaseRequests: data.releaseRequests || [],
+        products: data.products || [],
+        categories: data.categories || [],
+        warehouses: data.warehouses || [],
+        suppliers: data.suppliers || [],
+        customers: data.customers || [],
+        users: data.users || [],
+        carriers: data.carriers || [],
+        andresTracker: data.andresTracker || [],
         isInitialized: true,
         isLoading: false
       });
@@ -103,29 +94,20 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   refreshData: async () => {
     set({ isLoading: true });
     try {
-      const [pos, releases, prods, cats, stores, sups, custs, usrs, cars, andres] = await Promise.all([
-        fetch("/api/admin/purchase-orders").then(r => r.json()),
-        fetch("/api/admin/release-requests").then(r => r.json()),
-        fetch("/api/admin/products").then(r => r.json()),
-        fetch("/api/admin/categories").then(r => r.json()),
-        fetch("/api/admin/warehouse").then(r => r.json()),
-        fetch("/api/admin/suppliers").then(r => r.json()),
-        fetch("/api/admin/customers").then(r => r.json()),
-        fetch("/api/admin/users").then(r => r.json()),
-        fetch("/api/admin/carriers").then(r => r.ok ? r.json() : []),
-        fetch("/api/admin/andres-tracker").then(r => r.ok ? r.json() : [])
-      ]);
+      const res = await fetch("/api/admin/init");
+      if (!res.ok) throw new Error("Refresh fetch failed");
+      const data = await res.json();
       set({
-        purchaseOrders: pos,
-        releaseRequests: releases,
-        products: prods,
-        categories: cats,
-        warehouses: stores,
-        suppliers: sups,
-        customers: custs,
-        users: usrs,
-        carriers: cars,
-        andresTracker: andres,
+        purchaseOrders: data.purchaseOrders || [],
+        releaseRequests: data.releaseRequests || [],
+        products: data.products || [],
+        categories: data.categories || [],
+        warehouses: data.warehouses || [],
+        suppliers: data.suppliers || [],
+        customers: data.customers || [],
+        users: data.users || [],
+        carriers: data.carriers || [],
+        andresTracker: data.andresTracker || [],
         isLoading: false
       });
     } catch (error) {
