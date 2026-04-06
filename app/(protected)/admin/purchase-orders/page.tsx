@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
@@ -30,6 +30,7 @@ interface PurchaseOrder {
   category: string;
   date: string;
   createdBy: string;
+  isArchived?: boolean;
   customerPO?: {
     shipping?: {
       status?: string;
@@ -76,6 +77,7 @@ export default function PurchaseOrdersPage() {
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterShipStatus, setFilterShipStatus] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [showArchived, setShowArchived] = useState(false);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
@@ -469,6 +471,30 @@ export default function PurchaseOrdersPage() {
         return users[email.toLowerCase()] || email;
       },
     },
+    {
+      id: "archive",
+      header: "",
+      cell: ({ row }) => {
+        const isArchived = row.original.isArchived;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleArchive(row.original._id, !isArchived);
+            }}
+            title={isArchived ? 'Restore from archive' : 'Archive this PO'}
+            className={`p-1 rounded-md transition-colors ${
+              isArchived
+                ? 'text-amber-500 hover:bg-amber-500/10'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+          </button>
+        );
+      },
+      size: 40,
+    },
   ];
 
   if (isLoading) {
@@ -481,6 +507,9 @@ export default function PurchaseOrdersPage() {
 
   // Filter data
   const filteredData = data.filter(po => {
+    // Archive filter: hide archived unless toggled on
+    if (!showArchived && po.isArchived) return false;
+    if (showArchived && !po.isArchived) return false;
     if (filterOrderType && po.orderType !== filterOrderType) return false;
     if (filterCategory && po.category !== filterCategory) return false;
     if (filterShipStatus) {
@@ -501,6 +530,23 @@ export default function PurchaseOrdersPage() {
   });
 
   const hasActiveFilters = filterOrderType || filterCategory || filterShipStatus;
+
+  const archivedCount = data.filter(po => po.isArchived).length;
+
+  const toggleArchive = async (poId: string, archive: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isArchived: archive }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast.success(archive ? 'Purchase Order archived' : 'Purchase Order restored');
+      refetchPurchaseOrders();
+    } catch {
+      toast.error('Failed to update archive status');
+    }
+  };
 
   const headerFilters = (
     <div className="flex items-center gap-1.5">
@@ -549,6 +595,18 @@ export default function PurchaseOrdersPage() {
           Clear
         </button>
       )}
+      <div className="h-5 w-px bg-border mx-1" />
+      <button
+        onClick={() => setShowArchived(!showArchived)}
+        className={`h-8 px-2.5 rounded-md border text-xs font-medium flex items-center gap-1.5 transition-colors ${
+          showArchived
+            ? 'border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+            : 'border-input text-muted-foreground hover:text-foreground hover:bg-muted'
+        }`}
+      >
+        <Archive className="h-3.5 w-3.5" />
+        Archived{archivedCount > 0 ? ` (${archivedCount})` : ''}
+      </button>
     </div>
   );
 

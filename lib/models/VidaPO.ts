@@ -234,6 +234,7 @@ const VidaPOSchema: Schema = new Schema({
   category: { type: String },
   createdBy: { type: String }, // User ID or Name
   createdAt: { type: Date, default: Date.now },
+  isArchived: { type: Boolean, default: false },
   customerPO: [VidaPOCustomerPOSchema],
 });
 
