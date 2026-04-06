@@ -53,8 +53,6 @@ export default function QualityControlLayout({ children }: { children: React.Rea
   }, [setLeftContent, setRightContent, isDeepRoute]);
 
   const activeTab = pathname.includes("/suppliers") ? "suppliers" 
-                  : pathname.includes("/documents") ? "documents" 
-                  : pathname.includes("/matrix") ? "matrix" 
                   : "dashboard";
 
   return (
@@ -73,18 +71,6 @@ export default function QualityControlLayout({ children }: { children: React.Rea
               className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors hover:text-primary ${activeTab === 'suppliers' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}
             >
               Supplier Master
-            </Link>
-            <Link 
-              href="/quality-control/documents" 
-              className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors hover:text-primary ${activeTab === 'documents' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}
-            >
-              Document Library & Approvals
-            </Link>
-            <Link 
-              href="/quality-control/matrix" 
-              className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors hover:text-primary ${activeTab === 'matrix' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}
-            >
-              Required Doc Matrix
             </Link>
           </div>
         </div>
