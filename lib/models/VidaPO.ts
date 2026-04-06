@@ -117,6 +117,7 @@ export interface IVidaPO extends Document {
   category: string;
   createdBy: string;
   createdAt: Date;
+  isNigalu?: boolean;
   customerPO: IVidaPOCustomerPO[];
 }
 
@@ -235,6 +236,7 @@ const VidaPOSchema: Schema = new Schema({
   createdBy: { type: String }, // User ID or Name
   createdAt: { type: Date, default: Date.now },
   isArchived: { type: Boolean, default: false },
+  isNigalu: { type: Boolean, default: false },
   customerPO: [VidaPOCustomerPOSchema],
 });
 

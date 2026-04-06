@@ -31,6 +31,7 @@ interface PurchaseOrder {
   date: string;
   createdBy: string;
   isArchived?: boolean;
+  isNigalu?: boolean;
   customerPO?: {
     shipping?: {
       status?: string;
@@ -53,6 +54,15 @@ export default function PurchaseOrdersPage() {
   
   // Connect to global store
   const { purchaseOrders, users: rawUsers, isLoading, refetchPurchaseOrders } = useUserDataStore();
+  
+  // Current user role
+  const [userRole, setUserRole] = useState<string>("");
+  useEffect(() => {
+    fetch("/api/user/permissions")
+      .then(r => r.json())
+      .then(d => setUserRole(d.role || ""))
+      .catch(() => {});
+  }, []);
   
   // Sort latest on top
   const data = useMemo(() => {
@@ -472,6 +482,30 @@ export default function PurchaseOrdersPage() {
       },
     },
     {
+      id: "nigalu",
+      header: "NIGALU",
+      cell: ({ row }) => {
+        const isNigalu = row.original.isNigalu;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleNigalu(row.original._id, !isNigalu);
+            }}
+            title={isNigalu ? 'Remove from NIGALU' : 'Mark as NIGALU'}
+            className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors ${
+              isNigalu
+                ? 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300 hover:bg-fuchsia-200'
+                : 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500 hover:bg-zinc-200'
+            }`}
+          >
+            {isNigalu ? 'ON' : 'OFF'}
+          </button>
+        );
+      },
+      size: 60,
+    },
+    {
       id: "archive",
       header: "",
       cell: ({ row }) => {
@@ -497,6 +531,11 @@ export default function PurchaseOrdersPage() {
     },
   ];
 
+  // Hide admin-only columns from NIGALU users
+  const visibleColumns = userRole === 'NIGALU'
+    ? columns.filter(c => c.id !== 'nigalu' && c.id !== 'archive')
+    : columns;
+
   if (isLoading) {
     return <TablePageSkeleton />;
   }
@@ -507,6 +546,8 @@ export default function PurchaseOrdersPage() {
 
   // Filter data
   const filteredData = data.filter(po => {
+    // NIGALU role: only show POs where isNigalu is true
+    if (userRole === 'NIGALU' && !po.isNigalu) return false;
     // Archive filter: hide archived unless toggled on
     if (!showArchived && po.isArchived) return false;
     if (showArchived && !po.isArchived) return false;
@@ -545,6 +586,21 @@ export default function PurchaseOrdersPage() {
       refetchPurchaseOrders();
     } catch {
       toast.error('Failed to update archive status');
+    }
+  };
+
+  const toggleNigalu = async (poId: string, nigalu: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isNigalu: nigalu }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast.success(nigalu ? 'Marked as NIGALU' : 'Removed NIGALU flag');
+      refetchPurchaseOrders();
+    } catch {
+      toast.error('Failed to update NIGALU status');
     }
   };
 
@@ -613,9 +669,9 @@ export default function PurchaseOrdersPage() {
   return (
     <div className="w-full h-full">
       <SimpleDataTable
-        columns={columns}
+        columns={visibleColumns}
         data={filteredData}
-        onAdd={openAddSheet}
+        onAdd={userRole === 'NIGALU' ? undefined : openAddSheet}
         onRowClick={(row) => router.push(`/admin/purchase-orders/${row._id}`)}
         showColumnToggle={false}
         headerExtra={headerFilters}

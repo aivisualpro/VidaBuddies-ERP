@@ -18,6 +18,7 @@ export interface IEmailRecord {
   attachments: IEmailAttachment[];
   resendEmailId?: string;
   status: 'sent' | 'failed';
+  direction?: 'inbound' | 'outbound';
   error?: string;
   sentAt: Date;
 }
@@ -40,6 +41,7 @@ const EmailRecordSchema: Schema = new Schema({
   attachments: [EmailAttachmentSchema],
   resendEmailId: { type: String },
   status: { type: String, enum: ['sent', 'failed'], default: 'sent' },
+  direction: { type: String, enum: ['inbound', 'outbound'], default: 'outbound' },
   error: { type: String },
   sentAt: { type: Date, default: Date.now },
 });

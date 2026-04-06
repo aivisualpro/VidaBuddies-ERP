@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useLayoutEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +15,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -78,6 +81,16 @@ export default function WarehouseDetailPage() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", body: "" });
 
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [savingContact, setSavingContact] = useState(false);
+  const [newContact, setNewContact] = useState<WarehouseContact>({
+    name: "",
+    email: "",
+    phone: "",
+    isActive: true,
+    isPrimary: false,
+  });
+
   useEffect(() => {
     fetchData();
   }, [id]);
@@ -87,6 +100,72 @@ export default function WarehouseDetailPage() {
       fetchEmails();
     }
   }, [activeTab, data?.name]);
+
+  const { setLeftContent, setActions } = useHeaderActions();
+
+  useLayoutEffect(() => {
+    if (!data) return;
+
+    const leftContent = (
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/inventory/warehouse")}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="h-6 w-px bg-border" />
+        <div>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <WarehouseIcon className="h-5 w-5 text-primary" />
+            {data.name}
+          </h1>
+        </div>
+      </div>
+    );
+
+    const rightContent = (
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setNewContact({ name: "", email: "", phone: "", isActive: true, isPrimary: false });
+            setAddContactOpen(true);
+          }}
+          className="gap-2"
+        >
+          <User className="h-4 w-4" />
+          Add Contacts
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSendEmailDialog}
+          className="gap-2 bg-primary"
+        >
+          <Mail className="h-4 w-4" />
+          Send Email
+        </Button>
+      </div>
+    );
+
+    setLeftContent(leftContent);
+    setActions(rightContent);
+
+    const timer = setTimeout(() => {
+      setLeftContent(leftContent);
+      setActions(rightContent);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      setLeftContent(null);
+      setActions(null);
+    };
+  }, [data, router, setLeftContent, setActions]);
 
   const fetchData = async () => {
     try {
@@ -170,6 +249,39 @@ export default function WarehouseDetailPage() {
     }
   };
 
+  const handleSaveContact = async () => {
+    if (!newContact.name.trim()) {
+      toast.error("Contact name is required");
+      return;
+    }
+    if (!data) return;
+    
+    setSavingContact(true);
+    try {
+       const updatedContacts = [...(data.contacts || [])];
+       if (newContact.isPrimary) {
+          updatedContacts.forEach(c => c.isPrimary = false);
+       }
+       updatedContacts.push(newContact);
+
+       const response = await fetch(`/api/admin/warehouse/${id}`, {
+         method: "PUT",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ ...data, contacts: updatedContacts }),
+       });
+       if (!response.ok) throw new Error("Failed to save contact");
+       
+       toast.success("Contact added successfully");
+       setAddContactOpen(false);
+       setNewContact({ name: "", email: "", phone: "", isActive: true, isPrimary: false });
+       fetchData(); // Reload the data
+    } catch (err) {
+       toast.error("Failed to save contact");
+    } finally {
+       setSavingContact(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -189,44 +301,7 @@ export default function WarehouseDetailPage() {
 
   return (
     <div className="h-full flex flex-col gap-0 -m-[16px]">
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/inventory/warehouse")}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <div className="h-6 w-px bg-border" />
-          <div>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <WarehouseIcon className="h-5 w-5 text-primary" />
-              {data.name}
-            </h1>
-            {data.address && (
-              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
-                {data.address}
-              </p>
-            )}
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={handleSendEmailDialog}
-            className="gap-2 bg-primary"
-          >
-            <Mail className="h-4 w-4" />
-            Send Email
-          </Button>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
@@ -510,6 +585,72 @@ export default function WarehouseDetailPage() {
                 {sendingEmail ? "Sending..." : "Send Email"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Contact Dialog */}
+      <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Contact</DialogTitle>
+            <DialogDescription>
+              Add a new contact to {data.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Name <span className="text-red-500">*</span></Label>
+              <Input
+                value={newContact.name}
+                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={newContact.email}
+                  onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                  placeholder="jane@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={newContact.phone}
+                  onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                  placeholder="(555) 555-5555"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-6 pt-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="new-contact-active"
+                  checked={newContact.isActive}
+                  onCheckedChange={(val) => setNewContact({ ...newContact, isActive: val })}
+                />
+                <Label htmlFor="new-contact-active">Active</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="new-contact-primary"
+                  checked={newContact.isPrimary}
+                  onCheckedChange={(val) => setNewContact({ ...newContact, isPrimary: val })}
+                />
+                <Label htmlFor="new-contact-primary">Primary</Label>
+              </div>
+            </div>
+            <DialogFooter className="pt-2 border-t mt-4">
+              <Button variant="outline" onClick={() => setAddContactOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveContact} disabled={savingContact}>
+                {savingContact ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Contact
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

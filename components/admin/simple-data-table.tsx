@@ -103,8 +103,10 @@ export function SimpleDataTable<TData, TValue>({
 
   const { setActions, setLeftContent } = useHeaderActions();
 
-  React.useEffect(() => {
-    setActions(
+  // Use useLayoutEffect to set header actions synchronously,
+  // preventing race conditions where old page cleanup wipes new page's actions
+  React.useLayoutEffect(() => {
+    const headerContent = (
       <div className="flex items-center gap-2">
         {headerExtra}
         {externalGlobalFilter !== undefined && onGlobalFilterChange ? (
@@ -162,6 +164,8 @@ export function SimpleDataTable<TData, TValue>({
       </div>
     );
 
+    setActions(headerContent);
+
     if (title) {
       setLeftContent(
         <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
@@ -169,7 +173,21 @@ export function SimpleDataTable<TData, TValue>({
         </h1>
       );
     }
+
+    // Re-assert after a tick to survive any stale cleanup from a previous page
+    const timer = setTimeout(() => {
+      setActions(headerContent);
+      if (title) {
+        setLeftContent(
+          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            {title}
+          </h1>
+        );
+      }
+    }, 50);
+
     return () => {
+      clearTimeout(timer);
       setActions(null);
       setLeftContent(null);
     };
@@ -184,11 +202,6 @@ export function SimpleDataTable<TData, TValue>({
     headerExtra,
     externalGlobalFilter,
     onGlobalFilterChange,
-    // Add these dependencies to ensure updates when filters/visibility change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(table.getState().columnFilters),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(table.getState().columnVisibility)
   ]);
 
   return (

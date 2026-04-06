@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,6 +71,7 @@ interface EmailRecord {
   body: string;
   attachments: { fileId: string; name: string; mimeType: string; size: string }[];
   status: "sent" | "failed";
+  direction?: "inbound" | "outbound";
   error?: string;
   sentAt: string;
 }
@@ -98,6 +100,109 @@ export default function ReleaseRequestDetailPage() {
       fetchEmails();
     }
   }, [activeTab, data?.poNo]);
+
+  const { setLeftContent, setActions } = useHeaderActions();
+
+  const handleDownloadPDF = React.useCallback(async () => {
+    if (!data) return;
+    setPdfLoading(true);
+    try {
+      // Generate PDF client-side using the DOM
+      const printContent = generatePDFHTML(data);
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      } else {
+        toast.warning("Please allow popups to download the PDF");
+      }
+    } catch (err) {
+      toast.error("Failed to generate PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [data]);
+
+  const handleSendEmailDialog = React.useCallback(() => {
+    if (!data) return;
+    setEmailForm({
+      to: "",
+      cc: "",
+      subject: `Release Request - PO# ${data.poNo} - ${data.customer?.name || ""}`,
+      body: generateEmailBody(data),
+    });
+    setEmailDialogOpen(true);
+  }, [data]);
+
+  // Inject into global header
+  React.useLayoutEffect(() => {
+    if (!data) return;
+
+    const leftContent = (
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/inventory/release-requests")}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="h-6 w-px bg-border" />
+        <div>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Release Request
+            <Badge variant="outline" className="text-xs font-mono ml-1">
+              PO# {data.poNo}
+            </Badge>
+          </h1>
+        </div>
+      </div>
+    );
+
+    const rightContent = (
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadPDF}
+          disabled={pdfLoading}
+          className="gap-2"
+        >
+          {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Download PDF
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSendEmailDialog}
+          className="gap-2 bg-primary"
+        >
+          <Mail className="h-4 w-4" />
+          Send as Email
+        </Button>
+      </div>
+    );
+
+    setLeftContent(leftContent);
+    setActions(rightContent);
+
+    const timer = setTimeout(() => {
+      setLeftContent(leftContent);
+      setActions(rightContent);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      setLeftContent(null);
+      setActions(null);
+    };
+  }, [data, pdfLoading, router, setLeftContent, setActions, handleDownloadPDF, handleSendEmailDialog]);
 
   const fetchData = async () => {
     try {
@@ -130,39 +235,6 @@ export default function ReleaseRequestDetailPage() {
     }
   };
 
-  const handleDownloadPDF = async () => {
-    if (!data) return;
-    setPdfLoading(true);
-    try {
-      // Generate PDF client-side using the DOM
-      const printContent = generatePDFHTML(data);
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 500);
-      }
-    } catch (err) {
-      toast.error("Failed to generate PDF");
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  const handleSendEmailDialog = () => {
-    if (!data) return;
-    setEmailForm({
-      to: "",
-      cc: "",
-      subject: `Release Request - PO# ${data.poNo} - ${data.customer?.name || ""}`,
-      body: generateEmailBody(data),
-    });
-    setEmailDialogOpen(true);
-  };
-
   const handleSendEmail = async () => {
     if (!emailForm.to.trim()) {
       toast.error("Please enter a recipient email");
@@ -180,6 +252,8 @@ export default function ReleaseRequestDetailPage() {
           body: emailForm.body,
           vbpoNo: data?.poNo,
           fileIds: [],
+          htmlContentForAttachedPdf: data ? generatePDFHTML(data) : "",
+          pdfName: `Release_Request_${data?.poNo || 'Unknown'}.pdf`,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -193,6 +267,12 @@ export default function ReleaseRequestDetailPage() {
       setSendingEmail(false);
     }
   };
+
+  const [emailTab, setEmailTab] = useState("sent");
+
+  const filteredEmails = emails.filter((e) =>
+    emailTab === "inbox" ? e.direction === "inbound" : e.direction !== "inbound"
+  );
 
   if (loading) {
     return (
@@ -209,54 +289,7 @@ export default function ReleaseRequestDetailPage() {
 
   return (
     <div className="h-full flex flex-col gap-0 -m-[16px]">
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/inventory/release-requests")}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <div className="h-6 w-px bg-border" />
-          <div>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Release Request
-              <Badge variant="outline" className="text-xs font-mono ml-1">
-                PO# {data.poNo}
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Created by {data.createdBy} on {data.createdAt ? format(new Date(data.createdAt), "MMM dd, yyyy 'at' hh:mm a") : "-"}
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadPDF}
-            disabled={pdfLoading}
-            className="gap-2"
-          >
-            {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Download PDF
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSendEmailDialog}
-            className="gap-2 bg-primary"
-          >
-            <Mail className="h-4 w-4" />
-            Send as Email
-          </Button>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
@@ -394,31 +427,83 @@ export default function ReleaseRequestDetailPage() {
           </TabsContent>
 
           {/* Emails Tab */}
-          <TabsContent value="emails" className="flex-1 overflow-auto px-6 py-4">
-            <div className="max-w-5xl space-y-4">
-              {emailsLoading ? (
+          <TabsContent value="emails" className="flex-1 overflow-hidden px-0 py-0 flex flex-row">
+            <div className="w-64 border-r bg-muted/10 p-4 shrink-0 flex flex-col gap-2">
+              <Button
+                variant={emailTab === "inbox" ? "secondary" : "ghost"}
+                className={`w-full justify-start ${emailTab === "inbox" ? "bg-primary/10 text-primary font-medium hover:bg-primary/20" : ""}`}
+                onClick={() => setEmailTab("inbox")}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Inbox
+                <Badge variant="secondary" className="ml-auto">
+                  {emails.filter(e => e.direction === "inbound").length}
+                </Badge>
+              </Button>
+              <Button
+                variant={emailTab === "sent" ? "secondary" : "ghost"}
+                className={`w-full justify-start ${emailTab === "sent" ? "bg-primary/10 text-primary font-medium hover:bg-primary/20" : ""}`}
+                onClick={() => setEmailTab("sent")}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Sent
+                <Badge variant="secondary" className="ml-auto">
+                  {emails.filter(e => e.direction !== "inbound").length}
+                </Badge>
+              </Button>
+
+              <div className="mt-auto pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+                  onClick={async () => {
+                    toast.loading("Syncing inbox...");
+                    try {
+                      const res = await fetch("/api/admin/emails/sync");
+                      if (!res.ok) throw new Error("Sync failed");
+                      const result = await res.json();
+                      toast.dismiss();
+                      toast.success(result.message);
+                      fetchEmails(); // Reload local list
+                    } catch (e) {
+                      toast.dismiss();
+                      toast.error("Failed to sync emails. Check console/credentials.");
+                    }
+                  }}
+                >
+                  <Calendar className="h-4 w-4" /> Sync Inbox
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              <div className="max-w-5xl space-y-4">
+                {emailsLoading ? (
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   <span className="ml-2 text-sm text-muted-foreground">Loading emails...</span>
                 </div>
-              ) : emails.length === 0 ? (
+              ) : filteredEmails.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                   <Mail className="h-12 w-12 mb-3 opacity-30" />
-                  <p className="text-sm font-medium">No emails found</p>
-                  <p className="text-xs mt-1">Emails sent for PO# {data.poNo} will appear here</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4 gap-2"
-                    onClick={handleSendEmailDialog}
-                  >
-                    <Send className="h-4 w-4" />
-                    Send First Email
-                  </Button>
+                  <p className="text-sm font-medium">No emails found in {emailTab}</p>
+                  <p className="text-xs mt-1">Emails for PO# {data.poNo} will appear here</p>
+                  {emailTab === "sent" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 gap-2"
+                      onClick={handleSendEmailDialog}
+                    >
+                      <Send className="h-4 w-4" />
+                      Send First Email
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {emails.map((email) => (
+                  {filteredEmails.map((email) => (
                     <div
                       key={email._id}
                       className="border rounded-xl bg-card shadow-sm overflow-hidden hover:shadow-md transition-shadow"
@@ -495,6 +580,7 @@ export default function ReleaseRequestDetailPage() {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

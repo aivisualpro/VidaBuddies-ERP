@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { to, cc, subject, body, fileIds, vbpoNo, folderPath } = await request.json();
+    const { to, cc, subject, body, fileIds, vbpoNo, folderPath, htmlContentForAttachedPdf, pdfName } = await request.json();
 
     if (!to || !subject) {
       return NextResponse.json(
@@ -46,6 +46,35 @@ export async function POST(request: NextRequest) {
     let attachments: { filename: string; content: Buffer }[] = [];
     let attachmentsMeta: { fileId: string; name: string; mimeType: string; size: string }[] = [];
 
+    // 1) First process embedded HTML -> PDF integration
+    if (htmlContentForAttachedPdf) {
+      try {
+        const html_to_pdf = require('html-pdf-node');
+        const options = { 
+          format: 'A4', 
+          margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
+        };
+        const file = { content: htmlContentForAttachedPdf };
+        const pdfBuffer = await Promise.race([
+          html_to_pdf.generatePdf(file, options),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("PDF Generation Timeout")), 15000))
+        ]) as Buffer;
+        const resolvedName = pdfName || "Document.pdf";
+        
+        attachments.push({ filename: resolvedName, content: pdfBuffer });
+        attachmentsMeta.push({
+          fileId: "html-pdf-generated",
+          name: resolvedName,
+          mimeType: "application/pdf",
+          size: pdfBuffer.length.toString(),
+        });
+      } catch (err: any) {
+        console.error("[Email API] Failed to generate PDF from HTML:", err.message);
+      }
+    }
+
+    // 2) Then loop through any Google Drive files
     if (fileIds && fileIds.length > 0) {
       const drive = getDrive();
 
@@ -94,7 +123,6 @@ export async function POST(request: NextRequest) {
     const fromAddress = `"Vida Buddies Notification" <${process.env.SMTP_USER}>`;
     const emailPayload: any = {
       from: fromAddress,
-      replyTo: senderEmail,
       to: toAddresses,
       subject,
       html: fullBody,

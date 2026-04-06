@@ -361,22 +361,14 @@ export default function SuppliersPage() {
 
   return (
     <div className="w-full h-full overflow-hidden flex flex-col gap-3">
-      {/* Search Bar */}
-      <div className="shrink-0 relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search suppliers by name, VB ID, email, location..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-10 pl-10 text-sm bg-foreground/5 border-transparent focus-visible:ring-1 placeholder:text-[11px] placeholder:uppercase placeholder:tracking-wider"
-        />
-      </div>
-
       <div className="flex-1 overflow-hidden">
         <SimpleDataTable
           columns={columns}
           data={filteredData}
           onAdd={openAddSheet}
+          showColumnToggle={false}
+          globalFilter={searchQuery}
+          onGlobalFilterChange={setSearchQuery}
           onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
           rowClassName={(row) => row._id === highlightId ? 'animate-highlight-row' : ''}
           rowDataId={(row) => row._id}

@@ -1,6 +1,7 @@
 const nextConfig = {
   // This single line hides the indicator
   devIndicators: false,
+  serverExternalPackages: ["html-pdf-node", "mailparser", "imap-simple"],
   images: {
     remotePatterns: [
       {

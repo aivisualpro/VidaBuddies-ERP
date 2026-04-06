@@ -50,8 +50,6 @@ const PERMISSION_ACTIONS = [
   { key: "create", label: "Add" },
   { key: "edit", label: "Edit" },
   { key: "delete", label: "Delete" },
-  { key: "approve", label: "Approve" },
-  { key: "download", label: "Download" },
 ];
 
 // field definitions based on Mongoose schemas
@@ -119,12 +117,10 @@ export default function RoleDetailsPage() {
       perm = {
         module: moduleName,
         actions: {
-          view: true,
-          create: true,
-          edit: true,
-          delete: true,
-          approve: true,
-          download: true,
+          view: false,
+          create: false,
+          edit: false,
+          delete: false,
         },
         fieldScope: {},
       };
@@ -160,7 +156,7 @@ export default function RoleDetailsPage() {
       } else {
         // Initialize new permission
         const newActions = {
-            view: true, create: true, edit: true, delete: true, approve: true, download: true,
+            view: true, create: true, edit: true, delete: true,
             [actionKey]: newValue 
         };
         
@@ -182,13 +178,20 @@ export default function RoleDetailsPage() {
     });
   };
 
+  // Ref to hold the latest role state so that callbacks inside context wrappers don't submit stale data
+  const roleRef = React.useRef(role);
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
+      const payload = roleRef.current || role;
       const res = await fetch(`/api/admin/roles/${roleId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(role),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error("Failed to save role");
@@ -279,8 +282,6 @@ export default function RoleDetailsPage() {
                   <TableHead className="text-center">Add</TableHead>
                   <TableHead className="text-center">Edit</TableHead>
                   <TableHead className="text-center">Delete</TableHead>
-                  <TableHead className="text-center">Approve</TableHead>
-                  <TableHead className="text-center">Download</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -295,7 +296,7 @@ export default function RoleDetailsPage() {
                   return (
                   <React.Fragment key={group.group}>
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableCell colSpan={7} className="font-semibold text-xs text-muted-foreground py-2 uppercase tracking-wider pl-4">
+                      <TableCell colSpan={5} className="font-semibold text-xs text-muted-foreground py-2 uppercase tracking-wider pl-4">
                         {group.group}
                       </TableCell>
                     </TableRow>
@@ -307,9 +308,9 @@ export default function RoleDetailsPage() {
                         <TableRow key={moduleName} className="hover:bg-muted/50">
                           <TableCell className="font-medium">{moduleName}</TableCell>
                           {PERMISSION_ACTIONS.map((action) => {
-                             const isEnabled = perm ? perm.actions[action.key] : true;
-                             // Check if view is enabled (default to true if perm missing, matching previous logic)
-                             const isViewEnabled = perm ? perm.actions.view : true;
+                             const isEnabled = perm ? perm.actions[action.key] : false;
+                             // Check if view is enabled (default to false if perm missing)
+                             const isViewEnabled = perm ? perm.actions.view : false;
                              const isDisabled = action.key !== 'view' && !isViewEnabled;
                              
                              return (

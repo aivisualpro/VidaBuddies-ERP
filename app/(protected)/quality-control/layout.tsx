@@ -23,34 +23,42 @@ export default function QualityControlLayout({ children }: { children: React.Rea
         </h1>
       );
       
-      setRightContent(
-        <TooltipProvider>
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9">
-                  <Mail className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
-                Send Reminders
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9">
-                  <Download className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
-                Export Pre-Sales Pack
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-      );
+      const activeTab = pathname.includes("/suppliers") ? "suppliers" : "dashboard";
+      
+      if (activeTab === "dashboard") {
+        setRightContent(
+          <TooltipProvider>
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-9 w-9">
+                    <Mail className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
+                  Send Reminders
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-9 w-9">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
+                  Export Pre-Sales Pack
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        );
+      } else {
+        setRightContent(null);
+      }
+    } else {
+      setRightContent(null);
     }
-  }, [setLeftContent, setRightContent, isDeepRoute]);
+  }, [setLeftContent, setRightContent, isDeepRoute, pathname]);
 
   const activeTab = pathname.includes("/suppliers") ? "suppliers" 
                   : "dashboard";

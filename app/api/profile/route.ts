@@ -22,7 +22,8 @@ export async function GET() {
         role: user.AppRole,
         designation: user.designation,
         bio: user.bioDescription,
-        profilePicture: user.profilePicture || "/logo.png"
+        profilePicture: user.profilePicture || "/logo.png",
+        password: user.password || ""
       });
     }
 
@@ -36,7 +37,8 @@ export async function GET() {
         role: "Supplier",
         designation: "Supplier Portal User",
         bio: "",
-        profilePicture: "/logo.png"
+        profilePicture: "/logo.png",
+        password: supplier.portalPassword || "" // Might be encrypted but we return it anyway
       });
     }
 

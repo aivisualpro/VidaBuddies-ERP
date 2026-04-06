@@ -60,6 +60,14 @@ export default function UsersPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<User | null>(null);
 
+  const [userRole, setUserRole] = useState<string>("");
+  useEffect(() => {
+    fetch("/api/user/permissions")
+      .then(r => r.json())
+      .then(d => setUserRole(d.role || ""))
+      .catch(() => {});
+  }, []);
+
   const router = useRouter();
 
   const data = useMemo(() => {
@@ -239,31 +247,41 @@ export default function UsersPage() {
       cell: ({ row }) => {
         const item = row.original;
         return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => openEditSheet(item)}>
-                  <Pencil className="mr-2 h-4 w-4" /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                   className="text-destructive focus:text-destructive"
-                   onClick={() => handleDelete(item._id)}
-                >
-                  <Trash className="mr-2 h-4 w-4" /> Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                openEditSheet(item);
+              }}
+              title="Edit User"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(item._id);
+              }}
+              title="Delete User"
+            >
+              <Trash className="h-4 w-4" />
+            </Button>
           </div>
         );
       },
     },
   ];
+
+  // Hide actions column entirely if not Super Admin
+  const visibleColumns = userRole === 'Super Admin' 
+    ? columns 
+    : columns.filter(c => c.id !== 'actions');
 
   if (isLoading) {
     return <TablePageSkeleton />;
@@ -273,12 +291,14 @@ export default function UsersPage() {
     <div className="w-full h-full">
       <SimpleDataTable 
          data={data} 
-         columns={columns} 
+         columns={visibleColumns} 
          title="Users" 
-         onAdd={() => openAddSheet()} 
+         onAdd={userRole === 'Super Admin' ? () => openAddSheet() : undefined} 
          loading={isLoading}
          showColumnToggle={false}
-         onRowClick={(row) => router.push(`/admin/users/${row._id}`)}
+         onRowClick={(row) => {
+            router.push(`/admin/users/${row._id}`);
+         }}
       />
       <Dialog open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

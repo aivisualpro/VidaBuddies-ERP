@@ -5,14 +5,39 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, RefreshCw } from "lucide-react";
 import Image from "next/image";
 
 export default function ProfilePage() {
    const [user, setUser] = useState<any>(null);
    const [password, setPassword] = useState("");
+   const [showPassword, setShowPassword] = useState(false);
    const [saving, setSaving] = useState(false);
    const [loading, setLoading] = useState(true);
+
+   const generatePassword = () => {
+     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
+     let newPass = "";
+     for (let i = 0; i < 16; i++) {
+       newPass += chars.charAt(Math.floor(Math.random() * chars.length));
+     }
+     setPassword(newPass);
+     setShowPassword(true); // Reveal it so user can copy/see it
+   };
+
+   const getPasswordStrength = (pass: string) => {
+     if (!pass) return 0;
+     let score = 0;
+     if (pass.length >= 8) score += 1;
+     if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score += 1;
+     if (/\d/.test(pass)) score += 1;
+     if (/[^a-zA-Z0-9]/.test(pass)) score += 1;
+     return score === 0 ? 1 : score;
+   };
+
+   const strength = getPasswordStrength(password);
+   const strengthLabels = ["Weak", "Fair", "Good", "Strong"];
+   const strengthColors = ["bg-red-500", "bg-amber-500", "bg-blue-500", "bg-emerald-500"];
 
    useEffect(() => {
      fetch("/api/profile")
@@ -20,6 +45,9 @@ export default function ProfilePage() {
        .then(data => {
          if(data.error) throw new Error(data.error);
          setUser(data);
+         if (data.password) {
+           setPassword(data.password);
+         }
        })
        .catch(err => toast.error("Failed to load profile", { description: err.message }))
        .finally(() => setLoading(false));
@@ -42,7 +70,6 @@ export default function ProfilePage() {
            throw new Error(err.error || "Failed to update password");
        }
        toast.success("Password updated successfully");
-       setPassword("");
      } catch (err: any) {
        toast.error(err.message || "Something went wrong");
      } finally {
@@ -107,16 +134,53 @@ export default function ProfilePage() {
            <div className="flex flex-col gap-4 max-w-sm">
              <div className="space-y-2">
                <Label htmlFor="new-password">New Password</Label>
-               <Input 
-                 id="new-password"
-                 type="password" 
-                 placeholder="Enter new password" 
-                 value={password}
-                 onChange={e => setPassword(e.target.value)}
-                 className="h-10"
-               />
+               <div className="relative">
+                 <Input 
+                   id="new-password"
+                   type={showPassword ? "text" : "password"} 
+                   placeholder="Enter new password" 
+                   value={password}
+                   onChange={e => setPassword(e.target.value)}
+                   className="h-10 pr-10"
+                 />
+                 <button
+                   type="button"
+                   onClick={() => setShowPassword(!showPassword)}
+                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                 >
+                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                 </button>
+               </div>
+               {password && (
+                 <div className="space-y-1.5 mt-2 transition-all">
+                   <div className="flex justify-between items-center text-xs">
+                     <span className="text-muted-foreground">Password strength:</span>
+                     <span className={`font-semibold ${strengthColors[strength - 1]?.replace("bg-", "text-")}`}>
+                       {strengthLabels[strength - 1]}
+                     </span>
+                   </div>
+                   <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden flex gap-0.5">
+                     {[1, 2, 3, 4].map(level => (
+                       <div 
+                         key={level} 
+                         className={`h-full flex-1 transition-all duration-300 ${level <= strength ? strengthColors[strength - 1] : "bg-transparent"}`} 
+                       />
+                     ))}
+                   </div>
+                 </div>
+               )}
              </div>
-             <Button className="w-full font-semibold" onClick={handleSavePassword} disabled={saving || !password}>
+
+             <button 
+               type="button" 
+               onClick={generatePassword} 
+               className="text-xs text-primary font-medium flex items-center gap-1.5 hover:underline self-start"
+             >
+               <RefreshCw className="h-3 w-3" />
+               Suggest strong password
+             </button>
+
+             <Button className="w-full font-semibold mt-2" onClick={handleSavePassword} disabled={saving || !password}>
                {saving ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
                Update Password
              </Button>
