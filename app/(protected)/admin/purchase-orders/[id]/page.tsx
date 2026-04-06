@@ -673,6 +673,36 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
     setRightContent(
       <div className="flex items-center gap-2">
+        {/* Delete PO — only if no related records exist */}
+        {(!po.customerPO || po.customerPO.length === 0) && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              toast("Delete this Purchase Order?", {
+                description: `"${po.vbpoNo}" will be permanently deleted. This cannot be undone.`,
+                action: {
+                  label: "Delete",
+                  onClick: async () => {
+                    try {
+                      const res = await fetch(`/api/admin/purchase-orders/${po._id}`, { method: "DELETE" });
+                      if (!res.ok) throw new Error("Failed to delete");
+                      toast.success("Purchase Order deleted");
+                      refetchPurchaseOrders();
+                      router.push("/admin/purchase-orders");
+                    } catch {
+                      toast.error("Failed to delete Purchase Order");
+                    }
+                  },
+                },
+              });
+            }}
+          >
+            <Trash className="h-3.5 w-3.5 mr-2" />
+            Delete PO
+          </Button>
+        )}
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
           setEditPOData({
             ...po,

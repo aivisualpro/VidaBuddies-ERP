@@ -255,8 +255,6 @@ export function AppSidebar({ isSupplierProp = false, ...props }: React.Component
 
     return items.filter(item => {
       const itemName = item.name || item.title;
-      // Dashboard usually allowed for everyone, or check specific permission
-      if (itemName === "Dashboard") return true; 
 
       const perm = permissions.find((p: any) => p.module === itemName);
       // If permission entry exists, check view action.
