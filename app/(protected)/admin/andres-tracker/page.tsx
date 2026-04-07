@@ -1,108 +1,192 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  getSortedRowModel,
-  SortingState
-} from "@tanstack/react-table";
-import {
-  Ship,
-  Package,
-  ShieldCheck,
-  Truck,
-  Search,
-  ArrowLeft,
-  LayoutGrid,
-  Table as TableIcon,
-  Minimize2,
-  Maximize2
-} from "lucide-react";
-import { format } from "date-fns";
-import { toast } from "sonner";
-import { TablePageSkeleton } from "@/components/skeletons";
-
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
-
-interface TrackerRecord {
-  _id: string;
-  poId: string;
-  cpoId: string;
-  shipId: string;
-  vbpoNo: string;
-  orderType: string;
-  poNo: string;
-  customer: string;
-  customerLocation: string;
-  customerPONo: string;
-  qtyOrdered: number;
-  warehouse: string;
-  spoNo: string;
-  svbid: string;
-  supplierLocationId: string;
-  product: string;
-  BOLNumber: string;
-  carrier: string;
-  vessellTrip: string;
-  updatedETA: string;
-  estimatedDuties: number;
-  quickNote: string;
-  portofEntryShipto: string;
-  itemNo: string;
-  description: string;
-  lotSerial: string;
-  qty: number;
-  type: string;
-  inventoryDate: string;
-  carrierBookingRef: string;
-  isManufacturerSecurityISF: boolean;
-  ISF: string;
-  trackingId: string;
-  customsStatus: string;
-  documentsRequired: string;
-  container: string;
-  vbid: string;
-  status: string;
-}
+import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
 
 export default function AndresTrackerPage() {
-  const { andresTracker: data, isLoading } = useUserDataStore();
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"table" | "tabs">("table");
   const router = useRouter();
   const { setLeftContent, setRightContent } = useHeaderActions();
-  const [minimizedGroups, setMinimizedGroups] = useState<Set<string>>(new Set());
+  const [isAddPOOpen, setIsAddPOOpen] = useState(false);
+  const { 
+    purchaseOrders, 
+    isLoading, 
+    products: storeProducts,
+    customers: storeCustomers,
+    suppliers: storeSuppliers
+  } = useUserDataStore();
+  
+  const [vbpoSort, setVbpoSort] = useState<{
+    key: "vbpoNo" | "date" | "containers" | "remaining" | "products";
+    dir: "asc" | "desc";
+  }>({ key: "date", dir: "desc" });
 
-  const toggleGroup = (id: string) => {
-    setMinimizedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  const [shipSort, setShipSort] = useState<{
+    key: "svbid" | "customer" | "customerPONo" | "supplier" | "productsStr" | "BOLNumber" | "containerNo" | "updatedETA";
+    dir: "asc" | "desc";
+  }>({ key: "updatedETA", dir: "asc" });
+
+  const [activePOForDrilldown, setActivePOForDrilldown] = useState<any | null>(null);
+  const [activeCPOForDrilldown, setActiveCPOForDrilldown] = useState<any | null>(null);
+
+  const sortedPOs = useMemo(() => {
+    // fast O(1) map for product ID to Name
+    const productMap = new Map();
+    if (storeProducts && Array.isArray(storeProducts)) {
+      storeProducts.forEach(p => {
+        if (p._id && p.name) productMap.set(p._id, p.name);
+      });
+    }
+
+    let base = [...(purchaseOrders || [])]
+      .filter((po) => !po.isArchived)
+      .map((po) => {
+        let containerCount = 0;
+        let remainingCount = 0;
+        const productsSet = new Set<string>();
+
+        po.customerPO?.forEach((cpo: any) => {
+          if (cpo.shipping && Array.isArray(cpo.shipping)) {
+            containerCount += cpo.shipping.length;
+            cpo.shipping.forEach((ship: any) => {
+              const s = (ship.status || "").toLowerCase().trim();
+              if (s !== "delivered" && s !== "arrived") {
+                remainingCount++;
+              }
+              if (ship.products && Array.isArray(ship.products)) {
+                ship.products.forEach((pid: string) => {
+                  const pName = productMap.get(pid);
+                  if (pName) productsSet.add(pName);
+                });
+              }
+            });
+          }
+        });
+
+        return { 
+          ...po, 
+          containerCount,
+          remainingCount,
+          productsStr: Array.from(productsSet).join(", ")
+        };
+      });
+
+    base.sort((a, b) => {
+      let aVal, bVal;
+      switch (vbpoSort.key) {
+        case "vbpoNo":
+          aVal = a.vbpoNo?.toLowerCase() || "";
+          bVal = b.vbpoNo?.toLowerCase() || "";
+          break;
+        case "date":
+          aVal = a.date ? new Date(a.date).getTime() : 0;
+          bVal = b.date ? new Date(b.date).getTime() : 0;
+          break;
+        case "containers":
+          aVal = (a as any).containerCount;
+          bVal = (b as any).containerCount;
+          break;
+        case "remaining":
+          aVal = (a as any).remainingCount;
+          bVal = (b as any).remainingCount;
+          break;
+        case "products":
+          aVal = (a as any).productsStr.toLowerCase();
+          bVal = (b as any).productsStr.toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return vbpoSort.dir === "asc" ? -1 : 1;
+      if (aVal > bVal) return vbpoSort.dir === "asc" ? 1 : -1;
+      return 0;
     });
+
+    return base;
+  }, [purchaseOrders, vbpoSort, storeProducts]);
+
+  const toggleVbpoSort = (key: typeof vbpoSort.key) => {
+    setVbpoSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
+    }));
+  };
+
+  const sortedShippings = useMemo(() => {
+    const productMap = new Map();
+    if (storeProducts && Array.isArray(storeProducts)) storeProducts.forEach(p => { if (p._id && p.name) productMap.set(p._id, p.name); });
+    
+    const customerMap = new Map();
+    if (storeCustomers && Array.isArray(storeCustomers)) {
+      storeCustomers.forEach(c => { 
+        if (c._id && c.name) customerMap.set(c._id, c.name); 
+        if (c.vbId && c.name) customerMap.set(c.vbId, c.name);
+      });
+    }
+    
+    const supplierMap = new Map();
+    if (storeSuppliers && Array.isArray(storeSuppliers)) {
+      storeSuppliers.forEach(s => { 
+        if (s._id && s.name) supplierMap.set(s._id, s.name); 
+        if (s.vbId && s.name) supplierMap.set(s.vbId, s.name);
+      });
+    }
+
+    let flatList: any[] = [];
+    
+    (purchaseOrders || []).filter(po => !po.isArchived).forEach(po => {
+      (po.customerPO || []).forEach((cpo: any) => {
+        (cpo.shipping || []).forEach((ship: any) => {
+          const status = (ship.status || "").toLowerCase().trim();
+          if (status !== "delivered" && status !== "arrived") {
+            const cname = customerMap.get(cpo.customer) || cpo.customer || "-";
+            const sname = supplierMap.get(ship.supplier) || ship.supplier || "-";
+            const pNames = (ship.products && Array.isArray(ship.products)) 
+              ? ship.products.map((id:string) => productMap.get(id) || id).join(", ") 
+              : "—";
+            
+            flatList.push({
+              ...ship,
+              customerName: cname,
+              customerPONo: cpo.customerPONo || "-",
+              supplierName: sname,
+              productsStr: pNames,
+              parentPoId: po._id
+            });
+          }
+        });
+      });
+    });
+
+    flatList.sort((a, b) => {
+      let aVal, bVal;
+      switch(shipSort.key) {
+        case "svbid": aVal = a.svbid?.toLowerCase() || ""; bVal = b.svbid?.toLowerCase() || ""; break;
+        case "customer": aVal = a.customerName?.toLowerCase() || ""; bVal = b.customerName?.toLowerCase() || ""; break;
+        case "customerPONo": aVal = a.customerPONo?.toLowerCase() || ""; bVal = b.customerPONo?.toLowerCase() || ""; break;
+        case "supplier": aVal = a.supplierName?.toLowerCase() || ""; bVal = b.supplierName?.toLowerCase() || ""; break;
+        case "productsStr": aVal = a.productsStr?.toLowerCase() || ""; bVal = b.productsStr?.toLowerCase() || ""; break;
+        case "BOLNumber": aVal = a.BOLNumber?.toLowerCase() || ""; bVal = b.BOLNumber?.toLowerCase() || ""; break;
+        case "containerNo": aVal = a.containerNo?.toLowerCase() || ""; bVal = b.containerNo?.toLowerCase() || ""; break;
+        case "updatedETA": 
+          aVal = a.updatedETA ? new Date(a.updatedETA).getTime() : 0; 
+          bVal = b.updatedETA ? new Date(b.updatedETA).getTime() : 0; 
+          break;
+      }
+      if (aVal < bVal) return shipSort.dir === "asc" ? -1 : 1;
+      if (aVal > bVal) return shipSort.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return flatList;
+  }, [purchaseOrders, shipSort, storeProducts, storeCustomers, storeSuppliers]);
+
+  const toggleShipSort = (key: typeof shipSort.key) => {
+    setShipSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
+    }));
   };
 
   useEffect(() => {
@@ -117,507 +201,301 @@ export default function AndresTrackerPage() {
       </div>
     );
 
-    setRightContent(
-      <div className="flex items-center gap-4">
-        <div className="hidden md:flex items-center bg-zinc-100 dark:bg-zinc-900 px-3 py-0.5 rounded-xl border border-zinc-200 dark:border-zinc-800 focus-within:ring-2 focus-within:ring-primary/20 transition-all w-64 lg:w-96 h-8">
-          <Search className="h-3.5 w-3.5 text-zinc-500 mr-2" />
-          <Input
-            placeholder="Search tracker..."
-            className="border-none bg-transparent h-6 shadow-none focus-visible:ring-0 p-0 text-xs"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <ToggleGroup
-          type="single"
-          value={viewMode}
-          onValueChange={(v) => v && setViewMode(v as any)}
-          className="bg-zinc-100 dark:bg-zinc-900 p-0.5 rounded-lg border h-8"
-        >
-          <ToggleGroupItem value="table" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
-            <TableIcon className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">Table</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="tabs" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
-            <LayoutGrid className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">Tabs</span>
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-    );
+    setRightContent(null);
 
     return () => {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [setLeftContent, setRightContent, router, viewMode]);
-
-
-
-
-  if (isLoading) {
-    return <TablePageSkeleton />;
-  }
-
-  const filteredData = data.filter((item) =>
-    Object.values(item).some(val =>
-      String(val).toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
-
-  const transitData = filteredData.filter(row =>
-    ['on water', 'in_transit', 'in transit'].includes(row.status?.toLowerCase() || "")
-  );
-
-  // --- SECTIONED DATA ---
-
-  const transitColumns: ColumnDef<TrackerRecord>[] = [
-    {
-      accessorKey: "poNo",
-      header: "VB PO Number",
-      cell: ({ row }) => (
-        <Link
-          href={`/admin/purchase-orders/${row.original.poId}`}
-          className="hover:underline text-inherit font-bold"
-        >
-          {row.original.poNo}
-        </Link>
-      )
-    },
-    { accessorKey: "customer", header: "Customer" },
-    { accessorKey: "customerPONo", header: "Cust PO#" },
-    { accessorKey: "qtyOrdered", header: "Qty Ordered" },
-    { accessorKey: "supplierLocationId", header: "Supplier Name" },
-    { accessorKey: "product", header: "Product Description" },
-    { accessorKey: "BOLNumber", header: "BOL Number" },
-    { accessorKey: "carrier", header: "Carrier Name" },
-    { accessorKey: "vessellTrip", header: "Vessel Name / Voyage" },
-    {
-      accessorKey: "updatedETA",
-      header: "Updated ETA",
-      cell: ({ row }) => row.original.updatedETA ? format(new Date(row.original.updatedETA), "MM/dd/yy") : "-"
-    },
-    {
-      accessorKey: "estimatedDuties",
-      header: "Estimated Duties",
-      cell: ({ row }) => row.original.estimatedDuties ? `$${row.original.estimatedDuties.toLocaleString()}` : "$0"
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => {
-        const val = row.original.status || "Pending";
-        const isTransit = ['on water', 'in_transit', 'in transit'].includes(val.toLowerCase());
-        const isArrived = ['arrived', 'delivered'].includes(val.toLowerCase());
-        return (
-          <span className={cn(
-            "font-bold uppercase tracking-tighter text-[9px]",
-            isTransit ? "text-blue-600 dark:text-blue-400" :
-              isArrived ? "text-green-600 dark:text-green-400" :
-                "text-zinc-500"
-          )}>
-            {val.replace(/_/g, ' ')}
-          </span>
-        );
-      }
-    },
-    { accessorKey: "portofEntryShipto", header: "Entry Port" },
-  ];
-
-  const inventoryColumns: ColumnDef<TrackerRecord>[] = [
-    { accessorKey: "vbid", header: "VB #" },
-    { accessorKey: "itemNo", header: "Item #" },
-    { accessorKey: "description", header: "Description" },
-    { accessorKey: "lotSerial", header: "Lot/Serial" },
-    { accessorKey: "qty", header: "Qty" },
-    { accessorKey: "type", header: "Type" },
-    {
-      accessorKey: "inventoryDate",
-      header: "Inventory Date",
-      cell: ({ row }) => row.original.inventoryDate ? format(new Date(row.original.inventoryDate), "MM/dd/yy") : "-"
-    },
-  ];
-
-  const customsColumns: ColumnDef<TrackerRecord>[] = [
-    {
-      accessorKey: "poNo",
-      header: "VB PO Number",
-      cell: ({ row }) => (
-        <Link
-          href={`/admin/purchase-orders/${row.original.poId}`}
-          className="hover:underline text-inherit font-bold"
-        >
-          {row.original.poNo}
-        </Link>
-      )
-    },
-    { accessorKey: "carrierBookingRef", header: "Carrier Booking Ref#" },
-    { accessorKey: "BOLNumber", header: "BOL Number" },
-    {
-      accessorKey: "isManufacturerSecurityISF",
-      header: "ISF/CB SA Filed Y/N",
-      cell: ({ row }) => <span className="font-bold">{row.original.isManufacturerSecurityISF ? "Yes" : "No"}</span>
-    },
-    {
-      accessorKey: "ISF",
-      header: "ISF/CB SA Confirmation",
-      cell: ({ row }) => <span className="font-bold">{row.original.ISF}</span>
-    },
-    { accessorKey: "trackingId", header: "Customs Tracking ID" },
-    {
-      accessorKey: "customsStatus",
-      header: "Customs Status",
-      cell: ({ row }) => <span className="block">{row.original.customsStatus}</span>
-    },
-    { accessorKey: "documentsRequired", header: "Documents Required" },
-  ];
-
-
-  // --- REUSABLE COMPONENTS ---
-
-  const TableView = ({ columns, data, highlightColor }: {
-    columns: ColumnDef<TrackerRecord>[],
-    data: TrackerRecord[],
-    highlightColor?: string
-  }) => {
-    const [sorting, setSorting] = useState<SortingState>([]);
-    const table = useReactTable({
-      data,
-      columns,
-      getCoreRowModel: getCoreRowModel(),
-      getPaginationRowModel: getPaginationRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      onSortingChange: setSorting,
-      state: { sorting },
-      initialState: { pagination: { pageSize: 15 } }
-    });
-
-    return (
-      <div className="flex-1 min-h-0 flex flex-col border rounded-3xl bg-white dark:bg-zinc-950 shadow-2xl overflow-hidden h-full">
-        <div className="overflow-auto flex-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800 h-full">
-          <table className="border-separate border-spacing-0 table-fixed min-w-[1500px] w-full text-sm">
-            <TableHeader className="z-10">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead
-                      key={header.id}
-                      className="p-[4px] text-[10px] font-bold tracking-tighter text-zinc-500 dark:text-white border-r border-b border-zinc-200 dark:border-zinc-800 align-middle leading-tight whitespace-normal break-words sticky top-0 z-20 bg-zinc-100 dark:bg-zinc-900"
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 group transition-colors">
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className={cn(
-                          "p-[4px] text-[10px] font-medium border-r border-b border-zinc-200/50 dark:border-zinc-800 transition-all duration-300 align-middle whitespace-normal break-words overflow-visible leading-tight",
-                          highlightColor
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                    No results found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between px-1">
-          <p className="text-xs text-muted-foreground">
-            Showing {table.getRowModel().rows.length} records.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="h-8"
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="h-8"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const UnifiedTableView = () => {
-    const allGroups = [
-      {
-        id: 'transit',
-        label: "Shipments In-Transit!",
-        columns: transitColumns,
-        className: "bg-green-100 text-green-900 dark:bg-green-900/10 dark:text-white"
-      },
-      {
-        id: 'inventory',
-        label: "Inventory",
-        columns: inventoryColumns,
-        className: "bg-blue-100 text-blue-900 dark:bg-blue-900/10 dark:text-white"
-      },
-      {
-        id: 'customs',
-        label: "Customs",
-        columns: customsColumns,
-        className: "bg-orange-100 text-orange-900 dark:bg-orange-900/10 dark:text-white"
-      }
-    ];
-
-    const getColWidth = (header: any, groupId: string, colIdx: number) => {
-      const isMin = minimizedGroups.has(groupId);
-      if (isMin) return colIdx === 0 ? '70px' : '0px';
-
-      const h = String(header);
-      const toReduce = [
-        "VB PO Number", "Cust PO#", "Qty Ordered", "BOL Number",
-        "Carrier Name", "Updated ETA", "Estimated Duties", "Status",
-        "VB #", "ISF/CB SA Filed Y/N", "ISF/CB SA Confirmation", "Qty", "Item #"
-      ];
-      if (toReduce.includes(h) || h.includes("Status")) return '75px';
-      if (h === "Customer" || h === "Supplier Name" || h === "Product Description" || h === "Description") return '160px';
-      return '110px';
-    };
-
-    return (
-      <div className="flex-1 min-h-0 flex flex-col border rounded-3xl bg-white dark:bg-zinc-950 shadow-2xl overflow-hidden h-full relative">
-        <style dangerouslySetInnerHTML={{
-          __html: `
-          .genie-transition {
-            transition: all 0.8s cubic-bezier(0.25, 1, 0.32, 1);
-          }
-          .vertical-text {
-            writing-mode: vertical-lr;
-            transform: rotate(180deg);
-          }
-        `}} />
-        <div className="overflow-auto flex-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800 h-full">
-          <table className="border-separate border-spacing-0 table-fixed w-max text-sm genie-transition">
-            <TableHeader className="z-20">
-              {/* Top Group Headers */}
-              <TableRow className="bg-zinc-100 dark:bg-zinc-900 border-none hover:bg-zinc-100 dark:hover:bg-zinc-900 sticky top-0 z-30">
-                {allGroups.map((group, idx) => {
-                  const isMin = minimizedGroups.has(group.id);
-                  return (
-                    <TableHead
-                      key={group.id}
-                      colSpan={group.columns.length}
-                      className={cn(
-                        "text-center font-black tracking-[0.1em] text-[12px] p-0 border-r-2 border-b-2 border-white dark:border-zinc-800 leading-[1.2] align-middle sticky top-0 z-30 genie-transition h-10",
-                        group.className,
-                        isMin && "w-[70px] min-w-[70px] max-w-[70px] border-r-4 border-r-zinc-300 dark:border-r-zinc-700"
-                      )}
-                    >
-                      <div className="relative h-full flex items-center justify-center group/header overflow-visible">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleGroup(group.id); }}
-                          className="absolute left-1.5 top-1/2 -translate-y-1/2 z-50 p-1 rounded-full bg-white/40 dark:bg-black/40 hover:bg-white/80 dark:hover:bg-black/80 transition-all shadow-sm opacity-0 group-hover/header:opacity-100"
-                        >
-                          {isMin ? <Maximize2 className="h-2.5 w-2.5" /> : <Minimize2 className="h-2.5 w-2.5" />}
-                        </button>
-                        <span className={cn(
-                          "genie-transition block truncate px-6",
-                          isMin ? "vertical-text text-[8px] tracking-[0.2em] font-bold h-24 whitespace-nowrap opacity-60" : "scale-100 opacity-100"
-                        )}>
-                          {group.label}
-                        </span>
-                        {isMin && (
-                          <button
-                            onClick={() => toggleGroup(group.id)}
-                            className="absolute inset-0 z-40 w-full h-full cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                          />
-                        )}
-                      </div>
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-              {/* Individual Column Headers */}
-              <TableRow className="bg-zinc-50 dark:bg-zinc-950 border-none hover:bg-zinc-50 dark:hover:bg-zinc-950 sticky top-[40px] z-20">
-                {allGroups.map((group) => {
-                  const isSectionMin = minimizedGroups.has(group.id);
-                  return group.columns.map((col: any, colIdx) => (
-                    <TableHead
-                      key={`${group.id}-${colIdx}`}
-                      style={{
-                        width: getColWidth(col.header, group.id, colIdx),
-                        minWidth: getColWidth(col.header, group.id, colIdx),
-                        maxWidth: getColWidth(col.header, group.id, colIdx),
-                        opacity: isSectionMin && colIdx > 0 ? 0 : 1,
-                        padding: isSectionMin && colIdx > 0 ? 0 : '4px',
-                        borderRightWidth: isSectionMin && colIdx > 0 ? 0 : (colIdx === group.columns.length - 1 ? 2 : 1),
-                        transitionDelay: isSectionMin ? '0ms' : `${colIdx * 30}ms`,
-                        overflow: 'hidden'
-                      }}
-                      className={cn(
-                        "genie-transition text-[10px] font-bold tracking-tighter text-zinc-500 dark:text-white border-b border-zinc-200 dark:border-zinc-800 align-middle leading-tight whitespace-normal break-words sticky top-[40px] z-20 bg-zinc-50 dark:bg-zinc-950",
-                        isSectionMin && colIdx === 0 && "bg-zinc-100/50 dark:bg-zinc-900/50 text-zinc-400 font-black text-[8px] px-1"
-                      )}
-                    >
-                      {(!isSectionMin || colIdx === 0) && flexRender(col.header, {} as any)}
-                    </TableHead>
-                  ));
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transitData.length > 0 ? (
-                transitData.map((row, rowIdx) => (
-                  <TableRow key={rowIdx} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 group transition-colors">
-                    {allGroups.map((group) => {
-                      const isSectionMin = minimizedGroups.has(group.id);
-                      return group.columns.map((col: any, colIdx) => (
-                        <TableCell
-                          key={`${rowIdx}-${group.id}-${colIdx}`}
-                          style={{
-                            width: getColWidth(col.header, group.id, colIdx),
-                            minWidth: getColWidth(col.header, group.id, colIdx),
-                            maxWidth: getColWidth(col.header, group.id, colIdx),
-                            opacity: isSectionMin && colIdx > 0 ? 0 : 1,
-                            padding: isSectionMin && colIdx > 0 ? 0 : '4px',
-                            borderRightWidth: isSectionMin && colIdx > 0 ? 0 : (colIdx === group.columns.length - 1 ? 2 : 1),
-                            transitionDelay: isSectionMin ? '0ms' : `${colIdx * 30}ms`,
-                            overflow: 'hidden'
-                          }}
-                          className={cn(
-                            "genie-transition text-[10px] font-medium border-b border-zinc-200/50 dark:border-zinc-800 align-middle whitespace-normal break-words leading-tight",
-                            isSectionMin && colIdx === 0 && "border-r-4 border-r-zinc-300 dark:border-r-zinc-700 bg-zinc-50/50 dark:bg-zinc-900/50",
-                            group.label === "Shipments In-Transit!" && !isSectionMin && "bg-green-500/[0.04] dark:bg-green-500/[0.12] text-green-950 dark:text-white",
-                            group.label === "Inventory" && !isSectionMin && "bg-blue-500/[0.04] dark:bg-blue-500/[0.12] text-blue-950 dark:text-white",
-                            group.label === "Customs" && !isSectionMin && "bg-orange-500/[0.04] dark:bg-orange-500/[0.12] text-orange-950 dark:text-white",
-                            isSectionMin && colIdx === 0 && "text-center"
-                          )}
-                        >
-                          {(!isSectionMin || colIdx === 0) && (col.cell
-                            ? (col.cell as any)({ row: { original: row } })
-                            : <span className="block leading-tight truncate">{String((row as any)[col.accessorKey] || "-")}</span>)}
-                        </TableCell>
-                      ));
-                    })}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={transitColumns.length + inventoryColumns.length + customsColumns.length} className="h-64 text-center">
-                    <div className="flex flex-col items-center justify-center space-y-3 opacity-40">
-                      <Search className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-sm font-black uppercase tracking-widest text-muted-foreground">No matching entries found</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </table>
-        </div>
-      </div>
-    );
-  };
+  }, [setLeftContent, setRightContent, router]);
 
   return (
-    <div className="p-0 max-w-[1800px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">
+    <div className="max-w-[2000px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 overflow-hidden">
+        
+        {/* Column 1: VBPOs */}
+        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
+          <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-primary" />
+              <h2 className="font-bold text-sm uppercase tracking-wider">VBPOs</h2>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddPOOpen(true)}>
+              Add New
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+            {isLoading ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
+            ) : sortedPOs.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No VBPOs found</div>
+            ) : (
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleVbpoSort("vbpoNo")}>
+                      PO # {vbpoSort.key === "vbpoNo" && (vbpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleVbpoSort("date")}>
+                      Date {vbpoSort.key === "date" && (vbpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleVbpoSort("products")}>
+                      Products {vbpoSort.key === "products" && (vbpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleVbpoSort("containers")}>
+                      Cont. {vbpoSort.key === "containers" && (vbpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleVbpoSort("remaining")}>
+                      Balance {vbpoSort.key === "remaining" && (vbpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {sortedPOs.map((po) => {
+                    return (
+                      <tr key={po._id} onClick={() => { setActivePOForDrilldown(po); setActiveCPOForDrilldown(null); }} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                        <td className="px-3 py-2.5 font-bold text-foreground">
+                          {po.vbpoNo || "-"}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                          {po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={(po as any).productsStr}>
+                          {(po as any).productsStr || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            {(po as any).containerCount}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`font-bold px-1.5 py-0.5 rounded ${(po as any).remainingCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500"}`}>
+                            {(po as any).remainingCount}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
 
-      {/* Stats Overview - Only in Tab mode */}
-      {viewMode === "tabs" && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-shrink-0 p-4">
-          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-              <Ship className="h-12 w-12" />
-            </div>
-            <CardContent className="p-3.5 pt-6">
-              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">In-Transit</p>
-              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.length}</h3>
-              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-primary w-2/3 shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-              <Package className="h-12 w-12" />
-            </div>
-            <CardContent className="p-3.5 pt-6">
-              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Inventory</p>
-              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.qty > 0).length}</h3>
-              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 w-1/2" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-zinc-950 text-white border-primary/20 overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-              <ShieldCheck className="h-12 w-12" />
-            </div>
-            <CardContent className="p-3.5 pt-6">
-              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Customs</p>
-              <h3 className="text-2xl font-bold mt-1 uppercase tracking-tight">{data.filter(d => d.customsStatus === "Cleared").length}</h3>
-              <div className="mt-2 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 w-3/4" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Column 2: Shippments */}
+        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-blue-500" />
+            <h2 className="font-bold text-sm uppercase tracking-wider">Shippments</h2>
+          </div>
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+            {isLoading ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
+            ) : sortedShippings.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No shippings found</div>
+            ) : (
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("svbid")}>
+                      SVB {shipSort.key === "svbid" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("customer")}>
+                      Customer {shipSort.key === "customer" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("customerPONo")}>
+                      CPO # {shipSort.key === "customerPONo" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("supplier")}>
+                      Supplier {shipSort.key === "supplier" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleShipSort("productsStr")}>
+                      Products {shipSort.key === "productsStr" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("BOLNumber")}>
+                      BOL {shipSort.key === "BOLNumber" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("containerNo")}>
+                      Container {shipSort.key === "containerNo" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("updatedETA")}>
+                      ETA {shipSort.key === "updatedETA" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {sortedShippings.map((ship, idx) => (
+                    <tr key={`${ship.svbid}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                      <td className="px-3 py-2.5 font-bold text-blue-600 dark:text-blue-400">
+                        {ship.svbid || "-"}
+                      </td>
+                      <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[120px]" title={ship.customerName}>
+                        {ship.customerName}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                        {ship.customerPONo}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[100px]" title={ship.supplierName}>
+                        {ship.supplierName}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={ship.productsStr}>
+                        {ship.productsStr}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground text-[10px]">
+                        {ship.BOLNumber || "-"}
+                      </td>
+                      <td className="px-3 py-2.5 font-semibold">
+                        {ship.containerNo || "-"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`px-1.5 py-0.5 rounded font-bold ${ship.updatedETA && new Date(ship.updatedETA) < new Date() ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                          {ship.updatedETA ? new Date(ship.updatedETA).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
 
+        {/* Column 3: Customer POs */}
+        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-emerald-500" />
+            <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
+          </div>
+          <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
+            <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">
+              Awaiting column definitions...
+            </div>
+          </div>
+        </div>
+
+        {/* Column 4: Inventory */}
+        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-orange-500" />
+            <h2 className="font-bold text-sm uppercase tracking-wider">Inventory</h2>
+          </div>
+          <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
+            <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">
+              Awaiting column definitions...
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <AddPurchaseOrderDialog open={isAddPOOpen} onOpenChange={setIsAddPOOpen} />
+
+      {/* Drill-down PO Modal */}
+      {activePOForDrilldown && (
+        <div className="fixed inset-0 z-50 flex py-10 px-4 items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActivePOForDrilldown(null)}>
+          <div className="bg-white dark:bg-zinc-950 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-full border border-zinc-200 dark:border-zinc-800" onClick={e => e.stopPropagation()}>
+            <div className="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                {activeCPOForDrilldown && (
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setActiveCPOForDrilldown(null)}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                )}
+                <div>
+                  <h2 className="text-lg font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                    {activeCPOForDrilldown ? `Shippings for ${activeCPOForDrilldown.customerPONo || "Un-numbered PO"}` : `Customer POs — ${activePOForDrilldown.vbpoNo}`}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {activeCPOForDrilldown ? `Product: ${activeCPOForDrilldown.product || "Unknown"}` : `Date: ${new Date(activePOForDrilldown.date).toLocaleDateString()}`}
+                  </p>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" className="h-8" onClick={() => setActivePOForDrilldown(null)}>Close</Button>
+            </div>
+            
+            <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-black p-4">
+              {!activeCPOForDrilldown ? (
+                // Customer POs Table
+                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm bg-white dark:bg-zinc-950">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 text-muted-foreground uppercase text-[10px] tracking-wider font-bold">
+                      <tr>
+                        <th className="px-4 py-3">Cust PO #</th>
+                        <th className="px-4 py-3">Customer</th>
+                        <th className="px-4 py-3">Product</th>
+                        <th className="px-4 py-3">Qty Ordered</th>
+                        <th className="px-4 py-3 text-center">Shippings</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                      {(!activePOForDrilldown.customerPO || activePOForDrilldown.customerPO.length === 0) ? (
+                        <tr><td colSpan={5} className="py-12 text-center text-muted-foreground italic">No Customer POs attached.</td></tr>
+                      ) : (
+                        activePOForDrilldown.customerPO.map((cpo: any, idx: number) => {
+                          const shipCount = cpo.shipping?.length || 0;
+                          return (
+                            <tr key={idx} onClick={() => setActiveCPOForDrilldown(cpo)} className="hover:bg-primary/5 cursor-pointer transition-colors group">
+                              <td className="px-4 py-3 font-semibold text-primary group-hover:underline underline-offset-4">{cpo.customerPONo || "-"}</td>
+                              <td className="px-4 py-3 font-medium">{cpo.customer || "-"}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{cpo.product || "-"}</td>
+                              <td className="px-4 py-3 font-medium bg-zinc-50 dark:bg-zinc-900/40">{cpo.qtyOrdered?.toLocaleString() || "0"}</td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${shipCount > 0 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-zinc-100 text-zinc-500"}`}>
+                                  {shipCount}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                // Shippings Table
+                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm bg-white dark:bg-zinc-950 animate-in slide-in-from-right-4 duration-300">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 text-muted-foreground uppercase text-[10px] tracking-wider font-bold">
+                      <tr>
+                        <th className="px-4 py-3">Container #</th>
+                        <th className="px-4 py-3">Carrier</th>
+                        <th className="px-4 py-3">BOL </th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">ETA</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                      {(!activeCPOForDrilldown.shipping || activeCPOForDrilldown.shipping.length === 0) ? (
+                        <tr><td colSpan={5} className="py-12 text-center text-muted-foreground italic">No Shippings found for this CPO.</td></tr>
+                      ) : (
+                        activeCPOForDrilldown.shipping.map((ship: any, idx: number) => {
+                          const status = (ship.status || "Pending").replace(/_/g, " ").toUpperCase();
+                          const isDelivered = status === "DELIVERED" || status === "ARRIVED";
+                          const isTransit = status === "ON WATER" || status === "IN TRANSIT";
+                          return (
+                            <tr key={idx} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+                              <td className="px-4 py-3 font-semibold">{ship.container || "-"}</td>
+                              <td className="px-4 py-3">{ship.carrier || "-"}</td>
+                              <td className="px-4 py-3 text-muted-foreground font-mono text-[11px]">{ship.BOLNumber || "-"}</td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isDelivered ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : isTransit ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
+                                  {status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground text-[11px]">
+                                {ship.updatedETA ? new Date(ship.updatedETA).toLocaleDateString() : "-"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
-
-
-      {/* Main Execution View */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        {viewMode === "table" ? (
-          <UnifiedTableView />
-        ) : (
-          <Tabs defaultValue="transit" className="w-full h-full flex flex-col">
-            <div className="bg-zinc-100/50 dark:bg-zinc-900/50 border rounded-2xl p-1 mb-4 w-fit flex-shrink-0 shadow-inner">
-              <TabsList className="bg-transparent border-none p-0 h-10">
-                <TabsTrigger value="transit" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                  <Ship className="h-4 w-4 mr-2" /> Shipments
-                </TabsTrigger>
-                <TabsTrigger value="inventory" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                  <Package className="h-4 w-4 mr-2" /> Inventory
-                </TabsTrigger>
-                <TabsTrigger value="customs" className="rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:shadow-md px-6 transition-all duration-300">
-                  <ShieldCheck className="h-4 w-4 mr-2" /> Customs
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="flex-1 overflow-auto min-h-0 space-y-4">
-              <TabsContent value="transit" className="mt-0 focus-visible:ring-0 h-full">
-                <TableView columns={transitColumns} data={transitData} highlightColor="bg-green-500/[0.04] dark:bg-green-500/[0.12] text-green-950 dark:text-white" />
-              </TabsContent>
-              <TabsContent value="inventory" className="mt-0 focus-visible:ring-0 h-full">
-                <TableView columns={inventoryColumns} data={filteredData} highlightColor="bg-blue-500/[0.04] dark:bg-blue-500/[0.12] text-blue-950 dark:text-white" />
-              </TabsContent>
-              <TabsContent value="customs" className="mt-0 focus-visible:ring-0 h-full">
-                <TableView columns={customsColumns} data={filteredData} highlightColor="bg-orange-500/[0.04] dark:bg-orange-500/[0.12] text-orange-950 dark:text-white" />
-              </TabsContent>
-            </div>
-          </Tabs>
-        )}
-      </div>
     </div>
   );
 }

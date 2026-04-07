@@ -47,6 +47,7 @@ import {
   Mail,
 } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
+import { ViewToggle } from "@/components/admin/view-toggle";
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -997,6 +998,8 @@ export default function ShippingsPage() {
   useLayoutEffect(() => {
     const headerContent = (
       <div className="flex items-center gap-1.5">
+        <ViewToggle currentView="card" />
+        <div className="h-5 w-px bg-border mx-1" />
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <input
@@ -1056,13 +1059,13 @@ export default function ShippingsPage() {
 
     setActions(headerContent);
     setLeftContent(
-      <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Shippings</h1>
+      <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Purchase Orders</h1>
     );
 
     const timer = setTimeout(() => {
       setActions(headerContent);
       setLeftContent(
-        <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Shippings</h1>
+        <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Purchase Orders</h1>
       );
     }, 50);
 
