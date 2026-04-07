@@ -103,6 +103,11 @@ const data = {
       icon: IconShoppingCart,
     },
     {
+      name: "Shippings",
+      url: "/admin/shippings",
+      icon: IconTruck,
+    },
+    {
       name: "Quality Control",
       url: "/quality-control",
       icon: IconCheckbox,
