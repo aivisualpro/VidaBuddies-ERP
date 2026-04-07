@@ -2,11 +2,63 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
-import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
+import { toast } from "sonner";
+
+const EditableCell = ({ value, isExpanded, onSave, className = "", type = "text" }: any) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value || "");
+
+  useEffect(() => { setVal(value || ""); }, [value]);
+
+  if (!isExpanded) {
+    return <span className={className}>{value || "-"}</span>;
+  }
+
+  if (!isEditing) {
+    return (
+      <div 
+        className={`hover:bg-zinc-100 dark:hover:bg-zinc-800 p-1 -mx-1 rounded cursor-text transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 min-h-[24px] flex items-center ${className}`}
+        onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+      >
+        {value || <span className="text-muted-foreground italic text-[10px]">Empty</span>}
+      </div>
+    );
+  }
+
+  return (
+    <input 
+      autoFocus
+      type={type}
+      className={`w-[120px] bg-white dark:bg-zinc-950 border border-primary text-xs p-1 rounded focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm ${className}`}
+      value={val}
+      onClick={e => e.stopPropagation()}
+      onChange={e => setVal(e.target.value)}
+      onBlur={() => {
+        setIsEditing(false);
+        if (val !== (value || "")) {
+           onSave(val);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          setIsEditing(false);
+          if (val !== (value || "")) {
+             onSave(val);
+          }
+        }
+        if (e.key === "Escape") {
+          setIsEditing(false);
+          setVal(value || "");
+        }
+      }}
+    />
+  );
+};
 
 export default function AndresTrackerPage() {
   const router = useRouter();
@@ -17,8 +69,50 @@ export default function AndresTrackerPage() {
     isLoading, 
     products: storeProducts,
     customers: storeCustomers,
-    suppliers: storeSuppliers
+    suppliers: storeSuppliers,
+    refetchPurchaseOrders
   } = useUserDataStore();
+
+  const handleInlineUpdate = async (poId: string, fieldType: 'shipping' | 'cpo' | 'po', entityId1: string, entityId2: string, field: string, newValue: string) => {
+    const po = purchaseOrders.find((p: any) => p._id === poId);
+    if (!po) return;
+    
+    // Deep copy
+    const updatedPO = JSON.parse(JSON.stringify(po));
+    
+    if (fieldType === 'shipping') {
+       const cpo = updatedPO.customerPO?.find((c: any) => c._id === entityId1 || c.customerPONo === entityId1);
+       if (cpo && cpo.shipping) {
+          const ship = cpo.shipping.find((s: any) => s.svbid === entityId2 || s._id === entityId2);
+          if (ship) {
+             ship[field] = newValue;
+          }
+       }
+    } else if (fieldType === 'cpo') {
+       const cpo = updatedPO.customerPO?.find((c: any) => c._id === entityId1 || c.customerPONo === entityId1);
+       if (cpo) {
+          cpo[field] = newValue;
+       }
+    } else {
+       updatedPO[field] = newValue;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${poId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedPO)
+      });
+      if (res.ok) {
+          toast.success("Updated successfully");
+          refetchPurchaseOrders();
+      } else {
+          toast.error("Failed to update");
+      }
+    } catch(e) {
+      toast.error("Error updating");
+    }
+  };
   
   const [vbpoSort, setVbpoSort] = useState<{
     key: "vbpoNo" | "date" | "containers" | "remaining" | "products";
@@ -30,8 +124,21 @@ export default function AndresTrackerPage() {
     dir: "asc" | "desc";
   }>({ key: "updatedETA", dir: "asc" });
 
+  const [cpoSort, setCpoSort] = useState<{
+    key: "customerPONo" | "date" | "customer" | "qtyOrdered" | "balance";
+    dir: "asc" | "desc";
+  }>({ key: "date", dir: "desc" });
+
   const [activePOForDrilldown, setActivePOForDrilldown] = useState<any | null>(null);
   const [activeCPOForDrilldown, setActiveCPOForDrilldown] = useState<any | null>(null);
+
+  const [expandedCol, setExpandedCol] = useState<number | null>(null);
+
+  const getColClass = (colIndex: number) => {
+    if (expandedCol === colIndex) return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm xl:col-span-4 md:col-span-2 overflow-hidden animate-in fade-in zoom-in-95 duration-300";
+    if (expandedCol !== null) return "hidden";
+    return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm overflow-hidden animate-in fade-in duration-300";
+  };
 
   const sortedPOs = useMemo(() => {
     // fast O(1) map for product ID to Name
@@ -149,6 +256,9 @@ export default function AndresTrackerPage() {
             
             flatList.push({
               ...ship,
+              poId: po._id,
+              cpoIdForUpdate: cpo._id || cpo.customerPONo,
+              shipIdForUpdate: ship.svbid || ship._id,
               customerName: cname,
               customerPONo: cpo.customerPONo || "-",
               supplierName: sname,
@@ -189,6 +299,68 @@ export default function AndresTrackerPage() {
     }));
   };
 
+  const sortedCPOs = useMemo(() => {
+    const customerMap = new Map();
+    if (storeCustomers && Array.isArray(storeCustomers)) {
+      storeCustomers.forEach(c => { 
+        if (c._id && c.name) customerMap.set(c._id, c.name); 
+        if (c.vbId && c.name) customerMap.set(c.vbId, c.name);
+      });
+    }
+
+    let flatList: any[] = [];
+    
+    (purchaseOrders || []).filter(po => !po.isArchived).forEach(po => {
+      (po.customerPO || []).forEach((cpo: any) => {
+         const cname = customerMap.get(cpo.customer) || cpo.customer || "-";
+         flatList.push({
+            ...cpo,
+            poId: po._id,
+            cpoIdForUpdate: cpo._id || cpo.customerPONo,
+            customerName: cname,
+         });
+      });
+    });
+
+    flatList.sort((a, b) => {
+      let aVal, bVal;
+      switch (cpoSort.key) {
+        case "customerPONo":
+          aVal = a.customerPONo?.toLowerCase() || "";
+          bVal = b.customerPONo?.toLowerCase() || "";
+          break;
+        case "date":
+          aVal = a.customerPODate ? new Date(a.customerPODate).getTime() : 0;
+          bVal = b.customerPODate ? new Date(b.customerPODate).getTime() : 0;
+          break;
+        case "customer":
+          aVal = (a.customerName || "").toLowerCase();
+          bVal = (b.customerName || "").toLowerCase();
+          break;
+        case "qtyOrdered":
+          aVal = parseFloat(a.qtyOrdered) || 0;
+          bVal = parseFloat(b.qtyOrdered) || 0;
+          break;
+        case "balance":
+          aVal = (parseFloat(a.qtyOrdered) || 0) - (parseFloat(a.qtyReceived) || 0);
+          bVal = (parseFloat(b.qtyOrdered) || 0) - (parseFloat(b.qtyReceived) || 0);
+          break;
+      }
+      if (aVal < bVal) return cpoSort.dir === "asc" ? -1 : 1;
+      if (aVal > bVal) return cpoSort.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return flatList;
+  }, [purchaseOrders, storeCustomers, cpoSort]);
+
+  const toggleCpoSort = (key: typeof cpoSort.key) => {
+    setCpoSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
+    }));
+  };
+
   useEffect(() => {
     setLeftContent(
       <div className="flex items-center gap-2">
@@ -214,15 +386,20 @@ export default function AndresTrackerPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 overflow-hidden">
         
         {/* Column 1: VBPOs */}
-        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
+        <div className={getColClass(1)}>
           <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-4 w-4 text-primary" />
               <h2 className="font-bold text-sm uppercase tracking-wider">VBPOs</h2>
             </div>
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddPOOpen(true)}>
-              Add New
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddPOOpen(true)}>
+                Add New
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setExpandedCol(expandedCol === 1 ? null : 1)}>
+                {expandedCol === 1 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
             {isLoading ? (
@@ -253,12 +430,16 @@ export default function AndresTrackerPage() {
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
                   {sortedPOs.map((po) => {
                     return (
-                      <tr key={po._id} onClick={() => { setActivePOForDrilldown(po); setActiveCPOForDrilldown(null); }} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                      <tr key={po._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group">
                         <td className="px-3 py-2.5 font-bold text-foreground">
-                          {po.vbpoNo || "-"}
+                          <EditableCell value={po.vbpoNo} isExpanded={expandedCol === 1} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'vbpoNo', val)} />
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground font-medium">
-                          {po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
+                          {expandedCol === 1 ? (
+                             <EditableCell type="date" value={po.date ? new Date(po.date).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'date', val)} />
+                          ) : (
+                             po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={(po as any).productsStr}>
                           {(po as any).productsStr || "—"}
@@ -283,10 +464,15 @@ export default function AndresTrackerPage() {
         </div>
 
         {/* Column 2: Shippments */}
-        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
-            <LayoutGrid className="h-4 w-4 text-blue-500" />
-            <h2 className="font-bold text-sm uppercase tracking-wider">Shippments</h2>
+        <div className={getColClass(2)}>
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-blue-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wider">Shippments</h2>
+            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 2 ? null : 2)}>
+              {expandedCol === 2 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
           </div>
           <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
             {isLoading ? (
@@ -325,15 +511,18 @@ export default function AndresTrackerPage() {
                 </thead>
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
                   {sortedShippings.map((ship, idx) => (
-                    <tr key={`${ship.svbid}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                    <tr 
+                      key={`${ship.svbid}-${idx}`} 
+                      className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group"
+                    >
                       <td className="px-3 py-2.5 font-bold text-blue-600 dark:text-blue-400">
-                        {ship.svbid || "-"}
+                        <EditableCell value={ship.svbid} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'svbid', val)} />
                       </td>
                       <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[120px]" title={ship.customerName}>
                         {ship.customerName}
                       </td>
                       <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                        {ship.customerPONo}
+                        <EditableCell value={ship.customerPONo} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'customerPONo', val)} />
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[100px]" title={ship.supplierName}>
                         {ship.supplierName}
@@ -342,15 +531,19 @@ export default function AndresTrackerPage() {
                         {ship.productsStr}
                       </td>
                       <td className="px-3 py-2.5 font-mono text-muted-foreground text-[10px]">
-                        {ship.BOLNumber || "-"}
+                        <EditableCell value={ship.BOLNumber} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'BOLNumber', val)} />
                       </td>
                       <td className="px-3 py-2.5 font-semibold">
-                        {ship.containerNo || "-"}
+                        <EditableCell value={ship.containerNo} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'containerNo', val)} />
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className={`px-1.5 py-0.5 rounded font-bold ${ship.updatedETA && new Date(ship.updatedETA) < new Date() ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
-                          {ship.updatedETA ? new Date(ship.updatedETA).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
-                        </span>
+                        {expandedCol === 2 ? (
+                          <EditableCell type="date" value={ship.updatedETA ? new Date(ship.updatedETA).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'updatedETA', val)} />
+                        ) : (
+                          <span className={`px-1.5 py-0.5 rounded font-bold ${ship.updatedETA && new Date(ship.updatedETA) < new Date() ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                            {ship.updatedETA ? new Date(ship.updatedETA).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -361,23 +554,84 @@ export default function AndresTrackerPage() {
         </div>
 
         {/* Column 3: Customer POs */}
-        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
-            <LayoutGrid className="h-4 w-4 text-emerald-500" />
-            <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
-          </div>
-          <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
-            <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">
-              Awaiting column definitions...
+        <div className={getColClass(3)}>
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-emerald-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
             </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 3 ? null : 3)}>
+              {expandedCol === 3 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+            {isLoading ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
+            ) : sortedCPOs.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No Customer POs found</div>
+            ) : (
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleCpoSort("customerPONo")}>
+                      PO # {cpoSort.key === "customerPONo" && (cpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleCpoSort("date")}>
+                      Date {cpoSort.key === "date" && (cpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleCpoSort("customer")}>
+                      Customer {cpoSort.key === "customer" && (cpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleCpoSort("qtyOrdered")}>
+                      Qty Ordered {cpoSort.key === "qtyOrdered" && (cpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleCpoSort("balance")}>
+                      Balance {cpoSort.key === "balance" && (cpoSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {sortedCPOs.map((cpo, idx) => (
+                    <tr key={`${cpo.customerPONo}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                      <td className="px-3 py-2.5 font-bold text-emerald-600 dark:text-emerald-400">
+                        <EditableCell value={cpo.customerPONo} isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPONo', val)} />
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                        {expandedCol === 3 ? (
+                           <EditableCell type="date" value={cpo.customerPODate ? new Date(cpo.customerPODate).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPODate', val)} />
+                        ) : (
+                           cpo.customerPODate ? new Date(cpo.customerPODate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[150px]" title={cpo.customerName}>
+                        {cpo.customerName}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                        <EditableCell value={cpo.qtyOrdered} type="number" isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'qtyOrdered', val)} />
+                      </td>
+                      <td className="px-3 py-2.5 font-bold text-center">
+                        <span className="font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded shadow-sm">
+                          {(parseFloat(cpo.qtyOrdered) || 0) - (parseFloat(cpo.qtyReceived) || 0)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
         {/* Column 4: Inventory */}
-        <div className="flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden h-full shadow-sm">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2">
-            <LayoutGrid className="h-4 w-4 text-orange-500" />
-            <h2 className="font-bold text-sm uppercase tracking-wider">Inventory</h2>
+        <div className={getColClass(4)}>
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-orange-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wider">Inventory</h2>
+            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 4 ? null : 4)}>
+              {expandedCol === 4 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
           </div>
           <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
             <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">
