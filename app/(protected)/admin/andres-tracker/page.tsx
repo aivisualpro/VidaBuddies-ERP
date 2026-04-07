@@ -171,7 +171,7 @@ export default function AndresTrackerPage() {
             containerCount += cpo.shipping.length;
             cpo.shipping.forEach((ship: any) => {
               const s = (ship.status || "").toLowerCase().trim();
-              if (s !== "delivered" && s !== "arrived") {
+              if (s !== "delivered" && s !== "arrived" && s !== "in transit" && s !== "in_transit") {
                 remainingCount++;
               }
               if (ship.products && Array.isArray(ship.products)) {
@@ -257,7 +257,7 @@ export default function AndresTrackerPage() {
       (po.customerPO || []).forEach((cpo: any) => {
         (cpo.shipping || []).forEach((ship: any) => {
           const status = (ship.status || "").toLowerCase().trim();
-          if (status !== "delivered" && status !== "arrived") {
+          if (status === "in transit" || status === "in_transit") {
             const cname = customerMap.get(cpo.customer) || cpo.customer || "-";
             const sname = supplierMap.get(ship.supplier) || ship.supplier || "-";
             const pNames = (ship.products && Array.isArray(ship.products)) 
