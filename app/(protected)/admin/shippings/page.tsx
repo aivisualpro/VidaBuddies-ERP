@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import TimelineModal from "@/components/admin/timeline-modal";
+import { AttachmentsModal } from "@/components/attachments-modal";
 import {
   Ship,
   CheckCircle2,
@@ -23,6 +36,15 @@ import {
   MapPin,
   Calendar,
   Hash,
+  Pencil,
+  Trash2,
+  Box,
+  FileText,
+  User2,
+  Boxes,
+  Eye,
+  Paperclip,
+  Mail,
 } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
@@ -237,58 +259,138 @@ function InlineSelectChip({
   );
 }
 
-/* ── Individual Shipping Row (inside expanded CPO) ──── */
+/* ── Individual Shipping Row (expandable detail card) ──── */
 
-function ShippingDetailRow({ ship, index }: { ship: Shipping; index: number }) {
+function ShippingDetailRow({
+  ship,
+  index,
+  parentPoNo,
+  customerName,
+  productMap,
+  supplierMap,
+  supplierLocationMap,
+}: {
+  ship: Shipping;
+  index: number;
+  parentPoNo?: string;
+  customerName?: string;
+  productMap: Record<string, string>;
+  supplierMap: Record<string, string>;
+  supplierLocationMap: Record<string, string>;
+}) {
+  const [open, setOpen] = useState(false);
   const status = normalizeStatus(ship.status || "");
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-  const eta = ship.ETA ? new Date(ship.ETA).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+
+  const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+  const eta = fmtDate(ship.ETA);
+  const updatedETA = fmtDate(ship.updatedETA);
+
+  // Resolve products
+  const productIds: string[] = Array.isArray(ship.products) ? ship.products
+    : typeof ship.products === "string" ? ship.products.split(",").filter(Boolean)
+    : ship.product ? [ship.product] : [];
+  const productNames = productIds.map((id) => productMap[id] || id).filter(Boolean);
+
+  // Resolve supplier name & location
+  const supplierName = ship.supplier ? (supplierMap[ship.supplier] || ship.supplier) : null;
+  const supplierLocName = ship.supplierLocation ? (supplierLocationMap[ship.supplierLocation] || ship.supplierLocation) : null;
+
+  // Detail items to render in the grid
+  const details = [
+    { icon: Box, label: "Container", value: ship.containerNo },
+    { icon: Hash, label: "BOL Number", value: ship.BOLNumber },
+    { icon: Truck, label: "Carrier", value: ship.carrier },
+    { icon: MapPin, label: "Supplier", value: [supplierName, supplierLocName].filter(Boolean).join(" · ") || null },
+    { icon: User2, label: "Customer", value: customerName || null },
+    { icon: Boxes, label: "Products", value: productNames.length > 0 ? productNames.join(", ") : null },
+    { icon: Calendar, label: "ETA", value: eta },
+    { icon: Calendar, label: "Updated ETA", value: updatedETA, highlight: true },
+    { icon: Ship, label: "Vessel / Trip", value: ship.vessellTrip },
+    { icon: Anchor, label: "Port of Lading", value: ship.portOfLading },
+    { icon: MapPin, label: "Port of Entry", value: ship.portOfEntryShipTo },
+    { icon: FileText, label: "Carrier Booking", value: ship.carrierBookingRef },
+  ].filter((d) => d.value);
 
   return (
-    <div className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors group/shiprow">
-      {/* Index dot */}
-      <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-black ${cfg.bg} ${cfg.color}`}>
-        {index + 1}
-      </span>
-
-      {/* SVBID / SPO */}
-      <span className="text-[10px] font-semibold text-foreground truncate min-w-0 max-w-[80px]" title={ship.svbid || ship.spoNo || ""}>
-        {ship.svbid || ship.spoNo || `S-${index + 1}`}
-      </span>
-
-      {/* Status pill */}
-      <MiniStatusDot status={status} />
-
-      {/* Carrier */}
-      {ship.carrier && (
-        <span className="text-[9px] text-muted-foreground truncate max-w-[60px] hidden sm:inline" title={ship.carrier}>
-          <Truck className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />
-          {ship.carrier}
+    <div className="rounded-lg overflow-hidden">
+      {/* Compact header row — always visible */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="w-full flex items-center gap-2 py-1.5 px-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors text-left"
+      >
+        {/* Index dot */}
+        <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-black shrink-0 ${cfg.bg} ${cfg.color}`}>
+          {index + 1}
         </span>
-      )}
 
-      {/* Container */}
-      {ship.containerNo && (
-        <span className="text-[9px] text-muted-foreground truncate max-w-[70px] hidden md:inline" title={ship.containerNo}>
-          <Package className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />
-          {ship.containerNo}
+        {/* SVBID only */}
+        <span className="text-[10px] font-semibold text-foreground truncate min-w-0 max-w-[100px]" title={ship.svbid || ship.spoNo || ""}>
+          {ship.svbid || ship.spoNo || `S-${index + 1}`}
         </span>
-      )}
 
-      {/* ETA */}
-      {eta && (
+        {/* Status pill */}
+        <MiniStatusDot status={status} />
+
+        {/* Updated ETA or ETA — pushed to right */}
         <span className="text-[9px] text-muted-foreground ml-auto whitespace-nowrap flex items-center gap-0.5">
-          <Calendar className="h-2.5 w-2.5" />
-          {eta}
+          {updatedETA ? (
+            <><Calendar className="h-2.5 w-2.5 text-amber-500" /><span className="text-amber-600 dark:text-amber-400 font-semibold">{updatedETA}</span></>
+          ) : eta ? (
+            <><Calendar className="h-2.5 w-2.5" />{eta}</>
+          ) : null}
         </span>
-      )}
+
+        {/* Expand indicator */}
+        <ChevronDown className={`h-2.5 w-2.5 text-muted-foreground/40 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* Expanded detail grid */}
+      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${open ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"}`}>
+        {details.length > 0 ? (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2 ml-6 bg-muted/20 rounded-b-lg border-t border-border/30">
+            {details.map((d, i) => {
+              const Icon = d.icon;
+              return (
+                <div key={i} className="flex items-start gap-1.5 min-w-0">
+                  <Icon className={`h-3 w-3 mt-px shrink-0 ${d.highlight ? "text-amber-500" : "text-muted-foreground/50"}`} />
+                  <div className="min-w-0">
+                    <p className="text-[8px] uppercase tracking-wider text-muted-foreground/60 font-semibold leading-none">{d.label}</p>
+                    <p className={`text-[10px] font-medium truncate leading-tight mt-px ${d.highlight ? "text-amber-600 dark:text-amber-400 font-bold" : "text-foreground/80"}`} title={String(d.value)}>
+                      {d.value}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-3 py-2 ml-6 bg-muted/20 rounded-b-lg border-t border-border/30">
+            <p className="text-[9px] text-muted-foreground/50 italic">No additional details</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 /* ── CPO Gauge Bar (expandable to show shippings) ──── */
 
-function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
+function ExpandableCPORow({
+  cpo,
+  index,
+  customerMap,
+  productMap,
+  supplierMap,
+  supplierLocationMap,
+}: {
+  cpo: CustomerPO;
+  index: number;
+  customerMap: Record<string, string>;
+  productMap: Record<string, string>;
+  supplierMap: Record<string, string>;
+  supplierLocationMap: Record<string, string>;
+}) {
   const [expanded, setExpanded] = useState(false);
   const shippings = cpo.shipping || [];
   const hasShippings = shippings.length > 0;
@@ -300,6 +402,8 @@ function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
   const cfg = STATUS_CONFIG[dominantStatus] || STATUS_CONFIG.pending;
   const Icon = cfg.icon;
 
+  const custName = cpo.customer ? (customerMap[cpo.customer] || cpo.customer) : undefined;
+
   return (
     <div className="group/cpo">
       {/* Main CPO gauge row */}
@@ -309,7 +413,6 @@ function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
       >
         <div className="flex items-center justify-between text-xs">
           <span className="flex items-center gap-1.5 text-muted-foreground font-medium truncate max-w-[55%]">
-            {/* Expand chevron */}
             {hasShippings ? (
               <span className={`transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}>
                 <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
@@ -318,6 +421,9 @@ function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
               <Icon className="h-3 w-3 shrink-0" />
             )}
             <span className="truncate font-semibold text-foreground/80">{cpo.customerPONo || cpo.poNo || `CPO-${index + 1}`}</span>
+            {cpo.poNo && cpo.customerPONo && cpo.poNo !== cpo.customerPONo && (
+              <span className="text-[9px] text-muted-foreground/50 truncate" title={cpo.poNo}>· {cpo.poNo}</span>
+            )}
             {hasShippings && (
               <span className={`text-[8px] font-black px-1 py-px rounded ${cfg.bg} ${cfg.color} tabular-nums`}>
                 {shippings.length}
@@ -348,12 +454,21 @@ function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
       {/* Expanded: individual shippings */}
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          expanded ? "max-h-[500px] opacity-100 mt-1.5" : "max-h-0 opacity-0"
+          expanded ? "max-h-[2000px] opacity-100 mt-1.5" : "max-h-0 opacity-0"
         }`}
       >
         <div className="ml-3 pl-2.5 border-l-2 border-primary/15 space-y-1">
           {shippings.map((ship, si) => (
-            <ShippingDetailRow key={ship._id || si} ship={ship} index={si} />
+            <ShippingDetailRow
+              key={ship._id || si}
+              ship={ship}
+              index={si}
+              parentPoNo={cpo.poNo}
+              customerName={custName}
+              productMap={productMap}
+              supplierMap={supplierMap}
+              supplierLocationMap={supplierLocationMap}
+            />
           ))}
         </div>
       </div>
@@ -366,18 +481,36 @@ function ExpandableCPORow({ cpo, index }: { cpo: CustomerPO; index: number }) {
 function ShippingCard({
   po,
   users,
+  customerMap,
+  productMap,
+  supplierMap,
+  supplierLocationMap,
   onToggleNigalu,
   onToggleArchive,
   onUpdateField,
-  onClick,
+  onDelete,
+  onEdit,
+  onViewDetails,
+  onOpenTimeline,
+  onOpenAttachments,
+  onOpenEmails,
   userRole,
 }: {
   po: PurchaseOrder;
   users: Record<string, string>;
+  customerMap: Record<string, string>;
+  productMap: Record<string, string>;
+  supplierMap: Record<string, string>;
+  supplierLocationMap: Record<string, string>;
   onToggleNigalu: (id: string, val: boolean) => void;
   onToggleArchive: (id: string, val: boolean) => void;
   onUpdateField: (id: string, field: string, value: string) => void;
-  onClick: () => void;
+  onDelete: (id: string) => void;
+  onEdit: (po: PurchaseOrder) => void;
+  onViewDetails: () => void;
+  onOpenTimeline: (vbpoNo: string) => void;
+  onOpenAttachments: (vbpoNo: string) => void;
+  onOpenEmails: (vbpoNo: string) => void;
   userRole: string;
 }) {
   const [showAll, setShowAll] = useState(false);
@@ -413,7 +546,7 @@ function ShippingCard({
       <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none bg-gradient-to-br ${statusCfg.bg} via-transparent to-transparent`} />
 
       {/* ─── Card Header ─── */}
-      <div className="relative px-4 pt-4 pb-3 cursor-pointer" onClick={onClick}>
+      <div className="relative px-4 pt-4 pb-3 cursor-pointer" onClick={(e) => { e.stopPropagation(); onViewDetails(); }}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${statusCfg.bg} border ${statusCfg.border} transition-transform duration-300 group-hover:scale-110`}>
@@ -465,7 +598,15 @@ function ShippingCard({
         {cpos.length > 0 ? (
           <>
             {visibleCpos.map((cpo, i) => (
-              <ExpandableCPORow key={cpo._id || i} cpo={cpo} index={i} />
+              <ExpandableCPORow
+                key={cpo._id || i}
+                cpo={cpo}
+                index={i}
+                customerMap={customerMap}
+                productMap={productMap}
+                supplierMap={supplierMap}
+                supplierLocationMap={supplierLocationMap}
+              />
             ))}
 
             {/* Expand / Collapse toggle */}
@@ -530,11 +671,61 @@ function ShippingCard({
         </div>
       </div>
 
-      {/* Created by */}
+      {/* Created by + action buttons */}
       <div className="relative px-4 pb-3">
-        <p className="text-[9px] text-muted-foreground/60 font-medium">
-          Created by {users[po.createdBy?.toLowerCase()] || po.createdBy || "—"}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] text-muted-foreground/60 font-medium truncate max-w-[45%]">
+            Created by {users[po.createdBy?.toLowerCase()] || po.createdBy || "—"}
+          </p>
+          {userRole !== "NIGALU" && (
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <button
+                onClick={(e) => { e.stopPropagation(); onViewDetails(); }}
+                title="View Details"
+                className="p-1 rounded-md text-muted-foreground hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+              >
+                <Eye className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(po); }}
+                title="Edit Purchase Order"
+                className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenTimeline(po.vbpoNo); }}
+                title="Timeline"
+                className="p-1 rounded-md text-muted-foreground hover:text-violet-500 hover:bg-violet-500/10 transition-colors"
+              >
+                <Clock className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenAttachments(po.vbpoNo); }}
+                title="Attachments"
+                className="p-1 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+              >
+                <Paperclip className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenEmails(po.vbpoNo); }}
+                title="Emails"
+                className="p-1 rounded-md text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+              >
+                <Mail className="h-3 w-3" />
+              </button>
+              {(po.customerPO?.length || 0) === 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(po._id); }}
+                  title="Delete Purchase Order"
+                  className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -595,7 +786,15 @@ function StatusSummaryPills({
 
 export default function ShippingsPage() {
   const router = useRouter();
-  const { purchaseOrders, users: rawUsers, customers: rawCustomers, isLoading, refetchPurchaseOrders } = useUserDataStore();
+  const {
+    purchaseOrders,
+    users: rawUsers,
+    customers: rawCustomers,
+    products: rawProducts,
+    suppliers: rawSuppliers,
+    isLoading,
+    refetchPurchaseOrders,
+  } = useUserDataStore();
   const { setActions, setLeftContent } = useHeaderActions();
 
   const [userRole, setUserRole] = useState<string>("");
@@ -617,6 +816,48 @@ export default function ShippingsPage() {
     }
     return mapping;
   }, [rawUsers]);
+
+  // Build lookup maps for products, suppliers, customers
+  const customerMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    if (Array.isArray(rawCustomers)) {
+      rawCustomers.forEach((c: any) => {
+        if (c.vbId) m[c.vbId] = c.name;
+        if (c._id) m[c._id] = c.name;
+      });
+    }
+    return m;
+  }, [rawCustomers]);
+
+  const productMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    if (Array.isArray(rawProducts)) {
+      rawProducts.forEach((p: any) => {
+        if (p._id) m[p._id] = p.name;
+        if (p.vbId) m[p.vbId] = p.name;
+      });
+    }
+    return m;
+  }, [rawProducts]);
+
+  const { supplierMap, supplierLocationMap } = useMemo(() => {
+    const sm: Record<string, string> = {};
+    const slm: Record<string, string> = {};
+    if (Array.isArray(rawSuppliers)) {
+      rawSuppliers.forEach((s: any) => {
+        if (s._id) sm[s._id] = s.name;
+        if (s.vbId) sm[s.vbId] = s.name;
+        if (s.location && Array.isArray(s.location)) {
+          s.location.forEach((loc: any) => {
+            if (loc.vbId) {
+              slm[loc.vbId] = loc.locationName || `${s.name} - ${loc.city}` || loc.vbId;
+            }
+          });
+        }
+      });
+    }
+    return { supplierMap: sm, supplierLocationMap: slm };
+  }, [rawSuppliers]);
 
   // Filters
   const [filterOrderType, setFilterOrderType] = useState<string>("");
@@ -663,6 +904,44 @@ export default function ShippingsPage() {
   const hasActiveFilters = filterOrderType || filterCategory || filterShipStatus;
   const archivedCount = data.filter((po) => po.isArchived).length;
 
+  // ── Edit dialog state ──
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<PurchaseOrder>>({});
+
+  const openEditDialog = useCallback((po: PurchaseOrder) => {
+    setEditingPO(po);
+    setEditFormData({
+      vbpoNo: po.vbpoNo,
+      orderType: po.orderType,
+      category: po.category,
+      date: po.date ? po.date.split("T")[0] : "",
+    });
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleEditSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPO) return;
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${editingPO._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editFormData),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Purchase Order updated");
+      setEditDialogOpen(false);
+      refetchPurchaseOrders();
+    } catch {
+      toast.error("Failed to update purchase order");
+    }
+  }, [editingPO, editFormData, refetchPurchaseOrders]);
+
+  // ── Timeline & Attachments modal state ──
+  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; defaultTab?: "internal" | "external" | "emails" } | null>(null);
+
   // ── Mutation handlers ──
 
   const toggleArchive = useCallback(async (poId: string, archive: boolean) => {
@@ -699,6 +978,18 @@ export default function ShippingsPage() {
       refetchPurchaseOrders();
       toast.success(`Updated ${field}`);
     } catch { toast.error(`Failed to update ${field}`); }
+  }, [refetchPurchaseOrders]);
+
+  const handleDelete = useCallback(async (poId: string) => {
+    if (!confirm("Are you sure you want to delete this purchase order?")) return;
+    try {
+      const res = await fetch(`/api/admin/purchase-orders/${poId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Purchase Order deleted");
+      refetchPurchaseOrders();
+    } catch {
+      toast.error("Failed to delete purchase order");
+    }
   }, [refetchPurchaseOrders]);
 
   // ── Header filters (same as purchase-orders) ──
@@ -810,10 +1101,19 @@ export default function ShippingsPage() {
               key={po._id}
               po={po}
               users={users}
+              customerMap={customerMap}
+              productMap={productMap}
+              supplierMap={supplierMap}
+              supplierLocationMap={supplierLocationMap}
               onToggleNigalu={toggleNigalu}
               onToggleArchive={toggleArchive}
               onUpdateField={updateFieldInline}
-              onClick={() => router.push(`/admin/purchase-orders/${po._id}`)}
+              onDelete={handleDelete}
+              onEdit={openEditDialog}
+              onViewDetails={() => router.push(`/admin/purchase-orders/${po._id}`)}
+              onOpenTimeline={(vbpoNo) => setTimelineOpen({ vbpoNo, title: `Timeline — ${vbpoNo}` })}
+              onOpenAttachments={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo })}
+              onOpenEmails={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo, defaultTab: "emails" })}
               userRole={userRole}
             />
           ))}
@@ -826,6 +1126,100 @@ export default function ShippingsPage() {
           {filteredData.length} shipment{filteredData.length !== 1 ? "s" : ""}
         </div>
       </div>
+
+      {/* ─── Edit Dialog ─── */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Order</DialogTitle>
+            <DialogDescription>Update the PO details below.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="grid gap-5 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-vbpoNo">VB PO #</Label>
+                <div className="relative">
+                  <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-vbpoNo"
+                    className="pl-9"
+                    value={editFormData.vbpoNo || ""}
+                    onChange={(e) => setEditFormData({ ...editFormData, vbpoNo: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-date">Date</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="edit-date"
+                    type="date"
+                    className="pl-9"
+                    value={editFormData.date || ""}
+                    onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-orderType">Order Type</Label>
+                <select
+                  id="edit-orderType"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editFormData.orderType || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, orderType: e.target.value })}
+                  required
+                >
+                  <option value="" disabled>Select type...</option>
+                  <option value="Export">Export</option>
+                  <option value="Import">Import</option>
+                  <option value="Dropship">Dropship</option>
+                  <option value="Inventory">Inventory</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-category">Category</Label>
+                <select
+                  id="edit-category"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editFormData.category || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                  required
+                >
+                  <option value="" disabled>Select category...</option>
+                  <option value="CONVENTIONAL">Conventional</option>
+                  <option value="ORGANIC">Organic</option>
+                </select>
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button variant="outline" type="button" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">Save Changes</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Timeline Modal ─── */}
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        vbpoNo={timelineOpen?.vbpoNo}
+        title={timelineOpen?.title}
+        users={users}
+      />
+
+      {/* ─── Attachments / Emails Modal ─── */}
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ""}
+        defaultTab={attachmentsOpen?.defaultTab || "internal"}
+      />
     </div>
   );
 }
