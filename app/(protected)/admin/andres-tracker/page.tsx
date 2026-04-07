@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, Fragment } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
-import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
+import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
+import { AttachmentsModal } from "@/components/attachments-modal";
 import { toast } from "sonner";
 
 const EditableCell = ({ value, isExpanded, onSave, className = "", type = "text" }: any) => {
@@ -133,6 +135,14 @@ export default function AndresTrackerPage() {
   const [activeCPOForDrilldown, setActiveCPOForDrilldown] = useState<any | null>(null);
 
   const [expandedCol, setExpandedCol] = useState<number | null>(null);
+  const [isAddShippingOpen, setIsAddShippingOpen] = useState(false);
+  const [expandedVbpoId, setExpandedVbpoId] = useState<string | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{
+    poNumber: string;
+    spoNumber?: string;
+    shipNumber?: string;
+    childFolders?: any[];
+  } | null>(null);
 
   const getColClass = (colIndex: number) => {
     if (expandedCol === colIndex) return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm xl:col-span-4 md:col-span-2 overflow-hidden animate-in fade-in zoom-in-95 duration-300";
@@ -429,32 +439,73 @@ export default function AndresTrackerPage() {
                 </thead>
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
                   {sortedPOs.map((po) => {
+                    const isExpandedRow = expandedVbpoId === po._id;
                     return (
-                      <tr key={po._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group">
-                        <td className="px-3 py-2.5 font-bold text-foreground">
-                          <EditableCell value={po.vbpoNo} isExpanded={expandedCol === 1} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'vbpoNo', val)} />
-                        </td>
-                        <td className="px-3 py-2.5 text-muted-foreground font-medium">
-                          {expandedCol === 1 ? (
-                             <EditableCell type="date" value={po.date ? new Date(po.date).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'date', val)} />
-                          ) : (
-                             po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={(po as any).productsStr}>
-                          {(po as any).productsStr || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className="font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            {(po as any).containerCount}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className={`font-bold px-1.5 py-0.5 rounded ${(po as any).remainingCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500"}`}>
-                            {(po as any).remainingCount}
-                          </span>
-                        </td>
-                      </tr>
+                      <Fragment key={po._id}>
+                        <tr className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group ${isExpandedRow ? 'bg-zinc-50 dark:bg-zinc-800/40' : ''}`}>
+                          <td 
+                            className="px-3 py-2.5 font-bold text-foreground cursor-pointer group-hover:text-primary transition-colors"
+                            onClick={() => { if (expandedCol !== 1) setExpandedVbpoId(isExpandedRow ? null : po._id); }}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {expandedCol !== 1 && (
+                                <div className={`transition-transform duration-200 ${isExpandedRow ? "rotate-90 text-primary" : ""}`}>
+                                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary" />
+                                </div>
+                              )}
+                              <EditableCell value={po.vbpoNo} isExpanded={expandedCol === 1} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'vbpoNo', val)} />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                            {expandedCol === 1 ? (
+                               <EditableCell type="date" value={po.date ? new Date(po.date).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'date', val)} />
+                            ) : (
+                               po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={(po as any).productsStr}>
+                            {(po as any).productsStr || "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                              {(po as any).containerCount}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`font-bold px-1.5 py-0.5 rounded ${(po as any).remainingCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500"}`}>
+                              {(po as any).remainingCount}
+                            </span>
+                          </td>
+                        </tr>
+                        {isExpandedRow && po.customerPO && po.customerPO.length > 0 && (
+                          <tr>
+                            <td colSpan={5} className="p-0 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+                              <div className="px-5 py-3 border-l-2 border-primary ml-1 my-1 bg-zinc-50 dark:bg-zinc-900 rounded-r-lg shadow-inner">
+                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                  <ClipboardList className="h-3 w-3" /> Customer POs
+                                </h4>
+                                <div className="space-y-1">
+                                  {po.customerPO.map((cpo: any) => (
+                                    <div 
+                                      key={cpo._id || cpo.customerPONo} 
+                                      className="grid grid-cols-4 gap-2 text-[10.5px] py-1.5 border-b border-zinc-200 dark:border-zinc-800 last:border-0 hover:bg-primary/5 dark:hover:bg-primary/10 px-2 rounded-md transition-colors cursor-pointer"
+                                      onClick={() => setAttachmentsOpen({ poNumber: cpo.poNo || po.vbpoNo })}
+                                    >
+                                       <div className="font-semibold flex items-center gap-1">
+                                         <Package className="h-3 w-3 text-muted-foreground" />
+                                         {cpo.poNo || po.vbpoNo}
+                                       </div>
+                                       <div className="text-muted-foreground flex justify-end">{cpo.customerPONo || "-"}</div>
+                                       <div className="text-muted-foreground flex justify-end">Ordered: <span className="font-mono font-medium ml-1 text-foreground">{cpo.qtyOrdered || "-"}</span></div>
+                                       <div className="text-muted-foreground flex justify-end">Balance: <span className="font-mono font-bold ml-1 text-amber-600 dark:text-amber-400">{(parseFloat(cpo.qtyOrdered) || 0) - (parseFloat(cpo.qtyReceived) || 0)}</span></div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -470,9 +521,14 @@ export default function AndresTrackerPage() {
               <LayoutGrid className="h-4 w-4 text-blue-500" />
               <h2 className="font-bold text-sm uppercase tracking-wider">Shippments</h2>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 2 ? null : 2)}>
-              {expandedCol === 2 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddShippingOpen(true)}>
+                Add New
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 2 ? null : 2)}>
+                {expandedCol === 2 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
             {isLoading ? (
@@ -750,6 +806,21 @@ export default function AndresTrackerPage() {
           </div>
         </div>
       )}
+
+      <AddShippingDialog
+        open={isAddShippingOpen}
+        onClose={() => setIsAddShippingOpen(false)}
+        onSuccess={() => refetchPurchaseOrders()}
+      />
+
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
+        childFolders={attachmentsOpen?.childFolders}
+      />
     </div>
   );
 }
