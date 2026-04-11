@@ -72,6 +72,7 @@ export default function AndresTrackerPage() {
     products: storeProducts,
     customers: storeCustomers,
     suppliers: storeSuppliers,
+    warehouses: storeWarehouses,
     refetchPurchaseOrders
   } = useUserDataStore();
 
@@ -128,6 +129,11 @@ export default function AndresTrackerPage() {
 
   const [cpoSort, setCpoSort] = useState<{
     key: "customerPONo" | "date" | "customer" | "qtyOrdered" | "balance";
+    dir: "asc" | "desc";
+  }>({ key: "date", dir: "desc" });
+
+  const [invSort, setInvSort] = useState<{
+    key: "vbpoNo" | "date" | "product" | "warehouse" | "qty";
     dir: "asc" | "desc";
   }>({ key: "date", dir: "desc" });
 
@@ -366,6 +372,65 @@ export default function AndresTrackerPage() {
 
   const toggleCpoSort = (key: typeof cpoSort.key) => {
     setCpoSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
+    }));
+  };
+
+  const sortedInventory = useMemo(() => {
+    const warehouseMap = new Map();
+    if (storeWarehouses && Array.isArray(storeWarehouses)) {
+      storeWarehouses.forEach(w => {
+        if (w._id && w.name) warehouseMap.set(w._id, w.name);
+        if (w.vbId && w.name) warehouseMap.set(w.vbId, w.name);
+      });
+    }
+
+    const productMap = new Map();
+    if (storeProducts && Array.isArray(storeProducts)) {
+      storeProducts.forEach(p => {
+        if (p._id && p.name) productMap.set(p._id, p.name);
+      });
+    }
+
+    let flatList: any[] = [];
+    (purchaseOrders || [])
+      .filter(po => !po.isArchived && po.orderType === "Inventory")
+      .forEach(po => {
+        (po.customerPO || []).forEach((cpo: any) => {
+           const wname = warehouseMap.get(cpo.warehouse) || cpo.warehouse || "-";
+           const pname = productMap.get(cpo.product) || cpo.product || "-";
+           flatList.push({
+              ...cpo,
+              poId: po._id,
+              cpoIdForUpdate: cpo._id || cpo.customerPONo,
+              vbpoNo: po.vbpoNo,
+              date: po.date,
+              warehouseName: wname,
+              productName: pname,
+           });
+        });
+      });
+
+    flatList.sort((a, b) => {
+      let aVal, bVal;
+      switch (invSort.key) {
+        case "vbpoNo": aVal = a.vbpoNo?.toLowerCase() || ""; bVal = b.vbpoNo?.toLowerCase() || ""; break;
+        case "date": aVal = a.date ? new Date(a.date).getTime() : 0; bVal = b.date ? new Date(b.date).getTime() : 0; break;
+        case "product": aVal = (a.productName || "").toLowerCase(); bVal = (b.productName || "").toLowerCase(); break;
+        case "warehouse": aVal = (a.warehouseName || "").toLowerCase(); bVal = (b.warehouseName || "").toLowerCase(); break;
+        case "qty": aVal = parseFloat(a.qtyOrdered) || 0; bVal = parseFloat(b.qtyOrdered) || 0; break;
+      }
+      if (aVal < bVal) return invSort.dir === "asc" ? -1 : 1;
+      if (aVal > bVal) return invSort.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return flatList;
+  }, [purchaseOrders, storeWarehouses, storeProducts, invSort]);
+
+  const toggleInvSort = (key: typeof invSort.key) => {
+    setInvSort(prev => ({
       key,
       dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
     }));
@@ -689,10 +754,55 @@ export default function AndresTrackerPage() {
               {expandedCol === 4 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           </div>
-          <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
-            <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">
-              Awaiting column definitions...
-            </div>
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+            {isLoading ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
+            ) : sortedInventory.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No Inventory records found</div>
+            ) : (
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("vbpoNo")}>
+                      VB # {invSort.key === "vbpoNo" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("date")}>
+                      Date {invSort.key === "date" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[150px]" onClick={() => toggleInvSort("product")}>
+                      Product {invSort.key === "product" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleInvSort("warehouse")}>
+                      Location {invSort.key === "warehouse" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleInvSort("qty")}>
+                      Qty {invSort.key === "qty" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {sortedInventory.map((inv, idx) => (
+                    <tr key={`${inv.poId}-${inv.cpoIdForUpdate}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
+                      <td className="px-3 py-2.5 font-bold text-orange-600 dark:text-orange-400">
+                        {inv.vbpoNo || "-"}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                        {inv.date ? new Date(inv.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
+                      </td>
+                      <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[150px]" title={inv.productName}>
+                        {inv.productName}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={inv.warehouseName}>
+                        {inv.warehouseName}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-center">
+                        <EditableCell value={inv.qtyOrdered} type="number" isExpanded={expandedCol === 4} onSave={(val: string) => handleInlineUpdate(inv.poId, 'cpo', inv.cpoIdForUpdate, '', 'qtyOrdered', val)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

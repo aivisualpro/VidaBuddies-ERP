@@ -240,7 +240,7 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
                       disabled={!selectedSupplierForShipping}
                     >
                       <option value="">{selectedSupplierForShipping ? 'Select Location' : 'Select Supplier First'}</option>
-                      {getSupplierLocationOptions().map((loc) => (
+                      {getSupplierLocationOptions().map((loc: any) => (
                         <option key={loc.id} value={loc.id}>{loc.name}</option>
                       ))}
                     </select>
