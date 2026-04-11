@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
 
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight } from "lucide-react";
+import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight, Warehouse, Building, ArrowUpDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -62,8 +62,57 @@ export default function ProductsPage() {
     products: data, 
     categories, 
     isLoading,
-    refetchProducts
+    refetchProducts,
+    purchaseOrders,
+    releaseRequests,
+    warehouses
   } = useUserDataStore();
+
+  const whMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (Array.isArray(warehouses)) {
+      warehouses.forEach((w: any) => {
+        if (w._id) map.set(w._id.toString(), w);
+        if (w.name) map.set(w.name, w);
+      });
+    }
+    return map;
+  }, [warehouses]);
+
+  const stockBalances = useMemo(() => {
+    const balances: Record<string, Record<string, number>> = {};
+
+    if (Array.isArray(purchaseOrders)) {
+      purchaseOrders.forEach(po => {
+        if (po.isArchived || (po.orderType !== 'Inventory' && po.orderType !== 'INVENTORY')) return;
+        (po.customerPO || []).forEach((cpo: any) => {
+           if (cpo.product && cpo.warehouse) {
+              const pid = typeof cpo.product === 'object' ? cpo.product._id : String(cpo.product);
+              const wid = typeof cpo.warehouse === 'object' ? cpo.warehouse._id || cpo.warehouse.name : String(cpo.warehouse);
+              if (!balances[pid]) balances[pid] = {};
+              balances[pid][wid] = (balances[pid][wid] || 0) + (Number(cpo.qtyOrdered) || 0);
+           }
+        });
+      });
+    }
+
+    if (Array.isArray(releaseRequests)) {
+       releaseRequests.forEach(rr => {
+         const wid = typeof rr.warehouse === 'object' ? rr.warehouse._id || rr.warehouse.name : String(rr.warehouse);
+         if (wid) {
+           (rr.releaseOrderProducts || []).forEach((rop: any) => {
+             const pid = typeof rop.product === 'object' ? rop.product._id : String(rop.product);
+             if (pid) {
+                if (!balances[pid]) balances[pid] = {};
+                balances[pid][wid] = (balances[pid][wid] || 0) - (Number(rop.qty) || 0);
+             }
+           });
+         }
+       });
+    }
+
+    return balances;
+  }, [purchaseOrders, releaseRequests]);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Product | null>(null);
@@ -149,12 +198,84 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "name",
-      header: "Name",
+      header: ({ column }) => {
+        return (
+           <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-3 w-3" />
+          </Button>
+        )
+      },
       cell: ({ row }) => <span>{row.original.name}</span>
     },
     {
+      id: "balances",
+      accessorFn: (row) => {
+        const pBalances = stockBalances[row._id] || {};
+        return Object.values(pBalances).reduce((sum, qty) => sum + qty, 0);
+      },
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
+          >
+            Stock by Warehouse
+            <ArrowUpDown className="ml-2 h-3 w-3" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const item = row.original;
+        const pBalances = stockBalances[item._id] || {};
+        
+        const mergedBalances = new Map<string, number>();
+        Object.entries(pBalances).forEach(([wid, qty]) => {
+           let finalName = wid;
+           const whObj = whMap.get(wid);
+           if (whObj && whObj.name) finalName = whObj.name;
+           
+           mergedBalances.set(finalName, (mergedBalances.get(finalName) || 0) + qty);
+        });
+
+        const activeBalances = Array.from(mergedBalances.entries()).filter(([_, qty]) => qty !== 0);
+
+        if (activeBalances.length === 0) return <span className="text-muted-foreground">-</span>;
+        
+        return (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeBalances.map(([wName, qty], i) => (
+               <Badge key={i} variant="outline" className="flex items-center gap-1 font-mono text-[10px] bg-muted/30">
+                 <Warehouse className="h-3 w-3 text-primary opacity-70" />
+                 <span className="truncate max-w-[80px]" title={wName}>{wName}</span>
+                 <span className={`font-bold ${qty > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                   {qty}
+                 </span>
+               </Badge>
+            ))}
+          </div>
+        );
+      }
+    },
+    {
       accessorKey: "salePrice",
-      header: "Sale Price",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
+          >
+            Sale Price
+            <ArrowUpDown className="ml-2 h-3 w-3" />
+          </Button>
+        )
+      },
       cell: ({ row }) => {
         const val = row.getValue("salePrice");
         return val ? `$${Number(val).toFixed(2)}` : "-";
@@ -162,7 +283,18 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "isOnWebsite",
-      header: "Status",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
+          >
+            Status
+            <ArrowUpDown className="ml-2 h-3 w-3" />
+          </Button>
+        )
+      },
       cell: ({ row }) => (
         <Badge variant={row.original.isOnWebsite ? "default" : "secondary"}>
           {row.original.isOnWebsite ? "On Website" : "Hidden"}

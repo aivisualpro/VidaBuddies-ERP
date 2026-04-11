@@ -38,6 +38,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Package,
+  Boxes,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useUserDataStore } from "@/store/useUserDataStore";
@@ -149,6 +150,26 @@ export default function WarehouseDetailPage() {
 
     return transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [data, purchaseOrders, releaseRequests, storeProducts, id]);
+
+  const productBalances = React.useMemo(() => {
+    const balances: Record<string, { productName: string; totalIn: number; totalOut: number; netBalance: number }> = {};
+    
+    inventoryTransactions.forEach(tx => {
+       const name = tx.productName;
+       if (!balances[name]) {
+         balances[name] = { productName: name, totalIn: 0, totalOut: 0, netBalance: 0 };
+       }
+       if (tx.type === "IN") {
+         balances[name].totalIn += Number(tx.qty) || 0;
+         balances[name].netBalance += Number(tx.qty) || 0;
+       } else {
+         balances[name].totalOut += Number(tx.qty) || 0;
+         balances[name].netBalance -= Number(tx.qty) || 0;
+       }
+    });
+
+    return Object.values(balances).sort((a, b) => b.netBalance - a.netBalance);
+  }, [inventoryTransactions]);
 
   useEffect(() => {
     fetchData();
@@ -366,10 +387,24 @@ export default function WarehouseDetailPage() {
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="px-6 pt-6">
-            <TabsList className="grid w-full max-w-md grid-cols-3">
+            <TabsList className="grid w-full max-w-2xl grid-cols-4">
               <TabsTrigger value="details" className="gap-2">
                 <FileText className="h-4 w-4" />
                 Details
+              </TabsTrigger>
+              <TabsTrigger value="stock" className="gap-2">
+                <Boxes className="h-4 w-4" />
+                Inventory
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {productBalances.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="transactions" className="gap-2">
+                <Package className="h-4 w-4" />
+                Transactions
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {inventoryTransactions.length}
+                </Badge>
               </TabsTrigger>
               <TabsTrigger value="emails" className="gap-2">
                 <Mail className="h-4 w-4" />
@@ -379,13 +414,6 @@ export default function WarehouseDetailPage() {
                     {emails.length}
                   </Badge>
                 )}
-              </TabsTrigger>
-              <TabsTrigger value="inventory" className="gap-2">
-                <Package className="h-4 w-4" />
-                Inventory
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                  {inventoryTransactions.length}
-                </Badge>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -598,14 +626,14 @@ export default function WarehouseDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Inventory Tab */}
-          <TabsContent value="inventory" className="flex-1 overflow-auto px-6 py-4">
+          {/* Transactions Tab */}
+          <TabsContent value="transactions" className="flex-1 overflow-auto px-6 py-4">
             <div className="max-w-5xl space-y-6">
               <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
                 <div className="px-5 py-3 bg-muted/40 border-b flex items-center justify-between">
                   <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
                     <Package className="w-4 h-4 text-primary" />
-                    Inventory Transactions
+                    Transactions
                   </h3>
                 </div>
                 {inventoryTransactions.length === 0 ? (
@@ -650,6 +678,58 @@ export default function WarehouseDetailPage() {
                           </td>
                           <td className="px-5 py-3 text-right font-bold text-foreground">
                             {tx.type === "IN" ? "+" : "-"}{tx.qty}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Stock Balance Tab */}
+          <TabsContent value="stock" className="flex-1 overflow-auto px-6 py-4">
+            <div className="max-w-5xl space-y-6">
+              <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b flex items-center justify-between">
+                  <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
+                    <Boxes className="w-4 h-4 text-primary" />
+                    Inventory
+                  </h3>
+                </div>
+                {productBalances.length === 0 ? (
+                  <div className="p-10 text-center text-muted-foreground">
+                    <Boxes className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm font-medium">No stock available</p>
+                    <p className="text-xs mt-1">Stock balances will appear here when transactions exist</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse whitespace-nowrap">
+                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
+                      <tr>
+                         <th className="px-5 py-3">Product Name</th>
+                         <th className="px-5 py-3 text-right">Total In</th>
+                         <th className="px-5 py-3 text-right">Total Out</th>
+                         <th className="px-5 py-3 text-right text-primary">Net Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-sm">
+                      {productBalances.map((item, i) => (
+                        <tr key={i} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-5 py-3 font-medium truncate max-w-[300px]" title={item.productName}>
+                            {item.productName}
+                          </td>
+                          <td className="px-5 py-3 text-right text-emerald-600 font-mono">
+                            {item.totalIn > 0 ? `+${item.totalIn}` : 0}
+                          </td>
+                          <td className="px-5 py-3 text-right text-amber-600 font-mono">
+                            {item.totalOut > 0 ? `-${item.totalOut}` : 0}
+                          </td>
+                          <td className="px-5 py-3 text-right font-bold text-base">
+                            <span className={item.netBalance > 0 ? "text-emerald-600" : item.netBalance < 0 ? "text-red-500" : "text-muted-foreground"}>
+                              {item.netBalance}
+                            </span>
                           </td>
                         </tr>
                       ))}
