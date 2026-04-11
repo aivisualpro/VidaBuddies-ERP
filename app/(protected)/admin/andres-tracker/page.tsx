@@ -133,7 +133,7 @@ export default function AndresTrackerPage() {
   }>({ key: "date", dir: "desc" });
 
   const [invSort, setInvSort] = useState<{
-    key: "vbpoNo" | "date" | "product" | "warehouse" | "qty";
+    key: "vbpoNo" | "date" | "product" | "warehouse" | "qty" | "cost";
     dir: "asc" | "desc";
   }>({ key: "date", dir: "desc" });
 
@@ -408,6 +408,7 @@ export default function AndresTrackerPage() {
               date: po.date,
               warehouseName: wname,
               productName: pname,
+              cost: cpo.cost,
            });
         });
       });
@@ -420,6 +421,7 @@ export default function AndresTrackerPage() {
         case "product": aVal = (a.productName || "").toLowerCase(); bVal = (b.productName || "").toLowerCase(); break;
         case "warehouse": aVal = (a.warehouseName || "").toLowerCase(); bVal = (b.warehouseName || "").toLowerCase(); break;
         case "qty": aVal = parseFloat(a.qtyOrdered) || 0; bVal = parseFloat(b.qtyOrdered) || 0; break;
+        case "cost": aVal = parseFloat(a.cost) || 0; bVal = parseFloat(b.cost) || 0; break;
       }
       if (aVal < bVal) return invSort.dir === "asc" ? -1 : 1;
       if (aVal > bVal) return invSort.dir === "asc" ? 1 : -1;
@@ -778,6 +780,9 @@ export default function AndresTrackerPage() {
                     <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleInvSort("qty")}>
                       Qty {invSort.key === "qty" && (invSort.dir === "asc" ? "↑" : "↓")}
                     </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleInvSort("cost")}>
+                      Cost {invSort.key === "cost" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
@@ -797,6 +802,9 @@ export default function AndresTrackerPage() {
                       </td>
                       <td className="px-3 py-2.5 font-mono text-center">
                         <EditableCell value={inv.qtyOrdered} type="number" isExpanded={expandedCol === 4} onSave={(val: string) => handleInlineUpdate(inv.poId, 'cpo', inv.cpoIdForUpdate, '', 'qtyOrdered', val)} />
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-center text-muted-foreground">
+                        <EditableCell value={inv.cost} type="number" className="w-[80px]" isExpanded={expandedCol === 4} onSave={(val: string) => handleInlineUpdate(inv.poId, 'cpo', inv.cpoIdForUpdate, '', 'cost', val)} />
                       </td>
                     </tr>
                   ))}

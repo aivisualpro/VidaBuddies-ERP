@@ -35,8 +35,12 @@ import {
   Paperclip,
   Warehouse as WarehouseIcon,
   CircleDot,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Package,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface WarehouseContact {
   name: string;
@@ -90,6 +94,61 @@ export default function WarehouseDetailPage() {
     isActive: true,
     isPrimary: false,
   });
+
+  const { purchaseOrders, releaseRequests, products: storeProducts } = useUserDataStore();
+
+  const inventoryTransactions = React.useMemo(() => {
+    if (!data) return [];
+    
+    // fast O(1) map for product ID to Name
+    const productMap = new Map();
+    if (storeProducts && Array.isArray(storeProducts)) {
+      storeProducts.forEach(p => {
+        if (p._id && p.name) productMap.set(p._id, p.name);
+      });
+    }
+
+    const transactions: any[] = [];
+    
+    if (purchaseOrders && Array.isArray(purchaseOrders)) {
+      purchaseOrders.forEach(po => {
+        if (po.isArchived || (po.orderType !== "Inventory" && po.orderType !== "INVENTORY")) return;
+        (po.customerPO || []).forEach((cpo: any) => {
+          if (cpo.warehouse === id || cpo.warehouse === data._id || cpo.warehouse === data.name) {
+             const pname = productMap.get(cpo.product) || cpo.product || "Unknown Product";
+             transactions.push({
+               id: `in-${po._id}-${cpo._id || Math.random()}`,
+               type: "IN",
+               date: po.date || po.createdAt,
+               reference: po.vbpoNo || "Unknown PO",
+               productName: pname,
+               qty: cpo.qtyOrdered || 0,
+             });
+          }
+        });
+      });
+    }
+
+    if (releaseRequests && Array.isArray(releaseRequests)) {
+      releaseRequests.forEach(rr => {
+        if (rr.warehouse && (rr.warehouse === id || rr.warehouse._id === id || rr.warehouse === data.name)) {
+           (rr.releaseOrderProducts || []).forEach((rop: any) => {
+             const pname = rop.productName || productMap.get(rop.product) || productMap.get(rop.product?._id) || "Unknown Product";
+             transactions.push({
+               id: `out-${rr._id}-${rop._id || Math.random()}`,
+               type: "OUT",
+               date: rr.date || rr.createdAt,
+               reference: rr.poNo || "Unknown RR",
+               productName: pname,
+               qty: rop.qty || 0,
+             });
+           });
+        }
+      });
+    }
+
+    return transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [data, purchaseOrders, releaseRequests, storeProducts, id]);
 
   useEffect(() => {
     fetchData();
@@ -307,7 +366,7 @@ export default function WarehouseDetailPage() {
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="px-6 pt-6">
-            <TabsList className="grid w-full max-w-sm grid-cols-2">
+            <TabsList className="grid w-full max-w-md grid-cols-3">
               <TabsTrigger value="details" className="gap-2">
                 <FileText className="h-4 w-4" />
                 Details
@@ -320,6 +379,13 @@ export default function WarehouseDetailPage() {
                     {emails.length}
                   </Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="inventory" className="gap-2">
+                <Package className="h-4 w-4" />
+                Inventory
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {inventoryTransactions.length}
+                </Badge>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -529,6 +595,68 @@ export default function WarehouseDetailPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          {/* Inventory Tab */}
+          <TabsContent value="inventory" className="flex-1 overflow-auto px-6 py-4">
+            <div className="max-w-5xl space-y-6">
+              <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b flex items-center justify-between">
+                  <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
+                    <Package className="w-4 h-4 text-primary" />
+                    Inventory Transactions
+                  </h3>
+                </div>
+                {inventoryTransactions.length === 0 ? (
+                  <div className="p-10 text-center text-muted-foreground">
+                    <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm font-medium">No transactions found</p>
+                    <p className="text-xs mt-1">Incoming inventory and release requests will appear here</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse whitespace-nowrap">
+                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
+                      <tr>
+                         <th className="px-5 py-3">Type</th>
+                         <th className="px-5 py-3">Date</th>
+                         <th className="px-5 py-3">Reference #</th>
+                         <th className="px-5 py-3">Product</th>
+                         <th className="px-5 py-3 text-right">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-sm">
+                      {inventoryTransactions.map(tx => (
+                        <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-5 py-3">
+                            {tx.type === "IN" ? (
+                               <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0 flex w-fit items-center gap-1 text-[10px]">
+                                 <ArrowDownToLine className="h-3 w-3" /> IN
+                               </Badge>
+                            ) : (
+                               <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 flex w-fit items-center gap-1 text-[10px]">
+                                 <ArrowUpFromLine className="h-3 w-3" /> OUT
+                               </Badge>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 font-medium">
+                            {tx.date ? format(new Date(tx.date), "MMM dd, yyyy") : "-"}
+                          </td>
+                          <td className="px-5 py-3 text-muted-foreground font-mono">
+                            {tx.reference}
+                          </td>
+                          <td className="px-5 py-3 text-muted-foreground truncate max-w-[200px]" title={tx.productName}>
+                            {tx.productName}
+                          </td>
+                          <td className="px-5 py-3 text-right font-bold text-foreground">
+                            {tx.type === "IN" ? "+" : "-"}{tx.qty}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

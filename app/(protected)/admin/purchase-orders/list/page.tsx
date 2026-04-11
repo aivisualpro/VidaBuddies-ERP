@@ -57,12 +57,12 @@ export default function PurchaseOrdersPage() {
   const { purchaseOrders, users: rawUsers, isLoading, refetchPurchaseOrders } = useUserDataStore();
   
   // Current user role
-  const [userRole, setUserRole] = useState<string>("");
+  const [userRole, setUserRole] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/user/permissions")
       .then(r => r.json())
       .then(d => setUserRole(d.role || ""))
-      .catch(() => {});
+      .catch(() => setUserRole(""));
   }, []);
   
   // Sort latest on top
@@ -537,7 +537,7 @@ export default function PurchaseOrdersPage() {
     ? columns.filter(c => c.id !== 'nigalu' && c.id !== 'archive')
     : columns;
 
-  if (isLoading) {
+  if (isLoading || userRole === null) {
     return <TablePageSkeleton />;
   }
 
