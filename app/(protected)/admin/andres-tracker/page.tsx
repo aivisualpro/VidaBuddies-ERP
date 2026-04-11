@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState, useMemo, Fragment } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
-import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
+import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { toast } from "sonner";
 
@@ -66,6 +67,7 @@ export default function AndresTrackerPage() {
   const router = useRouter();
   const { setLeftContent, setRightContent } = useHeaderActions();
   const [isAddPOOpen, setIsAddPOOpen] = useState(false);
+  const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const { 
     purchaseOrders, 
     isLoading, 
@@ -116,7 +118,7 @@ export default function AndresTrackerPage() {
       toast.error("Error updating");
     }
   };
-  
+
   const [vbpoSort, setVbpoSort] = useState<{
     key: "vbpoNo" | "date" | "containers" | "remaining" | "products";
     dir: "asc" | "desc";
@@ -143,6 +145,7 @@ export default function AndresTrackerPage() {
   const [expandedCol, setExpandedCol] = useState<number | null>(null);
   const [isAddShippingOpen, setIsAddShippingOpen] = useState(false);
   const [expandedVbpoId, setExpandedVbpoId] = useState<string | null>(null);
+  const [expandedCpoId, setExpandedCpoId] = useState<string | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{
     poNumber: string;
     spoNumber?: string;
@@ -683,9 +686,19 @@ export default function AndresTrackerPage() {
               <LayoutGrid className="h-4 w-4 text-emerald-500" />
               <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 3 ? null : 3)}>
-              {expandedCol === 3 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </Button>
+            <div className="flex items-center gap-1 -mr-1">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-[10px] px-2 rounded-sm bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-700 shadow-sm"
+                onClick={() => setIsAddCPOOpen(true)}
+              >
+                Add New
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setExpandedCol(expandedCol === 3 ? null : 3)}>
+                {expandedCol === 3 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
             {isLoading ? (
@@ -714,31 +727,63 @@ export default function AndresTrackerPage() {
                   </tr>
                 </thead>
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                  {sortedCPOs.map((cpo, idx) => (
-                    <tr key={`${cpo.customerPONo}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
-                      <td className="px-3 py-2.5 font-bold text-emerald-600 dark:text-emerald-400">
-                        <EditableCell value={cpo.customerPONo} isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPONo', val)} />
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground font-medium">
-                        {expandedCol === 3 ? (
-                           <EditableCell type="date" value={cpo.customerPODate ? new Date(cpo.customerPODate).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPODate', val)} />
-                        ) : (
-                           cpo.customerPODate ? new Date(cpo.customerPODate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[150px]" title={cpo.customerName}>
-                        {cpo.customerName}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                        <EditableCell value={cpo.qtyOrdered} type="number" isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'qtyOrdered', val)} />
-                      </td>
-                      <td className="px-3 py-2.5 font-bold text-center">
-                        <span className="font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded shadow-sm">
-                          {(parseFloat(cpo.qtyOrdered) || 0) - (parseFloat(cpo.qtyReceived) || 0)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {sortedCPOs.map((cpo, idx) => {
+                    const isExpandedCpoRow = expandedCpoId === cpo.cpoIdForUpdate;
+                    return (
+                    <Fragment key={`${cpo.customerPONo}-${idx}`}>
+                      <tr className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group" onClick={() => { if (expandedCol !== 3) setExpandedCpoId(isExpandedCpoRow ? null : cpo.cpoIdForUpdate); }}>
+                        <td className="px-3 py-2.5 font-bold text-emerald-600 dark:text-emerald-400">
+                          <div className="flex items-center gap-2">
+                             {expandedCol !== 3 && (
+                               <ChevronRight className={`h-3 w-3 transition-transform ${isExpandedCpoRow ? "rotate-90" : ""}`} />
+                             )}
+                             <EditableCell value={cpo.customerPONo} isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPONo', val)} />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                          {expandedCol === 3 ? (
+                             <EditableCell type="date" value={cpo.customerPODate ? new Date(cpo.customerPODate).toISOString().split('T')[0] : ""} isExpanded={true} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'customerPODate', val)} />
+                          ) : (
+                             cpo.customerPODate ? new Date(cpo.customerPODate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[150px]" title={cpo.customerName}>
+                          {cpo.customerName}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                          <EditableCell value={cpo.qtyOrdered} type="number" isExpanded={expandedCol === 3} onSave={(val: string) => handleInlineUpdate(cpo.poId, 'cpo', cpo.cpoIdForUpdate, '', 'qtyOrdered', val)} />
+                        </td>
+                        <td className="px-3 py-2.5 font-bold text-center">
+                          <span className={`font-bold px-1.5 py-0.5 rounded ${((parseFloat(cpo.qtyOrdered) || 0) - (parseFloat(cpo.qtyReceived) || 0)) > 0 ? "bg-primary/10 text-primary" : "bg-zinc-100 text-zinc-500"} shadow-sm`}>
+                            {(parseFloat(cpo.qtyOrdered) || 0) - (parseFloat(cpo.qtyReceived) || 0)}
+                          </span>
+                        </td>
+                      </tr>
+                      {isExpandedCpoRow && cpo.shipping && cpo.shipping.length > 0 && (
+                        <tr>
+                          <td colSpan={5} className="p-0 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+                            <div className="px-5 py-3 border-l-2 border-emerald-500 ml-1 my-1 bg-zinc-50 dark:bg-zinc-900 rounded-r-lg shadow-inner">
+                              <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Package className="h-3 w-3" /> Related Shippings
+                              </h4>
+                              <div className="space-y-1 mt-2">
+                                {cpo.shipping.map((ship: any, sIdx: number) => (
+                                  <div key={sIdx} className="flex justify-between items-center bg-white dark:bg-zinc-950 p-2 rounded border border-zinc-200 dark:border-zinc-800 shadow-sm text-xs">
+                                    <div className="flex gap-4 items-center">
+                                      <span className="font-mono font-bold text-foreground text-emerald-500">{ship.svbid}</span>
+                                      <span className="text-muted-foreground truncate max-w-[150px]" title={ship.estimatedDuties}>{ship.estimatedDuties || 'No estimated duties logged'}</span>
+                                    </div>
+                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-bold text-xs">{ship.qty || 0} qty</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -815,6 +860,7 @@ export default function AndresTrackerPage() {
         </div>
 
       </div>
+      <AddCustomerPODialog open={isAddCPOOpen} onClose={() => setIsAddCPOOpen(false)} defaultVbpoId={activePOForDrilldown?._id} />
       <AddPurchaseOrderDialog open={isAddPOOpen} onOpenChange={setIsAddPOOpen} />
 
       {/* Drill-down PO Modal */}
