@@ -763,12 +763,12 @@ export default function AndresTrackerPage() {
                               </h4>
                               <div className="space-y-1 mt-2">
                                 {cpo.shipping.map((ship: any, sIdx: number) => (
-                                  <div key={sIdx} className="flex justify-between items-center bg-white dark:bg-zinc-950 p-2 rounded border border-zinc-200 dark:border-zinc-800 shadow-sm text-xs">
-                                    <div className="flex gap-4 items-center">
-                                      <span className="font-mono font-bold text-foreground text-emerald-500">{ship.svbid}</span>
-                                      <span className="text-muted-foreground truncate max-w-[150px]" title={ship.estimatedDuties}>{ship.estimatedDuties || 'No estimated duties logged'}</span>
-                                    </div>
-                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-bold text-xs">{ship.qty || 0} qty</span>
+                                  <div key={sIdx} className="grid grid-cols-[auto_1fr_auto] gap-4 items-center bg-white dark:bg-zinc-950 p-2 rounded border border-zinc-200 dark:border-zinc-800 shadow-sm text-xs">
+                                    <span className="font-mono font-bold text-foreground text-emerald-500">{ship.svbid || '-'}</span>
+                                    <span className="text-muted-foreground truncate" title={ship.containerNo}>{ship.containerNo || 'No Container #'}</span>
+                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-medium text-[10px]">
+                                      {ship.updatedETA ? new Date(ship.updatedETA).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : 'No ETA'}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
