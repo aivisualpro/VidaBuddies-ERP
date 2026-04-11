@@ -686,16 +686,11 @@ export default function AndresTrackerPage() {
               <LayoutGrid className="h-4 w-4 text-emerald-500" />
               <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
             </div>
-            <div className="flex items-center gap-1 -mr-1">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 text-[10px] px-2 rounded-sm bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-700 shadow-sm"
-                onClick={() => setIsAddCPOOpen(true)}
-              >
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddCPOOpen(true)}>
                 Add New
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setExpandedCol(expandedCol === 3 ? null : 3)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 3 ? null : 3)}>
                 {expandedCol === 3 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
             </div>
