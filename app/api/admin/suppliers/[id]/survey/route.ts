@@ -7,7 +7,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     await connectToDatabase();
-    const supplier = await VidaSupplier.findById(id, 'surveyResponses name vbId manufacturingAddress country primaryContactName communicationEmail phone').lean();
+    const supplier = await VidaSupplier.findById(id, 'surveyResponses name vbId manufacturingAddress country primaryContactName communicationEmail phone contacts').lean();
     if (!supplier) {
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
     }

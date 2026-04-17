@@ -9,8 +9,15 @@ import { useHeaderActions } from "@/components/providers/header-actions-provider
 import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Save, Send, Download, CheckCircle,
-  FileText, Building2, ClipboardCheck, Shield, Package, Leaf, Loader2
+  FileText, Building2, ClipboardCheck, Shield, Package, Leaf, Loader2, Share2, Plus, X, Mail
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // templateId is now a prop
 
@@ -182,6 +189,12 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
   const [loading, setLoading] = useState(true);
   const [template, setTemplate] = useState<TemplateData | null>(null);
 
+  const [supplierEmails, setSupplierEmails] = useState<string[]>([]);
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
+  const [customEmail, setCustomEmail] = useState("");
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
   const set = (key: string, val: any) => setAnswers(p => ({ ...p, [key]: val }));
   const get = (key: string, fallback: any = '') => answers[key] ?? fallback;
 
@@ -204,13 +217,27 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
         if (res.ok) {
           const data = await res.json();
           setSupplierName(data.name || '');
+
+          const commEmail = data.communicationEmail || '';
+          const ctcEmails = (data.contacts || []).flatMap((c: any) => c.emails || []);
+          const allSuppEmails = Array.from(new Set([commEmail, ...ctcEmails].filter(Boolean)));
+          setSupplierEmails(allSuppEmails);
+
+          const today = new Date().toISOString().split('T')[0];
           const prefill: Record<string, any> = {
             companyName: data.name || '',
+            ss_companyName: data.name || '',
             address: data.manufacturingAddress || '',
+            ss_address: data.manufacturingAddress || '',
             country: data.country || '',
+            ss_country: data.country || '',
             contactName: data.primaryContactName || '',
             email: data.communicationEmail || '',
             phone: data.phone || '',
+            surveyDate: today,
+            ss_date: today,
+            auth_date: today,
+            ss_auth_date: today,
           };
           if (data.surveyResponses?.length) {
             const existing = data.surveyResponses.find((r: any) => r.templateId === templateId);
@@ -267,6 +294,55 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
     finally { setSubmitting(false); }
   };
 
+  const shareSurvey = async () => {
+    if (selectedEmails.length === 0) {
+      toast.error("Please select at least one email or add a custom one");
+      return;
+    }
+    setSharing(true);
+    try {
+      const routePath = templateId === 'qfs-manufacturing-survey' ? 'survey' : 'supply-survey';
+      const link = `${window.location.origin}/share/${routePath}/${supplierId}`;
+      const emailBody = `
+        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #0ea5e9;">${template?.name}</h2>
+          <p>Hello,</p>
+          <p>Please click the button below to complete the <strong>${template?.name}</strong>.</p>
+          <div style="margin: 30px 0;">
+            <a href="${link}" style="background-color: #0ea5e9; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+              Open Survey Form
+            </a>
+          </div>
+          <p>If the button doesn't work, copy and paste this link into your browser:</p>
+          <p><a href="${link}">${link}</a></p>
+          <p>Thank you!</p>
+        </div>
+      `;
+
+      const res = await fetch("/api/admin/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: selectedEmails.join(","),
+          subject: `Action Required: ${template?.name}`,
+          body: emailBody
+        }),
+      });
+
+      if (res.ok) {
+        toast.success("Survey link shared successfully!");
+        setIsShareOpen(false);
+      } else {
+        const d = await res.json();
+        toast.error(d.error || "Failed to send email");
+      }
+    } catch (e) {
+      toast.error("Error sending email");
+    } finally {
+      setSharing(false);
+    }
+  };
+
   if (loading || !template) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -280,10 +356,10 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
   const currentPage = template.pages[page];
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="w-full h-[calc(100vh-160px)] min-h-[500px] flex flex-col">
+      <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col flex-1">
         {/* Header */}
-        <div className="bg-muted/50 px-4 md:px-6 py-4 border-b border-border">
+        <div className="bg-muted/50 px-4 md:px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
@@ -294,27 +370,127 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
                 <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Doc. No.: {template.docNo} | Rev {template.revNo}</p>
               </div>
             </div>
-            {submitted && (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-full">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Submitted</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
-                  onClick={() => window.open(`/api/admin/suppliers/${supplierId}/survey/pdf?templateId=${templateId}`, '_blank')}
-                >
-                  <Download className="h-3.5 w-3.5" /> Download PDF
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {!isSupplierView && (
+                <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 border-primary/20 text-primary hover:bg-primary/10">
+                      <Share2 className="h-3.5 w-3.5" /> Share Form
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[450px]">
+                    <DialogHeader>
+                      <DialogTitle className="text-lg font-black uppercase tracking-tight text-primary flex items-center gap-2">
+                        <Share2 className="h-5 w-5" /> Share Survey
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-2">
+                      <p className="text-xs text-muted-foreground">Select supplier contacts to send a direct link to fill out this survey.</p>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Selected Recipients</label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {selectedEmails.length === 0 && <span className="text-xs text-muted-foreground italic">No emails selected</span>}
+                          {selectedEmails.map(email => (
+                            <div key={email} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+                              {email}
+                              <button onClick={() => setSelectedEmails(p => p.filter(e => e !== email))} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {supplierEmails.length > 0 && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Supplier Contacts</label>
+                          <div className="space-y-1 max-h-40 overflow-y-auto pr-2">
+                            {supplierEmails.map(email => (
+                              <label key={email} className="flex items-center gap-2 text-sm p-1.5 hover:bg-muted/50 rounded-md cursor-pointer border border-transparent hover:border-border transition-colors">
+                                <input 
+                                  type="checkbox" 
+                                  className="rounded border-primary/50 text-primary focus:ring-primary h-4 w-4"
+                                  checked={selectedEmails.includes(email)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setSelectedEmails(p => [...p, email]);
+                                    else setSelectedEmails(p => p.filter(x => x !== email));
+                                  }}
+                                />
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="font-medium text-foreground">{email}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Add Custom Email</label>
+                        <div className="flex gap-2">
+                          <Input 
+                            type="email" 
+                            value={customEmail} 
+                            onChange={e => setCustomEmail(e.target.value)} 
+                            placeholder="Enter email address" 
+                            className="h-9 text-xs flex-1"
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (customEmail.includes('@') && !selectedEmails.includes(customEmail)) {
+                                  setSelectedEmails(p => [...p, customEmail]);
+                                  setCustomEmail("");
+                                }
+                              }
+                            }}
+                          />
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            className="h-9 px-3" 
+                            onClick={() => {
+                              if (customEmail.includes('@') && !selectedEmails.includes(customEmail)) {
+                                setSelectedEmails(p => [...p, customEmail]);
+                                setCustomEmail("");
+                              }
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <Button className="w-full h-10 mt-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20" onClick={shareSurvey} disabled={sharing || selectedEmails.length === 0}>
+                        {sharing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                        {sharing ? 'Sending Email...' : 'Send Survey Link'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {submitted && (
+                <>
+                  <div className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-full ml-1">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Submitted</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
+                    onClick={() => window.open(`/api/admin/suppliers/${supplierId}/survey/pdf?templateId=${templateId}`, '_blank')}
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download PDF
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Page Navigation */}
-        <div className="px-4 md:px-6 py-3 border-b border-border">
+        <div className="px-4 md:px-6 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {template.pages.map((p, i) => {
               const Icon = ICON_MAP[p.icon] || FileText;
@@ -345,7 +521,7 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
         </div>
 
         {/* Dynamic Page Content */}
-        <div className="px-4 md:px-6 py-6 space-y-6">
+        <div className="px-4 md:px-6 py-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
           {currentPage.sections.map((section, si) => (
             <div key={si} className="space-y-4">
               <SectionTitle sub={section.subtitle}>{section.title}</SectionTitle>
@@ -357,14 +533,14 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
                 <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-5 space-y-4">
                   <p className="text-xs font-bold text-primary uppercase tracking-widest">Authorized person filling out this form</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {section.fields.map((field, fi) => (
+                    {section.fields.filter(f => f.key !== 'supplierId').map((field, fi) => (
                       <DynamicField key={fi} field={field} value={get(field.key)} onChange={v => set(field.key, v)} />
                     ))}
                   </div>
                 </div>
               ) : (
                 <div className={section.fields.some(f => f.type === 'text' || f.type === 'date') && !section.fields.some(f => f.type === 'checklist') ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-3"}>
-                  {section.fields.map((field, fi) => (
+                  {section.fields.filter(f => f.key !== 'supplierId').map((field, fi) => (
                     <DynamicField key={fi} field={field} value={get(field.key)} onChange={v => set(field.key, v)} />
                   ))}
                 </div>
@@ -374,7 +550,7 @@ export function SupplierSurvey({ supplierId, isSupplierView = false, templateId 
         </div>
 
         {/* Footer Navigation */}
-        <div className="px-4 md:px-6 py-4 border-t border-border bg-muted/30 flex items-center justify-between gap-3">
+        <div className="px-4 md:px-6 py-4 border-t border-border bg-muted/30 flex items-center justify-between gap-3 shrink-0">
           <Button
             variant="outline"
             size="sm"
