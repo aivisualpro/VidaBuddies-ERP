@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useEffect, useState, useRef } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -72,8 +76,8 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
   const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [newProductInput, setNewProductInput] = useState('');
-  const productInputRef = useRef<HTMLInputElement>(null);
+  const [systemProducts, setSystemProducts] = useState<any[]>([]);
+  const [isProductPopoverOpen, setIsProductPopoverOpen] = useState(false);
 
   useEffect(() => {
     const fetchSupplier = async () => {
@@ -117,7 +121,14 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
         console.error("Failed to fetch supplier details:", error);
       }
     };
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch('/api/admin/products');
+        if (res.ok) setSystemProducts(await res.json());
+      } catch(e) {}
+    };
     fetchSupplier();
+    fetchProducts();
   }, [supplierId]);
 
   useEffect(() => {
@@ -203,16 +214,15 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
     }
   };
 
-  const addProduct = () => {
-    const val = newProductInput.trim();
-    if (!val) return;
-    if (profile.productsSupplied.includes(val)) {
-      toast.error("Product already exists.");
-      return;
-    }
-    setProfile(p => ({ ...p, productsSupplied: [...p.productsSupplied, val] }));
-    setNewProductInput('');
-    productInputRef.current?.focus();
+  const toggleProduct = (productName: string) => {
+    setProfile(prev => {
+      const isSelected = prev.productsSupplied.includes(productName);
+      if (isSelected) {
+        return { ...prev, productsSupplied: prev.productsSupplied.filter(p => p !== productName) };
+      } else {
+        return { ...prev, productsSupplied: [...prev.productsSupplied, productName] };
+      }
+    });
   };
 
   const removeProduct = (product: string) => {
@@ -288,22 +298,24 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
         </CardContent>
       </Card>
 
-      {/* Profile Section */}
-      <Card className="bg-card border-border overflow-hidden">
-        <div className="px-4 md:px-6 py-4 bg-muted/50 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-primary" />
-            <span className="text-xs font-black uppercase tracking-widest">Company Profile</span>
+      {/* Profile & Products Section Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* Profile Section */}
+        <Card className="bg-card border-border overflow-hidden lg:col-span-1">
+          <div className="px-4 md:px-6 py-4 bg-muted/50 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" />
+              <span className="text-xs font-black uppercase tracking-widest">Company Profile</span>
+            </div>
+            {isDirty && (
+              <Button size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 shadow-lg shadow-primary/20" onClick={saveProfile} disabled={saving}>
+                <Save className="h-3.5 w-3.5" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            )}
           </div>
-          {isDirty && (
-            <Button size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 shadow-lg shadow-primary/20" onClick={saveProfile} disabled={saving}>
-              <Save className="h-3.5 w-3.5" />
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          )}
-        </div>
-        <CardContent className="pt-6 pb-6 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CardContent className="pt-6 pb-6 space-y-5">
+            <div className="flex flex-col gap-4">
             {/* Supplier Company Name */}
             <div className="space-y-1.5">
               <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
@@ -383,46 +395,74 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
                 placeholder="Enter phone number"
               />
             </div>
-          </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Products Supplied - Full Width */}
-          <div className="space-y-2">
-            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <Package className="h-3 w-3" /> Products Supplied
-            </label>
-            <div className="flex flex-wrap gap-2 min-h-[36px]">
-              {profile.productsSupplied.map((product, i) => (
-                <Badge 
-                  key={i} 
-                  variant="secondary"
-                  className="h-7 pl-3 pr-1.5 text-xs font-bold uppercase tracking-wider gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 cursor-default"
-                >
-                  {product}
-                  <button
-                    onClick={() => removeProduct(product)}
-                    className="ml-1 h-4 w-4 rounded-full hover:bg-destructive/20 hover:text-destructive flex items-center justify-center transition-colors"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </Badge>
-              ))}
+        {/* Products Section */}
+        <Card className="bg-card border-border overflow-hidden lg:col-span-1">
+          <div className="px-4 md:px-6 py-4 bg-muted/50 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              <span className="text-xs font-black uppercase tracking-widest">Products</span>
             </div>
-            <div className="flex gap-2">
-              <Input
-                ref={productInputRef}
-                value={newProductInput}
-                onChange={e => setNewProductInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addProduct(); } }}
-                className="h-9 text-sm font-medium bg-foreground/5 border-transparent focus-visible:ring-1 flex-1"
-                placeholder="Type product name and press Enter..."
-              />
-              <Button variant="outline" size="sm" className="h-9 px-3 text-[10px] font-bold uppercase tracking-widest border-primary/20 hover:bg-primary hover:text-primary-foreground gap-1" onClick={addProduct}>
-                <Plus className="h-3 w-3" /> Add
-              </Button>
-            </div>
+            <Popover open={isProductPopoverOpen} onOpenChange={setIsProductPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 border-primary/20 hover:bg-primary hover:text-primary-foreground">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Products
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0" align="end">
+                <Command>
+                  <CommandInput placeholder="Search global products..." className="h-9"/>
+                  <CommandList className="max-h-[300px]">
+                    <CommandEmpty>No products found.</CommandEmpty>
+                    <CommandGroup>
+                      {systemProducts.map((p) => (
+                        <CommandItem key={p.vbId} value={p.name} onSelect={() => toggleProduct(p.name)}>
+                          <Check className={cn("mr-2 h-4 w-4", profile.productsSupplied.includes(p.name) ? "opacity-100" : "opacity-0")} />
+                          {p.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
-        </CardContent>
-      </Card>
+          <CardContent className="p-0">
+             <table className="w-full text-left text-sm text-muted-foreground whitespace-nowrap">
+                <thead className="bg-muted text-[10px] uppercase font-black tracking-widest border-b border-border text-foreground">
+                  <tr>
+                    <th className="px-4 py-3 w-16 text-center">S.No</th>
+                    <th className="px-4 py-3">Product Name</th>
+                    <th className="px-4 py-3 w-16 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {profile.productsSupplied.length > 0 ? profile.productsSupplied.map((product, i) => (
+                    <tr key={i} className="hover:bg-muted/10 transition-colors">
+                      <td className="px-4 py-3 text-center">{i + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-foreground whitespace-normal break-words leading-tight">
+                        {product}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button title="Remove Product" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => removeProduct(product)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={3} className="text-center py-8 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50 bg-accent/5">No products added yet</td>
+                    </tr>
+                  )}
+                </tbody>
+             </table>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Credentials Section */}
       <Card className="bg-card border-border overflow-hidden">

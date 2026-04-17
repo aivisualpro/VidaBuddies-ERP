@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction } = await req.json();
+    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, logId, logIsVerified, logProducts } = await req.json();
 
     await connectToDatabase();
     const supplier = await VidaSupplier.findById(id);
@@ -44,6 +44,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           date: new Date()
         });
       }
+
+      if (logId) {
+        const logIndex = doc.logs.findIndex((l: any) => l._id?.toString() === logId);
+        if (logIndex !== -1) {
+          if (logIsVerified !== undefined) doc.logs[logIndex].isVerified = logIsVerified;
+          if (logProducts !== undefined) doc.logs[logIndex].products = logProducts;
+        }
+      }
     }
 
     await supplier.save();
@@ -71,8 +79,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const supplier = await VidaSupplier.findById(id);
     if (!supplier) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-    const docIndex = supplier.documents?.findIndex((d: any) => d.name === docName);
-    if (docIndex !== undefined && docIndex !== -1) {
+    if (!supplier.documents) supplier.documents = [];
+
+    const docIndex = supplier.documents.findIndex((d: any) => d.name === docName);
+    if (docIndex !== -1) {
       const doc = supplier.documents[docIndex];
       const logIndex = doc.logs.findIndex((l: any) => l._id?.toString() === logId);
       

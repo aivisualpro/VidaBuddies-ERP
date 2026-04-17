@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf, Trash } from "lucide-react";
+import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf, Trash, Download } from "lucide-react";
 import Image from "next/image";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
@@ -16,6 +16,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const REQUIRED_DOCS = [
   { category: "Company & Legal Documentation", name: "Product Liability Insurance Certificate" },
@@ -71,6 +76,8 @@ interface LogEntry {
   date: string;
   fileId?: string;
   fileLink?: string;
+  isVerified?: boolean;
+  products?: string[];
 }
 
 interface DocumentData {
@@ -83,6 +90,64 @@ interface DocumentData {
   isVerified?: boolean;
   isNA?: boolean;
   logs?: LogEntry[];
+}
+
+export function LogsProductMultiSelect({
+  availableProducts,
+  selectedProducts,
+  onUpdate
+}: {
+  availableProducts: string[];
+  selectedProducts: string[];
+  onUpdate: (products: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedCount = selectedProducts.length;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 w-[130px] justify-between px-2 text-[10px] font-medium">
+          <span className="truncate">
+            {selectedCount > 0 ? `${selectedCount} Product${selectedCount > 1 ? 's' : ''}` : "Select Products"}
+          </span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search products..." className="h-8 text-xs outline-none focus:outline-none ring-0 border-0 shadow-none border-b focus:ring-0" />
+          <CommandList className="max-h-[200px]">
+            <CommandEmpty>No products found.</CommandEmpty>
+            <CommandGroup>
+              {availableProducts.map((prod) => (
+                <CommandItem
+                  key={prod}
+                  value={prod}
+                  onSelect={() => {
+                    if (selectedProducts.includes(prod)) {
+                      onUpdate(selectedProducts.filter(p => p !== prod));
+                    } else {
+                      onUpdate([...selectedProducts, prod]);
+                    }
+                  }}
+                  className="text-xs"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-3 w-3",
+                      selectedProducts.includes(prod) ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {prod}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { supplierId: string, isSupplierView?: boolean }) {
@@ -103,6 +168,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isOrganic, setIsOrganic] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<string[]>([]);
 
   const loadDocuments = async () => {
     try {
@@ -111,6 +177,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         const data = await response.json();
         setSupplierName(data.name || "");
         setIsOrganic(!!data.isOrganic);
+        setAvailableProducts(data.productsSupplied || []);
         
         const statesMap: Record<string, DocumentData> = {};
         if (data.documents) {
@@ -243,6 +310,36 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     }
   };
 
+  const toggleLogVerification = async (docName: string, logId: string, isVerified: boolean, newProducts?: string[]) => {
+    try {
+      const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          docName, 
+          logId, 
+          logIsVerified: isVerified,
+          ...(newProducts ? { logProducts: newProducts } : {})
+        }),
+      });
+
+      if (!response.ok) throw new Error("Update failed");
+      
+      const updatedDocs = await response.json();
+      const statesMap: Record<string, DocumentData> = {};
+      updatedDocs.forEach((d: any) => {
+        if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
+        statesMap[d.name] = d;
+      });
+      setDocStates(statesMap);
+      
+      setActiveLogs(prev => prev.map(l => l._id === logId ? { ...l, isVerified, ...(newProducts ? { products: newProducts } : {}) } : l));
+      toast.success(newProducts ? "Products updated" : (isVerified ? "File marked as verified." : "File verification removed."));
+    } catch (error) {
+      toast.error("Failed to update log.");
+    }
+  };
+
   const verifyDoc = (docName: string) => {
     updateDocumentData(docName, { isVerified: true }, "Marked as Verified");
     toast.success("Document verified!");
@@ -274,7 +371,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     setActiveLogType(type);
     const allLogs = logs ? [...logs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
     if (type === 'attachments') {
-      setActiveLogs(allLogs.filter(l => l.action.startsWith('Uploaded') || l.action.startsWith('Marked as Verified')));
+      setActiveLogs(allLogs.filter(l => l.action.startsWith('Uploaded')));
     } else {
       setActiveLogs(allLogs.filter(l => l.action.includes('Notes') || l.action.includes('Expiry')));
     }
@@ -717,7 +814,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       </div>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
-        <DialogContent className="sm:max-w-[700px] rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
+        <DialogContent className="sm:max-w-6xl rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-black uppercase tracking-tight">
               {activeLogType === 'attachments' ? activeDocName : `Notes: ${activeDocName}`}
@@ -726,40 +823,101 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
               {activeDocName}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mt-4 inline-flex flex-col w-full text-sm">
-            {activeLogs.length > 0 ? (
-              activeLogs.map((log, i) => (
-                <div key={i} className="flex border-b border-border/50 pb-3 last:border-0 items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1 flex-1">
-                    {log.action.startsWith('Uploaded') && log.fileLink ? (
-                      <a href={log.fileLink} target="_blank" rel="noopener noreferrer" className="font-bold text-xs uppercase tracking-widest text-primary hover:underline flex items-start gap-1.5 break-words">
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        <span className="flex-1">{log.action}</span>
-                      </a>
-                    ) : (
-                      <span className="font-bold text-xs uppercase tracking-widest text-[#a1a1aa]">{log.action}</span>
-                    )}
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
-                      <span>By: <span className="text-primary">{log.by}</span></span>
-                      <span>{new Date(log.date).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  {log.action.startsWith('Uploaded') && log._id && (
-                    <Button 
-                      title="Delete document" 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => deleteLogEntry(activeDocName, log._id!)} 
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 mt-0.5"
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  )}
+          <div className="mt-4 w-full">
+            {activeLogType === 'attachments' ? (
+              activeLogs.length > 0 ? (
+                <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm max-h-[400px] overflow-y-auto">
+                  <table className="w-full text-left text-sm text-muted-foreground whitespace-nowrap">
+                    <thead className="bg-muted text-[10px] uppercase font-black tracking-widest border-b border-border text-foreground sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 min-w-[200px]">File Name</th>
+                        <th className="px-4 py-3">Created By</th>
+                        <th className="px-4 py-3">Created At</th>
+                        <th className="px-4 py-3 min-w-[150px]">Products</th>
+                        <th className="px-4 py-3 text-center">Verified</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {activeLogs.map((log, i) => (
+                        <tr key={i} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-4 py-3 font-semibold text-foreground overflow-hidden text-ellipsis max-w-[250px] break-words whitespace-normal leading-tight">
+                            {log.fileLink ? (
+                              <a href={log.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-start gap-1.5 align-middle">
+                                <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                <span>{log.action.replace('Uploaded ', '')}</span>
+                              </a>
+                            ) : (
+                              <span>{log.action.replace('Uploaded ', '')}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-primary">{log.by}</td>
+                          <td className="px-4 py-3 text-xs">{new Date(log.date).toLocaleString()}</td>
+                          <td className="px-4 py-3 align-middle">
+                            <LogsProductMultiSelect 
+                              availableProducts={availableProducts}
+                              selectedProducts={log.products || []}
+                              onUpdate={(newProducts) => toggleLogVerification(activeDocName, log._id!, log.isVerified || false, newProducts)}
+                            />
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <Switch 
+                              checked={!!log.isVerified}
+                              onCheckedChange={(val) => toggleLogVerification(activeDocName, log._id!, val)}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {log.fileLink && (
+                                <a href={log.fileLink} target="_blank" rel="noopener noreferrer" download>
+                                  <Button title="Download document" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </a>
+                              )}
+                              {log._id && (
+                                <Button 
+                                  title="Delete document" 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={() => deleteLogEntry(activeDocName, log._id!)} 
+                                  className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))
+              ) : (
+                <div className="text-center py-6 border border-dashed rounded-xl bg-accent/5 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
+                  No files uploaded yet
+                </div>
+              )
             ) : (
-              <div className="text-center py-6 border border-dashed rounded-xl bg-accent/5 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
-                No activity logged yet
+              // Notes View (Original Style)
+              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 inline-flex flex-col w-full text-sm">
+                {activeLogs.length > 0 ? (
+                  activeLogs.map((log, i) => (
+                    <div key={i} className="flex border-b border-border/50 pb-3 last:border-0 items-start justify-between gap-4">
+                      <div className="flex flex-col gap-1 flex-1">
+                        <span className="font-bold text-xs uppercase tracking-widest text-[#a1a1aa]">{log.action}</span>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
+                          <span>By: <span className="text-primary">{log.by}</span></span>
+                          <span>{new Date(log.date).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 border border-dashed rounded-xl bg-accent/5 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
+                    No activity logged yet
+                  </div>
+                )}
               </div>
             )}
           </div>
