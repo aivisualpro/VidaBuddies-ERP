@@ -37,14 +37,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!supplier.documents) supplier.documents = [];
 
-    const docIndex = supplier.documents.findIndex((d: any) => d.name === docName);
+    const userName = session.name || session.email || 'System';
+    const now = new Date();
+
+    // New file entry for the files[] array
+    const fileEntry = {
+      fileName: file.name,
+      fileId: uploadedFile.id,
+      fileLink: uploadedFile.webViewLink,
+      isVerified: false,
+      createdBy: userName,
+      createdAt: now,
+      products: []
+    };
+
+    // Log entry for activity tracking
     const logEntry = {
       action: `Uploaded ${file.name}`,
-      by: session.name || session.email || 'System',
-      date: new Date(),
+      by: userName,
+      date: now,
       fileId: uploadedFile.id,
       fileLink: uploadedFile.webViewLink
     };
+
+    const docIndex = supplier.documents.findIndex((d: any) => d.name === docName);
 
     if (docIndex === -1) {
       supplier.documents.push({
@@ -52,13 +68,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         fileId: uploadedFile.id,
         fileLink: uploadedFile.webViewLink,
         isVerified: false,
+        files: [fileEntry],
         logs: [logEntry]
       });
     } else {
       const doc = supplier.documents[docIndex];
+      // Update doc-level pointers to latest file (for backward compat)
       doc.fileId = uploadedFile.id;
       doc.fileLink = uploadedFile.webViewLink;
-      doc.isVerified = false; // Reset verification on new document upload
+      doc.isVerified = false;
+      // Push to new files array
+      if (!doc.files) doc.files = [];
+      doc.files.push(fileEntry);
       doc.logs.push(logEntry);
     }
 

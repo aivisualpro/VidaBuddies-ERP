@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, logId, logIsVerified, logProducts } = await req.json();
+    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, fileId: targetFileId, fileIsVerified, fileProducts } = await req.json();
 
     await connectToDatabase();
     const supplier = await VidaSupplier.findById(id);
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         adminNotes,
         isVerified,
         isNA,
+        files: [],
         logs: logAction ? [{ action: logAction, by: session.name || session.email || 'System', date: new Date() }] : []
       });
     } else {
@@ -45,11 +46,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
       }
 
-      if (logId) {
-        const logIndex = doc.logs.findIndex((l: any) => l._id?.toString() === logId);
-        if (logIndex !== -1) {
-          if (logIsVerified !== undefined) doc.logs[logIndex].isVerified = logIsVerified;
-          if (logProducts !== undefined) doc.logs[logIndex].products = logProducts;
+      // Update a specific file entry (verification toggle, products update)
+      if (targetFileId) {
+        if (!doc.files) doc.files = [];
+        const fileIndex = doc.files.findIndex((f: any) => f._id?.toString() === targetFileId);
+        if (fileIndex !== -1) {
+          if (fileIsVerified !== undefined) doc.files[fileIndex].isVerified = fileIsVerified;
+          if (fileProducts !== undefined) doc.files[fileIndex].products = fileProducts;
         }
       }
     }
@@ -69,10 +72,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const { docName, logId } = await req.json();
+    const { docName, fileId } = await req.json();
 
-    if (!docName || !logId) {
-      return NextResponse.json({ error: "Missing docName or logId" }, { status: 400 });
+    if (!docName || !fileId) {
+      return NextResponse.json({ error: "Missing docName or fileId" }, { status: 400 });
     }
 
     await connectToDatabase();
@@ -84,27 +87,26 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const docIndex = supplier.documents.findIndex((d: any) => d.name === docName);
     if (docIndex !== -1) {
       const doc = supplier.documents[docIndex];
-      const logIndex = doc.logs.findIndex((l: any) => l._id?.toString() === logId);
+      if (!doc.files) doc.files = [];
       
-      if (logIndex !== -1) {
-        const removedLog = doc.logs.splice(logIndex, 1)[0];
+      const fileIndex = doc.files.findIndex((f: any) => f._id?.toString() === fileId);
+      
+      if (fileIndex !== -1) {
+        const removedFile = doc.files.splice(fileIndex, 1)[0];
         
-        if (doc.fileId === removedLog.fileId) {
-          const previousUpload = [...doc.logs]
-            .reverse()
-            .find(l => l.fileId && l.action.startsWith('Uploaded'));
-            
-          if (previousUpload) {
-            doc.fileId = previousUpload.fileId;
-            doc.fileLink = previousUpload.fileLink;
-          } else {
-            doc.fileId = undefined;
-            doc.fileLink = undefined;
-          }
+        // Update doc-level pointer to latest remaining file
+        if (doc.files.length > 0) {
+          const latest = doc.files[doc.files.length - 1];
+          doc.fileId = latest.fileId;
+          doc.fileLink = latest.fileLink;
+        } else {
+          doc.fileId = undefined;
+          doc.fileLink = undefined;
         }
         
+        // Log the deletion
         doc.logs.push({
-           action: `Deleted file: ${removedLog.action.replace('Uploaded ', '')}`,
+           action: `Deleted file: ${removedFile.fileName}`,
            by: session.name || session.email || 'System',
            date: new Date()
         });
@@ -114,7 +116,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await supplier.save();
     return NextResponse.json(supplier.documents);
   } catch (error) {
-    console.error("Error deleting document log:", error);
-    return NextResponse.json({ error: "Failed to delete log" }, { status: 500 });
+    console.error("Error deleting document file:", error);
+    return NextResponse.json({ error: "Failed to delete file" }, { status: 500 });
   }
 }

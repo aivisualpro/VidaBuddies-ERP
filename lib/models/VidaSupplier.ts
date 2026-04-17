@@ -13,6 +13,16 @@ export interface IVidaSupplierLocation {
   fdaReg?: string;
 }
 
+export interface IVidaSupplierDocumentFile {
+  fileName: string;
+  fileId: string;
+  fileLink: string;
+  isVerified?: boolean;
+  createdBy: string;
+  createdAt: Date;
+  products?: string[];
+}
+
 export interface IVidaSupplierDocumentLog {
   action: string;
   by: string;
@@ -25,13 +35,14 @@ export interface IVidaSupplierDocumentLog {
 
 export interface IVidaSupplierDocument {
   name: string; // The exact name from REQUIRED_DOCS
-  fileId?: string; // Google Drive file ID
-  fileLink?: string; // Google Drive webViewLink
+  fileId?: string; // Google Drive file ID (legacy, kept for compat)
+  fileLink?: string; // Google Drive webViewLink (legacy, kept for compat)
   expiryDate?: Date;
   supplierNotes?: string;
   adminNotes?: string;
   isVerified?: boolean;
   isNA?: boolean;
+  files: IVidaSupplierDocumentFile[];
   logs: IVidaSupplierDocumentLog[];
 }
 
@@ -74,6 +85,16 @@ const VidaSupplierLocationSchema: Schema = new Schema({
   fdaReg: { type: String },
 });
 
+const VidaSupplierDocumentFileSchema: Schema = new Schema({
+  fileName: { type: String, required: true },
+  fileId: { type: String, required: true },
+  fileLink: { type: String, required: true },
+  isVerified: { type: Boolean, default: false },
+  createdBy: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  products: [{ type: String }]
+});
+
 const VidaSupplierDocumentLogSchema: Schema = new Schema({
   action: { type: String, required: true },
   by: { type: String, required: true },
@@ -93,6 +114,7 @@ const VidaSupplierDocumentSchema: Schema = new Schema({
   adminNotes: { type: String },
   isVerified: { type: Boolean, default: false },
   isNA: { type: Boolean, default: false },
+  files: { type: [VidaSupplierDocumentFileSchema], default: [] },
   logs: [VidaSupplierDocumentLogSchema]
 });
 

@@ -69,6 +69,17 @@ const REQUIRED_DOCS = [
 // Extract unique categories preserving order
 const CATEGORIES = [...new Set(REQUIRED_DOCS.map(d => d.category))];
 
+interface FileEntry {
+  _id?: string;
+  fileName: string;
+  fileId: string;
+  fileLink: string;
+  isVerified?: boolean;
+  createdBy: string;
+  createdAt: string;
+  products?: string[];
+}
+
 interface LogEntry {
   _id?: string;
   action: string;
@@ -89,6 +100,7 @@ interface DocumentData {
   adminNotes?: string;
   isVerified?: boolean;
   isNA?: boolean;
+  files?: FileEntry[];
   logs?: LogEntry[];
 }
 
@@ -105,7 +117,7 @@ export function LogsProductMultiSelect({
   const selectedCount = selectedProducts.length;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-7 w-[130px] justify-between px-2 text-[10px] font-medium">
           <span className="truncate">
@@ -114,15 +126,15 @@ export function LogsProductMultiSelect({
           <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
+      <PopoverContent className="w-[200px] p-0 z-[9999]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <Command>
           <CommandInput placeholder="Search products..." className="h-8 text-xs outline-none focus:outline-none ring-0 border-0 shadow-none border-b focus:ring-0" />
           <CommandList className="max-h-[200px]">
             <CommandEmpty>No products found.</CommandEmpty>
             <CommandGroup>
-              {availableProducts.map((prod) => (
+              {availableProducts.map((prod, idx) => (
                 <CommandItem
-                  key={prod}
+                  key={`${idx}-${prod}`}
                   value={prod}
                   onSelect={() => {
                     if (selectedProducts.includes(prod)) {
@@ -158,11 +170,11 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
+  const [activeFiles, setActiveFiles] = useState<FileEntry[]>([]);
   const [activeLogs, setActiveLogs] = useState<LogEntry[]>([]);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [activeDocName, setActiveDocName] = useState("");
-  const [activeFileLink, setActiveFileLink] = useState<string | undefined>(undefined);
   const [activeLogType, setActiveLogType] = useState<'attachments' | 'notes'>('attachments');
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -177,7 +189,15 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         const data = await response.json();
         setSupplierName(data.name || "");
         setIsOrganic(!!data.isOrganic);
-        setAvailableProducts(data.productsSupplied || []);
+        
+        // Also fetch system products so we have a full global list
+        const prodRes = await fetch('/api/admin/products').catch(() => null);
+        if (prodRes && prodRes.ok) {
+          const prods = await prodRes.json();
+          setAvailableProducts(prods.map((p: any) => p.name));
+        } else {
+          setAvailableProducts(data.productsSupplied || []);
+        }
         
         const statesMap: Record<string, DocumentData> = {};
         if (data.documents) {
@@ -283,12 +303,12 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     }
   };
 
-  const deleteLogEntry = async (docName: string, logId: string) => {
+  const deleteFileEntry = async (docName: string, fileId: string) => {
     try {
       const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docName, logId }),
+        body: JSON.stringify({ docName, fileId }),
       });
 
       if (!response.ok) throw new Error("Delete failed");
@@ -301,25 +321,25 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       });
       setDocStates(statesMap);
       
-      // Update active logs state locally if modal open
-      setActiveLogs(prev => prev.filter(l => l._id !== logId));
+      // Update active files state locally if modal open
+      setActiveFiles(prev => prev.filter(f => f._id !== fileId));
       
-      toast.success("File history deleted successfully!");
+      toast.success("File deleted successfully!");
     } catch (error) {
-      toast.error("Failed to delete log entry.");
+      toast.error("Failed to delete file.");
     }
   };
 
-  const toggleLogVerification = async (docName: string, logId: string, isVerified: boolean, newProducts?: string[]) => {
+  const updateFileEntry = async (docName: string, fileId: string, isVerified: boolean, newProducts?: string[]) => {
     try {
       const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           docName, 
-          logId, 
-          logIsVerified: isVerified,
-          ...(newProducts ? { logProducts: newProducts } : {})
+          fileId: fileId,
+          fileIsVerified: isVerified,
+          ...(newProducts ? { fileProducts: newProducts } : {})
         }),
       });
 
@@ -333,10 +353,10 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       });
       setDocStates(statesMap);
       
-      setActiveLogs(prev => prev.map(l => l._id === logId ? { ...l, isVerified, ...(newProducts ? { products: newProducts } : {}) } : l));
+      setActiveFiles(prev => prev.map(f => f._id === fileId ? { ...f, isVerified, ...(newProducts ? { products: newProducts } : {}) } : f));
       toast.success(newProducts ? "Products updated" : (isVerified ? "File marked as verified." : "File verification removed."));
     } catch (error) {
-      toast.error("Failed to update log.");
+      toast.error("Failed to update file.");
     }
   };
 
@@ -347,7 +367,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
   const getStatus = (docData?: DocumentData) => {
     if (docData?.isNA) return { label: "N/A", color: "text-white", bg: "bg-zinc-500 border-zinc-600" };
-    if (!docData || !docData.fileId) return { label: "NO", color: "text-white", bg: "bg-orange-500 border-orange-600" };
+    if (!docData || (!docData.fileId && (!docData.files || docData.files.length === 0))) return { label: "NO", color: "text-white", bg: "bg-orange-500 border-orange-600" };
     if (docData.isVerified) return { label: "VERIFIED", color: "text-white", bg: "bg-blue-600 border-blue-700" };
     
     if (docData.expiryDate) {
@@ -366,13 +386,15 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     updateDocumentData(docName, { isNA: newNA }, newNA ? 'Marked as N/A' : 'Unmarked N/A');
   };
 
-  const openLogs = (docName: string, logs?: LogEntry[], type: 'attachments' | 'notes' = 'attachments') => {
+  const openLogs = (docName: string, type: 'attachments' | 'notes' = 'attachments') => {
+    const state = docStates[docName];
     setActiveDocName(docName);
     setActiveLogType(type);
-    const allLogs = logs ? [...logs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
     if (type === 'attachments') {
-      setActiveLogs(allLogs.filter(l => l.action.startsWith('Uploaded')));
+      const files = state?.files ? [...state.files].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : [];
+      setActiveFiles(files);
     } else {
+      const allLogs = state?.logs ? [...state.logs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
       setActiveLogs(allLogs.filter(l => l.action.includes('Notes') || l.action.includes('Expiry')));
     }
     setIsLogsOpen(true);
@@ -489,10 +511,10 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             <Button variant="ghost" size="icon" className={`h-7 w-7 ${isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
               {isNA ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, 'attachments')}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, 'attachments')}>
                <Paperclip className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, 'notes')}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, 'notes')}>
                <MessageSquare className="h-3.5 w-3.5" />
             </Button>
 
@@ -587,10 +609,10 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             <Button variant="ghost" size="icon" className={`h-8 w-8 ${state.isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={state.isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
               {state.isNA ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, 'attachments')}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, 'attachments')}>
               <Paperclip className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, 'notes')}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, 'notes')}>
               <MessageSquare className="h-4 w-4" />
             </Button>
           </div>
@@ -825,7 +847,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           </DialogHeader>
           <div className="mt-4 w-full">
             {activeLogType === 'attachments' ? (
-              activeLogs.length > 0 ? (
+              activeFiles.length > 0 ? (
                 <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm max-h-[400px] overflow-y-auto">
                   <table className="w-full text-left text-sm text-muted-foreground whitespace-nowrap">
                     <thead className="bg-muted text-[10px] uppercase font-black tracking-widest border-b border-border text-foreground sticky top-0 z-10">
@@ -839,48 +861,43 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {activeLogs.map((log, i) => (
-                        <tr key={i} className="hover:bg-muted/10 transition-colors">
+                      {activeFiles.map((file, i) => (
+                        <tr key={file._id || i} className="hover:bg-muted/10 transition-colors">
                           <td className="px-4 py-3 font-semibold text-foreground overflow-hidden text-ellipsis max-w-[250px] break-words whitespace-normal leading-tight">
-                            {log.fileLink ? (
-                              <a href={log.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-start gap-1.5 align-middle">
-                                <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                                <span>{log.action.replace('Uploaded ', '')}</span>
-                              </a>
-                            ) : (
-                              <span>{log.action.replace('Uploaded ', '')}</span>
-                            )}
+                            <span>{file.fileName}</span>
                           </td>
-                          <td className="px-4 py-3 font-semibold text-primary">{log.by}</td>
-                          <td className="px-4 py-3 text-xs">{new Date(log.date).toLocaleString()}</td>
+                          <td className="px-4 py-3 font-semibold text-primary">{file.createdBy}</td>
+                          <td className="px-4 py-3 text-xs">{new Date(file.createdAt).toLocaleString()}</td>
                           <td className="px-4 py-3 align-middle">
                             <LogsProductMultiSelect 
                               availableProducts={availableProducts}
-                              selectedProducts={log.products || []}
-                              onUpdate={(newProducts) => toggleLogVerification(activeDocName, log._id!, log.isVerified || false, newProducts)}
+                              selectedProducts={file.products || []}
+                              onUpdate={(newProducts) => updateFileEntry(activeDocName, file._id!, file.isVerified || false, newProducts)}
                             />
                           </td>
                           <td className="px-4 py-3 align-middle text-center">
                             <Switch 
-                              checked={!!log.isVerified}
-                              onCheckedChange={(val) => toggleLogVerification(activeDocName, log._id!, val)}
+                              checked={!!file.isVerified}
+                              onCheckedChange={(val) => updateFileEntry(activeDocName, file._id!, val)}
                             />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              {log.fileLink && (
-                                <a href={log.fileLink} target="_blank" rel="noopener noreferrer" download>
-                                  <Button title="Download document" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </a>
-                              )}
-                              {log._id && (
+                              <Button 
+                                title="Download document" 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={() => window.open(file.fileLink, '_blank')}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              {file._id && (
                                 <Button 
                                   title="Delete document" 
                                   variant="ghost" 
                                   size="icon" 
-                                  onClick={() => deleteLogEntry(activeDocName, log._id!)} 
+                                  onClick={() => deleteFileEntry(activeDocName, file._id!)} 
                                   className="h-7 w-7 text-destructive hover:bg-destructive/10"
                                 >
                                   <Trash className="h-4 w-4" />
