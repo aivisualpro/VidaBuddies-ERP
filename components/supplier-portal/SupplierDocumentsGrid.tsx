@@ -85,13 +85,14 @@ interface DocumentData {
 export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { supplierId: string, isSupplierView?: boolean }) {
   const [docStates, setDocStates] = useState<Record<string, DocumentData>>({});
   const savedStates = useRef<Record<string, DocumentData>>({});
-  const { setLeftContent } = useHeaderActions();
+  const { setLeftContent, setActions } = useHeaderActions();
   const [supplierName, setSupplierName] = useState<string>("");
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const [activeLogs, setActiveLogs] = useState<LogEntry[]>([]);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [activeDocName, setActiveDocName] = useState("");
   const [activeFileLink, setActiveFileLink] = useState<string | undefined>(undefined);
   const [activeLogType, setActiveLogType] = useState<'attachments' | 'notes'>('attachments');
@@ -136,8 +137,18 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           <span className="hidden md:inline">{supplierName} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">DOCUMENTS</span>
         </h1>
       );
+
+      setActions(
+        <Button variant="outline" size="icon" className="h-9 w-9 text-blue-500 hover:text-blue-600 border-blue-500/20 hover:bg-blue-500/10 shadow-sm" onClick={() => setIsInfoOpen(true)}>
+          <Info className="h-4 w-4" />
+        </Button>
+      );
     }
-  }, [supplierName, setLeftContent]);
+    return () => {
+      setLeftContent(null);
+      setActions(null);
+    };
+  }, [supplierName, setLeftContent, setActions]);
 
   const updateDocumentData = async (docName: string, updates: Partial<DocumentData>, logAction?: string) => {
     setDocStates(prev => ({
@@ -339,20 +350,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         <td className="px-4 py-2">
           <div className="space-y-1">
             <Input
-              placeholder="Supplier Note..."
-              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${isSupplierView ? 'bg-foreground/5' : 'bg-transparent border-b-border rounded-none'}`}
-              value={state.supplierNotes || ""}
-              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, supplierNotes: e.target.value } }))}
-              onBlur={() => {
-                const saved = savedStates.current[doc.name];
-                if ((state.supplierNotes || "") !== (saved?.supplierNotes || "")) {
-                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], supplierNotes: state.supplierNotes };
-                  updateDocumentData(doc.name, { supplierNotes: state.supplierNotes }, "Updated Supplier Notes");
-                }
-              }}
-              disabled={!isSupplierView}
-            />
-            <Input
               placeholder="Admin Note..."
               className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${!isSupplierView ? 'bg-primary/5 text-primary' : 'bg-transparent border-b-border rounded-none'}`}
               value={state.adminNotes || ""}
@@ -457,20 +454,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             </div>
           </div>
           <div className="space-y-1.5">
-            <Input
-              placeholder="Supplier Note..."
-              className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${isSupplierView ? 'bg-foreground/5' : 'bg-transparent border-b-border rounded-none'}`}
-              value={state.supplierNotes || ""}
-              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, supplierNotes: e.target.value } }))}
-              onBlur={() => {
-                const saved = savedStates.current[doc.name];
-                if ((state.supplierNotes || "") !== (saved?.supplierNotes || "")) {
-                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], supplierNotes: state.supplierNotes };
-                  updateDocumentData(doc.name, { supplierNotes: state.supplierNotes }, "Updated Supplier Notes");
-                }
-              }}
-              disabled={!isSupplierView}
-            />
             <Input
               placeholder="Admin Note..."
               className={`h-8 text-[11px] font-medium border-transparent focus-visible:ring-1 placeholder:uppercase placeholder:tracking-widest placeholder:text-[9px] ${!isSupplierView ? 'bg-primary/5 text-primary' : 'bg-transparent border-b-border rounded-none'}`}
@@ -634,24 +617,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
         {/* Main Content */}
         <div className="flex-1 min-w-0 md:flex md:flex-col md:h-full md:overflow-hidden pb-8 md:pb-0 md:pl-4 mt-4 md:mt-0">
-          {/* Instructions Banner */}
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4 shrink-0">
-            <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Info className="h-4 w-4 text-white" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-bold text-foreground">Please complete this form and attach all applicable documents listed.</p>
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> All certificates must be <span className="font-bold text-foreground">VALID</span> and <span className="font-bold text-foreground">NOT expired</span></li>
-                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> Clearly name files (Example: <span className="font-mono text-[11px] bg-foreground/5 px-1.5 py-0.5 rounded">ABC_Fruits_FSSC_22000_2025.pdf</span>)</li>
-                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> If a document is not applicable, mark <span className="inline-flex items-center gap-1 font-bold text-zinc-500"><Ban className="h-3 w-3" /> N/A</span></li>
-                  <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> Incomplete submissions may <span className="font-bold text-orange-500">delay approval</span></li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
           {/* Desktop Table View */}
           <div className="rounded-r-xl border border-border bg-card shadow-sm hidden md:flex md:flex-col md:flex-1 md:overflow-hidden mb-6">
             <div className="flex-1 overflow-auto">
@@ -769,6 +734,24 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                 No activity logged yet
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isInfoOpen} onOpenChange={setIsInfoOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-600 text-lg font-black uppercase tracking-widest">
+               <Info className="h-5 w-5" /> Instructions
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2 text-sm bg-blue-50/50 dark:bg-blue-950/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/50">
+             <p className="font-bold text-foreground">Please complete this form and attach all applicable documents listed.</p>
+             <ul className="space-y-2.5 text-xs text-muted-foreground mt-3">
+               <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> <span>All certificates must be <span className="font-bold text-foreground">VALID</span> and <span className="font-bold text-foreground">NOT expired</span></span></li>
+               <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> <span>Clearly name files (Example: <span className="font-mono text-[10px] bg-background border px-1.5 py-0.5 rounded shadow-sm text-foreground">ABC_Fruits_FSSC_22000_2025.pdf</span>)</span></li>
+               <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> <span>If a document is not applicable, mark <span className="inline-flex items-center gap-1 font-bold text-zinc-500"><Ban className="h-3 w-3" /> N/A</span></span></li>
+               <li className="flex items-start gap-2"><span className="text-blue-500 font-bold mt-0.5">•</span> <span>Incomplete submissions may <span className="font-bold text-orange-500">delay approval</span></span></li>
+             </ul>
           </div>
         </DialogContent>
       </Dialog>

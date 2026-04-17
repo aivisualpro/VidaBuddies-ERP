@@ -21,6 +21,12 @@ import {
   ShoppingCart,
   Ship,
   Calendar,
+  Activity,
+  Mail,
+  Paperclip,
+  Clock,
+  ChevronUp,
+  ChevronDown,
   Anchor,
   Search,
   Package,
@@ -52,6 +58,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import TimelineModal from "@/components/admin/timeline-modal";
+import { AttachmentsModal } from "@/components/attachments-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -95,7 +103,95 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [tempName, setTempName] = useState("");
-  const { setLeftContent, setRightContent } = useHeaderActions();
+  const [timelineModal, setTimelineModal] = useState<{ open: boolean; vbpoNo?: string; poNo?: string; svbid?: string } | null>(null);
+  const [attachmentsModal, setAttachmentsModal] = useState<{ open: boolean; poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const { setLeftContent, setRightContent, setActions } = useHeaderActions();
+
+  // Find POs related to this supplier (supplier field can be _id, vbId, or name)
+  const relatedPOs = useMemo(() => {
+    if (!supplier) return [];
+    const sId = supplier._id?.toLowerCase() || "";
+    const sName = supplier.name?.toLowerCase() || "";
+    const sVbId = supplier.vbId?.toLowerCase() || "";
+
+    const matchesSupplier = (val: string) => {
+      const v = (val || "").toLowerCase();
+      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
+    };
+
+    return purchaseOrders.filter(po =>
+      po.customerPO?.some((cpo: any) =>
+        cpo.shipping?.some((s: any) => matchesSupplier(s.supplier))
+      )
+    );
+  }, [purchaseOrders, supplier]);
+
+  const filteredPOs = useMemo(() => {
+    if (!poSearch.trim()) return relatedPOs;
+    const q = poSearch.toLowerCase();
+    return relatedPOs.filter((po: any) =>
+      po.vbpoNo?.toLowerCase().includes(q) ||
+      po.category?.toLowerCase().includes(q) ||
+      po.customerPO?.some((c: any) =>
+        c.shipping?.some((s: any) =>
+          s.carrier?.toLowerCase().includes(q) ||
+          s.containerNo?.toLowerCase().includes(q) ||
+          s.vessellTrip?.toLowerCase().includes(q)
+        )
+      )
+    );
+  }, [relatedPOs, poSearch]);
+
+  const getSupplierShipments = (po: any) => {
+    const sId = supplier?._id?.toLowerCase() || "";
+    const sName = supplier?.name?.toLowerCase() || "";
+    const sVbId = supplier?.vbId?.toLowerCase() || "";
+
+    const matchesSupplier = (val: string) => {
+      const v = (val || "").toLowerCase();
+      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
+    };
+
+    const records: any[] = [];
+    po.customerPO?.forEach((cpo: any) => {
+      cpo.shipping?.forEach((s: any) => {
+        if (matchesSupplier(s.supplier)) {
+          records.push({ ...s, customerPONo: cpo.poNo, customer: cpo.customer });
+        }
+      });
+    });
+    return records;
+  };
+
+  const shipmentsList = useMemo(() => {
+    if (!supplier) return [];
+    let records: any[] = [];
+    filteredPOs.forEach(po => {
+      const shipRecs = getSupplierShipments(po);
+      shipRecs.forEach(ship => {
+         records.push({ ship, po });
+      });
+    });
+    
+    records.sort((a, b) => {
+       const isDeliveredA = a.ship.status === 'Delivered';
+       const isDeliveredB = b.ship.status === 'Delivered';
+       if (isDeliveredA && !isDeliveredB) return 1;
+       if (!isDeliveredA && isDeliveredB) return -1;
+       
+       const dateA = new Date(a.ship.ETA || 0).getTime();
+       const dateB = new Date(b.ship.ETA || 0).getTime();
+       return dateB - dateA;
+    });
+    return records;
+  }, [filteredPOs, supplier]);
+
+  const [expandedShipments, setExpandedShipments] = useState<Record<string, boolean>>({});
+
+  const toggleShipment = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedShipments(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   useEffect(() => {
     if (supplier) {
@@ -105,30 +201,29 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
             <span className="hidden md:inline">{supplier.name} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">HISTORY</span>
           </h1>
           <div className="hidden md:flex gap-2">
-            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black border border-primary/20">{supplier.vbId}</span>
-            <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full font-black border uppercase tracking-tighter">{supplier.location?.length || 0} Locations</span>
+            <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-1 rounded-full font-black border border-primary/20 flex items-center gap-1.5 shadow-sm"><Ship className="h-3 w-3" /> {shipmentsList.length} Pickups</span>
           </div>
         </div>
       );
-      setRightContent(
-        <div className="flex items-center gap-2">
-          {!isSupplierView && (
-            <>
-              <Button variant="outline" size="sm" className="font-bold uppercase tracking-widest text-[10px]" onClick={handleEditDetails}>Edit Details</Button>
-              <Button size="sm" className="font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20" onClick={handleAddLocation}>Add Location</Button>
-              <Button variant="ghost" size="sm" className="font-bold uppercase tracking-widest text-[10px]" onClick={() => router.back()}>
-                <ChevronRight className="h-4 w-4 rotate-180 mr-2" /> Back
-              </Button>
-            </>
-          )}
+      setRightContent(null);
+      setActions(
+        <div className="relative shrink-0 hidden md:block w-72 mr-2">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search PO#, carrier, container..."
+            value={poSearch}
+            onChange={(e) => setPoSearch(e.target.value)}
+            className="h-9 pl-9 text-xs bg-background border-border focus-visible:ring-1 placeholder:text-[10px] placeholder:uppercase placeholder:tracking-wider rounded-full shadow-sm"
+          />
         </div>
       );
     }
     return () => {
       setLeftContent(null);
       setRightContent(null);
+      setActions(null);
     };
-  }, [supplier, setLeftContent, setRightContent]);
+  }, [supplier, setLeftContent, setRightContent, setActions, poSearch, shipmentsList.length]);
 
   useEffect(() => {
     const fetchSupplier = async () => {
@@ -187,61 +282,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
     fetchAllSuppliers();
   }, []);
 
-  // Find POs related to this supplier (supplier field can be _id, vbId, or name)
-  const relatedPOs = useMemo(() => {
-    if (!supplier) return [];
-    const sId = supplier._id?.toLowerCase() || "";
-    const sName = supplier.name?.toLowerCase() || "";
-    const sVbId = supplier.vbId?.toLowerCase() || "";
 
-    const matchesSupplier = (val: string) => {
-      const v = (val || "").toLowerCase();
-      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
-    };
-
-    return purchaseOrders.filter(po =>
-      po.customerPO?.some((cpo: any) =>
-        cpo.shipping?.some((s: any) => matchesSupplier(s.supplier))
-      )
-    );
-  }, [purchaseOrders, supplier]);
-
-  const filteredPOs = useMemo(() => {
-    if (!poSearch.trim()) return relatedPOs;
-    const q = poSearch.toLowerCase();
-    return relatedPOs.filter((po: any) =>
-      po.vbpoNo?.toLowerCase().includes(q) ||
-      po.category?.toLowerCase().includes(q) ||
-      po.customerPO?.some((c: any) =>
-        c.shipping?.some((s: any) =>
-          s.carrier?.toLowerCase().includes(q) ||
-          s.containerNo?.toLowerCase().includes(q) ||
-          s.vessellTrip?.toLowerCase().includes(q)
-        )
-      )
-    );
-  }, [relatedPOs, poSearch]);
-
-  const getSupplierShipments = (po: any) => {
-    const sId = supplier?._id?.toLowerCase() || "";
-    const sName = supplier?.name?.toLowerCase() || "";
-    const sVbId = supplier?.vbId?.toLowerCase() || "";
-
-    const matchesSupplier = (val: string) => {
-      const v = (val || "").toLowerCase();
-      return v === sId || v === sName || v === sVbId || v.includes(sName) || v.includes(sId);
-    };
-
-    const records: any[] = [];
-    po.customerPO?.forEach((cpo: any) => {
-      cpo.shipping?.forEach((s: any) => {
-        if (matchesSupplier(s.supplier)) {
-          records.push({ ...s, customerPONo: cpo.poNo, customer: cpo.customer });
-        }
-      });
-    });
-    return records;
-  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, locationId: string) => {
     const file = e.target.files?.[0];
@@ -544,29 +585,8 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
         </div>
 
         {/* Column 2-3: Purchase Order History — Rich Shipping Cards */}
-        <div className="md:col-span-2 flex flex-col gap-3 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-primary" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Shipment History</span>
-              <Badge variant="secondary" className="text-[9px] font-black px-1.5 py-0">
-                {filteredPOs.reduce((acc: number, po: any) => acc + getSupplierShipments(po).length, 0)}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="relative shrink-0">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search PO#, carrier, container..."
-              value={poSearch}
-              onChange={(e) => setPoSearch(e.target.value)}
-              className="h-9 pl-9 text-xs bg-foreground/5 border-transparent focus-visible:ring-1 placeholder:text-[10px] placeholder:uppercase placeholder:tracking-wider"
-            />
-          </div>
-
-          {filteredPOs.length === 0 ? (
+        <div className="md:col-span-2 flex flex-col gap-3 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted pb-8">
+          {shipmentsList.length === 0 ? (
             <div className="flex-1 flex items-center justify-center min-h-[200px] border border-dashed rounded-xl bg-accent/5">
               <div className="text-center space-y-2">
                 <ShoppingCart className="h-8 w-8 text-muted-foreground/20 mx-auto" />
@@ -577,9 +597,10 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredPOs.map((po: any) => {
-                const shipments = getSupplierShipments(po);
-                return shipments.map((ship: any, idx: number) => {
+              {shipmentsList.map(({ ship, po }, idx) => {
+                  const key = `${po._id}-${idx}`;
+                  const isExpanded = expandedShipments[key] ?? false;
+
                   const formatDate = (d?: string) => {
                     if (!d) return "-";
                     const dt = new Date(d);
@@ -596,19 +617,22 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
 
                   return (
                     <div
-                      key={`${po._id}-${idx}`}
-                      className="group relative overflow-hidden rounded-2xl bg-card text-card-foreground border border-border/60 shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/30 cursor-pointer"
-                      onClick={() => router.push(`/admin/purchase-orders/${po._id}`)}
+                      key={key}
+                      className="group relative overflow-hidden rounded-2xl bg-card text-card-foreground border border-border/60 shadow-sm transition-all duration-300"
                     >
                       {/* ─── HEADER BAR ─── */}
-                      <div className={cn(
-                        "flex items-center justify-between px-5 py-3 border-b border-border/40",
-                        ship.status === 'In Transit' && 'bg-blue-500/5 dark:bg-blue-500/10',
-                        ship.status === 'Ordered' && 'bg-amber-500/5 dark:bg-amber-500/10',
-                        ship.status === 'Delivered' && 'bg-emerald-500/5 dark:bg-emerald-500/10',
-                        ship.status === 'Cancelled' && 'bg-red-500/5 dark:bg-red-500/10',
-                        !ship.status && 'bg-muted/30',
-                      )}>
+                      <div 
+                        onClick={(e) => toggleShipment(key, e)}
+                        className={cn(
+                          "flex items-center justify-between px-5 py-3 cursor-pointer select-none transition-colors hover:bg-foreground/5",
+                          ship.status === 'In Transit' && 'bg-blue-500/5 dark:bg-blue-500/10',
+                          ship.status === 'Ordered' && 'bg-amber-500/5 dark:bg-amber-500/10',
+                          ship.status === 'Delivered' && 'bg-emerald-500/5 dark:bg-emerald-500/10',
+                          ship.status === 'Cancelled' && 'bg-red-500/5 dark:bg-red-500/10',
+                          !ship.status && 'bg-muted/30',
+                          isExpanded && 'border-b border-border/40'
+                        )}
+                      >
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
                             <Ship className="h-4 w-4 text-primary" />
@@ -618,7 +642,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                             <p className="text-[10px] text-muted-foreground">from <span className="font-semibold text-foreground/70">{ship.customerPONo || po.vbpoNo}</span></p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           <span className={cn(
                             "text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border",
                             ship.status === 'In Transit' && 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
@@ -629,166 +653,174 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                           )}>
                             {ship.status || 'Pending'}
                           </span>
-                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="text-muted-foreground/50 group-hover:text-foreground/80 transition-colors bg-background/50 p-1.5 rounded-full border shadow-sm">
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </div>
                         </div>
                       </div>
 
-                      {/* ─── BODY ─── */}
-                      <div className="p-5 space-y-4">
-
-                        {/* Row 1: Container | BOL | Carrier | Vessel */}
-                        <div className="grid grid-cols-4 gap-3">
-                          {[{ label: 'Container', value: ship.containerNo, icon: Box }, { label: 'BOL Number', value: ship.BOLNumber, icon: Hash }, { label: 'Carrier', value: ship.carrier, icon: Truck }, { label: 'Vessel / Trip', value: ship.vessellTrip, icon: Ship }].map((item, i) => (
-                            <div key={i} className="flex items-start gap-2 min-w-0">
-                              <div className="h-7 w-7 rounded-md bg-muted/60 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <item.icon className="h-3.5 w-3.5 text-primary/70" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">{item.label}</p>
-                                <p className="text-xs font-bold text-foreground truncate uppercase" title={item.value || '-'}>{item.value || '-'}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Row 2: Supplier */}
-                        <div className="rounded-xl bg-gradient-to-r from-primary/[0.04] to-transparent border border-primary/10 p-3">
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <Factory className="h-3.5 w-3.5 text-primary" />
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-primary">Supplier</p>
-                          </div>
+                      {/* ─── EXPANDED BODY ─── */}
+                      {isExpanded && (
+                        <div className="p-5 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                          {/* Row 1: Container | BOL | Carrier | Vessel */}
                           <div className="grid grid-cols-4 gap-3">
-                            <div className="col-span-2 min-w-0">
-                              <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
-                              <p className="text-xs font-bold text-foreground truncate">
-                                {supName ? (<><span className="text-primary">{supName}</span> <span className="text-muted-foreground">—</span> {locName}</>) : locName}
-                              </p>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
-                              <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
-                              <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Row 3: Products */}
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <Package className="h-3.5 w-3.5 text-primary/70" />
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Products</p>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(() => {
-                              const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
-                                : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
-                                  : ship.product ? [ship.product] : [];
-                              return productIds.length > 0
-                                ? productIds.map((pid: string, i: number) => (
-                                  <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg">
-                                    {products[pid] || pid}
-                                  </span>
-                                ))
-                                : <span className="text-xs text-muted-foreground">—</span>;
-                            })()}
-                          </div>
-                        </div>
-
-                        {/* Row 4: Logistics & Route */}
-                        <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 overflow-hidden">
-                          <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-                            <Anchor className="h-3.5 w-3.5 text-primary/70" />
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Logistics & Route</p>
-                          </div>
-                          <div className="grid grid-cols-5 gap-0 px-3 pb-2.5 pt-1">
-                            {[
-                              { label: 'Port of Lading', value: ship.portOfLading },
-                              { label: 'Port of Entry', value: ship.portOfEntryShipTo },
-                              { label: 'Landing Date', value: formatDate(ship.dateOfLanding) },
-                              { label: 'ETA', value: formatDate(ship.ETA) },
-                              { label: 'Updated ETA', value: formatDate(ship.updatedETA), highlight: true },
-                            ].map((item, i) => (
-                              <div key={i} className={cn("text-center py-1", i < 4 && 'border-r border-border/40')}>
-                                <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">{item.label}</p>
-                                <p className={cn("text-[10px] font-bold truncate px-1", item.highlight ? 'text-primary' : 'text-foreground')} title={item.value || '-'}>{item.value || '-'}</p>
+                            {[{ label: 'Container', value: ship.containerNo, icon: Box }, { label: 'BOL Number', value: ship.BOLNumber, icon: Hash }, { label: 'Carrier', value: ship.carrier, icon: Truck }, { label: 'Vessel / Trip', value: ship.vessellTrip, icon: Ship }].map((item, i) => (
+                              <div key={i} className="flex items-start gap-2 min-w-0">
+                                <div className="h-7 w-7 rounded-md bg-muted/60 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                  <item.icon className="h-3.5 w-3.5 text-primary/70" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">{item.label}</p>
+                                  <p className="text-xs font-bold text-foreground truncate uppercase" title={item.value || '-'}>{item.value || '-'}</p>
+                                </div>
                               </div>
                             ))}
                           </div>
-                          <div className="border-t border-border/30 px-3 py-2">
-                            <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">Booking Ref</p>
-                            <p className="text-[10px] font-bold text-foreground">{ship.carrierBookingRef || '-'}</p>
-                          </div>
-                        </div>
 
-                        {/* Row 5: Cargo & Financials */}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
+                          {/* Row 2: Supplier */}
+                          <div className="rounded-xl bg-gradient-to-r from-primary/[0.04] to-transparent border border-primary/10 p-3">
                             <div className="flex items-center gap-1.5 mb-2">
-                              <Weight className="h-3.5 w-3.5 text-primary/70" />
-                              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Weights & Measures</p>
+                              <Factory className="h-3.5 w-3.5 text-primary" />
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-primary">Supplier</p>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="col-span-2 min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
+                                <p className="text-xs font-bold text-foreground truncate">
+                                  {supName ? (<><span className="text-primary">{supName}</span> <span className="text-muted-foreground">—</span> {locName}</>) : locName}
+                                </p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
+                                <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
+                                <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Row 3: Products */}
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <Package className="h-3.5 w-3.5 text-primary/70" />
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Products</p>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(() => {
+                                const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
+                                  : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
+                                    : ship.product ? [ship.product] : [];
+                                return productIds.length > 0
+                                  ? productIds.map((pid: string, i: number) => (
+                                    <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg">
+                                      {products[pid] || pid}
+                                    </span>
+                                  ))
+                                  : <span className="text-xs text-muted-foreground">—</span>;
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* Row 4: Logistics & Route */}
+                          <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 overflow-hidden">
+                            <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
+                              <Anchor className="h-3.5 w-3.5 text-primary/70" />
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Logistics & Route</p>
+                            </div>
+                            <div className="grid grid-cols-5 gap-0 px-3 pb-2.5 pt-1">
                               {[
-                                { label: 'Drums', value: ship.drums || 0 },
-                                { label: 'Pallets', value: ship.pallets || 0 },
-                                { label: 'Gallons', value: ship.gallons || 0 },
-                                { label: 'Net KG', value: ship.netWeightKG || 0 },
-                                { label: 'Gross KG', value: ship.grossWeightKG || 0 },
+                                { label: 'Port of Lading', value: ship.portOfLading },
+                                { label: 'Port of Entry', value: ship.portOfEntryShipTo },
+                                { label: 'Landing Date', value: formatDate(ship.dateOfLanding) },
+                                { label: 'ETA', value: formatDate(ship.ETA) },
+                                { label: 'Updated ETA', value: formatDate(ship.updatedETA), highlight: true },
                               ].map((item, i) => (
-                                <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
-                                  <p className="text-xs font-bold text-foreground">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
-                                  <p className="text-[8px] font-bold uppercase text-foreground/50 tracking-wider">{item.label}</p>
+                                <div key={i} className={cn("text-center py-1", i < 4 && 'border-r border-border/40')}>
+                                  <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">{item.label}</p>
+                                  <p className={cn("text-[10px] font-bold truncate px-1", item.highlight ? 'text-primary' : 'text-foreground')} title={item.value || '-'}>{item.value || '-'}</p>
                                 </div>
                               ))}
                             </div>
-                          </div>
-                          <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <DollarSign className="h-3.5 w-3.5 text-primary/70" />
-                              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Financials</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              {[
-                                { label: 'Inv Value', value: `$${(ship.invValue || 0).toLocaleString()}` },
-                                { label: 'Est. Duties', value: `$${(ship.estTrumpDuties || 0).toLocaleString()}` },
-                                { label: 'Fees Amount', value: `$${(ship.feesAmount || 0).toLocaleString()}` },
-                                { label: 'Est Duties (2)', value: `$${(ship.estimatedDuties || 0).toLocaleString()}` },
-                              ].map((item, i) => (
-                                <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
-                                  <p className="text-xs font-bold text-foreground">{item.value}</p>
-                                  <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
-                                </div>
-                              ))}
+                            <div className="border-t border-border/30 px-3 py-2">
+                              <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">Booking Ref</p>
+                              <p className="text-[10px] font-bold text-foreground">{ship.carrierBookingRef || '-'}</p>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Footer: PO Reference */}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/20">
-                          <div className="flex items-center gap-2">
-                            <div className="h-5 w-5 rounded-md bg-muted flex items-center justify-center">
-                              <ShoppingCart className="h-3 w-3 text-muted-foreground" />
+                          {/* Row 5: Cargo & Financials */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <Weight className="h-3.5 w-3.5 text-primary/70" />
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Weights & Measures</p>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { label: 'Drums', value: ship.drums || 0 },
+                                  { label: 'Pallets', value: ship.pallets || 0 },
+                                  { label: 'Gallons', value: ship.gallons || 0 },
+                                  { label: 'Net KG', value: ship.netWeightKG || 0 },
+                                  { label: 'Gross KG', value: ship.grossWeightKG || 0 },
+                                ].map((item, i) => (
+                                  <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
+                                    <p className="text-xs font-bold text-foreground">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
+                                    <p className="text-[8px] font-bold uppercase text-foreground/50 tracking-wider">{item.label}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider">Purchase Order</p>
-                              <p className="text-[10px] font-bold text-primary">{po.vbpoNo} — {po.orderType} — {po.category}</p>
+                            <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <DollarSign className="h-3.5 w-3.5 text-primary/70" />
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Financials</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { label: 'Inv Value', value: `$${(ship.invValue || 0).toLocaleString()}` },
+                                  { label: 'Est. Duties', value: `$${(ship.estTrumpDuties || 0).toLocaleString()}` },
+                                  { label: 'Fees Amount', value: `$${(ship.feesAmount || 0).toLocaleString()}` },
+                                  { label: 'Est Duties (2)', value: `$${(ship.estimatedDuties || 0).toLocaleString()}` },
+                                ].map((item, i) => (
+                                  <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
+                                    <p className="text-xs font-bold text-foreground">{item.value}</p>
+                                    <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                          {po.date && (
-                            <span className="text-[9px] text-muted-foreground font-medium flex items-center gap-1">
-                              <Calendar className="h-2.5 w-2.5" />
-                              {new Date(po.date).toLocaleDateString()}
-                            </span>
-                          )}
+
+                          {/* Footer: Action Buttons & PO Reference */}
+                          <div className="flex items-center justify-between pt-4 mt-2 border-t border-border/20">
+                            <div className="flex items-center gap-2 overflow-x-auto shrink-0 pr-2">
+                               <Button variant="outline" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm hover:border-primary/40 hover:bg-primary/5" onClick={() => router.push(`/admin/purchase-orders/${po._id}`)}>
+                                 <ExternalLink className="h-3 w-3" /> View PO
+                               </Button>
+                               <Button variant="secondary" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm" onClick={() => setTimelineModal({ open: true, vbpoNo: po.vbpoNo, poNo: ship.customerPONo, svbid: ship.svbid })}>
+                                 <Activity className="h-3 w-3" /> Timeline
+                               </Button>
+                               <Button variant="secondary" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm" onClick={() => setAttachmentsModal({ open: true, poNumber: po.vbpoNo, spoNumber: ship.customerPONo, shipNumber: ship.svbid })}>
+                                 <Paperclip className="h-3 w-3" /> Attachments
+                               </Button>
+                               <Button variant="outline" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm">
+                                 <Pencil className="h-3 w-3" /> Edit
+                               </Button>
+                            </div>
+                            {po.date && (
+                              <span className="text-[9px] text-muted-foreground font-medium flex items-center gap-1 shrink-0 ml-auto pl-4">
+                                <Calendar className="h-2.5 w-2.5" />
+                                {new Date(po.date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
-                });
-              })}
+                })
+              }
             </div>
           )}
         </div>
@@ -863,6 +895,25 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {timelineModal && (
+        <TimelineModal
+          open={timelineModal.open}
+          onClose={() => setTimelineModal(null)}
+          vbpoNo={timelineModal.vbpoNo}
+          poNo={timelineModal.poNo}
+          svbid={timelineModal.svbid}
+        />
+      )}
+
+      {attachmentsModal && (
+        <AttachmentsModal
+          open={attachmentsModal.open}
+          onClose={() => setAttachmentsModal(null)}
+          poNumber={attachmentsModal.poNumber}
+          spoNumber={attachmentsModal.spoNumber}
+          shipNumber={attachmentsModal.shipNumber}
+        />
+      )}
       </div>
     </TooltipProvider>
   );

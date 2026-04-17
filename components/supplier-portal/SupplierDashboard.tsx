@@ -135,17 +135,7 @@ export function SupplierDashboard({ supplierId, isSupplierView = false }: { supp
       );
 
       if (!isSupplierView) {
-        setRightContent(
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5"
-            onClick={() => router.push(`/quality-control/suppliers?highlight=${supplierId}`)}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Suppliers
-          </Button>
-        );
+        setRightContent(null);
       }
     }
     return () => {

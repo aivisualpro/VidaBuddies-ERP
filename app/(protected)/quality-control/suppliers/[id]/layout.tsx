@@ -1,14 +1,18 @@
 "use client";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { use } from "react";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 export default function AppAdminSupplierLayout({ children, params }: { children: React.ReactNode, params: Promise<{ id: string }> }) {
   const pathname = usePathname();
   const { id } = use(params);
+  const router = useRouter();
   const activeTab = pathname.includes("/supply-survey") ? "supply-survey" : pathname.includes("/survey") ? "survey" : pathname.includes("/documents") ? "documents" : pathname.includes("/history") ? "history" : pathname.includes("/specs") ? "specs" : "dashboard";
+
   return (
     <div className="flex-1 flex flex-col pt-2">
-      <div className="border-b sticky top-0 z-20 bg-background">
+      <div className="border-b sticky top-0 z-20 bg-background flex items-center justify-between pr-4 gap-4">
         <div className="flex h-10 items-center overflow-x-auto gap-2">
           <Link href={`/quality-control/suppliers/${id}/dashboard`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'dashboard' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Dashboard</Link>
           <Link href={`/quality-control/suppliers/${id}/documents`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'documents' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Documents</Link>
@@ -17,6 +21,15 @@ export default function AppAdminSupplierLayout({ children, params }: { children:
           <Link href={`/quality-control/suppliers/${id}/history`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'history' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>History</Link>
           <Link href={`/quality-control/suppliers/${id}/specs`} className={`inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-xs font-black transition-colors uppercase tracking-widest ${activeTab === 'specs' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground border-transparent'}`}>Specs</Link>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-[10px] font-bold uppercase tracking-widest gap-1.5 shrink-0 hidden md:flex"
+          onClick={() => router.push(`/quality-control/suppliers?highlight=${id}`)}
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Suppliers
+        </Button>
       </div>
       <div className="flex-1 w-full h-full pb-0 pt-2">
         {children}

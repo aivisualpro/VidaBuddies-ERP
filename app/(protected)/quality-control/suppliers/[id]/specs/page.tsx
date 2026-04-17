@@ -78,12 +78,9 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     if (supplier) {
       setLeftContent(
-        <div className="flex items-center gap-2 text-foreground ml-1">
-          <FlaskConical className="h-5 w-5 text-primary" />
-          <h1 className="text-[17px] font-black uppercase tracking-widest">
-            {supplier.name} <span className="text-muted-foreground/40 font-medium px-2">/</span> SPECS
-          </h1>
-        </div>
+        <h1 className="text-xl font-black tracking-tight uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
+          <span className="hidden md:inline">{supplier.name} <span className="text-primary/40">/</span></span> <span className="text-primary/40 md:text-primary/40">SPECS</span>
+        </h1>
       );
     }
     return () => setLeftContent(null);
