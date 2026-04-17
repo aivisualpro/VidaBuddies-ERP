@@ -33,6 +33,14 @@ export interface IVidaSupplierDocumentLog {
   products?: string[];
 }
 
+export interface IVidaSupplierContact {
+  name: string;
+  designation?: string;
+  emails: string[];
+  phones: { number: string; ext?: string }[];
+  address?: string;
+}
+
 export interface IVidaSupplierDocument {
   name: string; // The exact name from REQUIRED_DOCS
   fileId?: string; // Google Drive file ID (legacy, kept for compat)
@@ -70,6 +78,7 @@ export interface IVidaSupplier extends Document {
   location: IVidaSupplierLocation[];
   documents?: IVidaSupplierDocument[];
   surveyResponses?: IVidaSurveyResponse[];
+  contacts?: IVidaSupplierContact[];
 }
 
 const VidaSupplierLocationSchema: Schema = new Schema({
@@ -103,6 +112,19 @@ const VidaSupplierDocumentLogSchema: Schema = new Schema({
   fileLink: { type: String },
   isVerified: { type: Boolean, default: false },
   products: [{ type: String }]
+});
+
+const VidaSupplierContactPhoneSchema: Schema = new Schema({
+  number: { type: String, required: true },
+  ext: { type: String }
+}, { _id: false });
+
+const VidaSupplierContactSchema: Schema = new Schema({
+  name: { type: String, required: true },
+  designation: { type: String },
+  emails: [{ type: String }],
+  phones: [VidaSupplierContactPhoneSchema],
+  address: { type: String }
 });
 
 const VidaSupplierDocumentSchema: Schema = new Schema({
@@ -142,6 +164,7 @@ const VidaSupplierSchema: Schema = new Schema({
   location: [VidaSupplierLocationSchema],
   documents: { type: [VidaSupplierDocumentSchema], default: [] },
   surveyResponses: { type: [VidaSurveyResponseSchema], default: [] },
+  contacts: { type: [VidaSupplierContactSchema], default: [] }
 });
 
 const VidaSupplier: Model<IVidaSupplier> = mongoose.models.VidaSupplier || mongoose.model<IVidaSupplier>('VidaSupplier', VidaSupplierSchema);

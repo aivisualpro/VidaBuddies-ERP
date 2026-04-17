@@ -119,17 +119,17 @@ export function LogsProductMultiSelect({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 w-[130px] justify-between px-2 text-[10px] font-medium">
+        <Button variant="outline" size="sm" className="h-7 w-full min-w-[200px] justify-between px-2 text-[10px] font-medium">
           <span className="truncate">
             {selectedCount > 0 ? `${selectedCount} Product${selectedCount > 1 ? 's' : ''}` : "Select Products"}
           </span>
           <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0 z-[9999]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <PopoverContent className="w-[350px] p-0 z-[9999] pointer-events-auto" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <Command>
           <CommandInput placeholder="Search products..." className="h-8 text-xs outline-none focus:outline-none ring-0 border-0 shadow-none border-b focus:ring-0" />
-          <CommandList className="max-h-[200px]">
+          <CommandList className="max-h-[250px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
             <CommandEmpty>No products found.</CommandEmpty>
             <CommandGroup>
               {availableProducts.map((prod, idx) => (
@@ -836,7 +836,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       </div>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
-        <DialogContent className="sm:max-w-6xl rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
+        <DialogContent className="w-[95vw] max-w-7xl rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-black uppercase tracking-tight">
               {activeLogType === 'attachments' ? activeDocName : `Notes: ${activeDocName}`}
@@ -855,7 +855,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                         <th className="px-4 py-3 min-w-[200px]">File Name</th>
                         <th className="px-4 py-3">Created By</th>
                         <th className="px-4 py-3">Created At</th>
-                        <th className="px-4 py-3 min-w-[150px]">Products</th>
+                        <th className="px-4 py-3 min-w-[280px]">Products</th>
                         <th className="px-4 py-3 text-center">Verified</th>
                         <th className="px-4 py-3 text-right">Actions</th>
                       </tr>
