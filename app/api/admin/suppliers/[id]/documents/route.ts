@@ -54,3 +54,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Failed to update document" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const { docName, logId } = await req.json();
+
+    if (!docName || !logId) {
+      return NextResponse.json({ error: "Missing docName or logId" }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const supplier = await VidaSupplier.findById(id);
+    if (!supplier) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
+
+    const docIndex = supplier.documents?.findIndex((d: any) => d.name === docName);
+    if (docIndex !== undefined && docIndex !== -1) {
+      const doc = supplier.documents[docIndex];
+      const logIndex = doc.logs.findIndex((l: any) => l._id?.toString() === logId);
+      
+      if (logIndex !== -1) {
+        const removedLog = doc.logs.splice(logIndex, 1)[0];
+        
+        if (doc.fileId === removedLog.fileId) {
+          const previousUpload = [...doc.logs]
+            .reverse()
+            .find(l => l.fileId && l.action.startsWith('Uploaded'));
+            
+          if (previousUpload) {
+            doc.fileId = previousUpload.fileId;
+            doc.fileLink = previousUpload.fileLink;
+          } else {
+            doc.fileId = undefined;
+            doc.fileLink = undefined;
+          }
+        }
+        
+        doc.logs.push({
+           action: `Deleted file: ${removedLog.action.replace('Uploaded ', '')}`,
+           by: session.name || session.email || 'System',
+           date: new Date()
+        });
+      }
+    }
+
+    await supplier.save();
+    return NextResponse.json(supplier.documents);
+  } catch (error) {
+    console.error("Error deleting document log:", error);
+    return NextResponse.json({ error: "Failed to delete log" }, { status: 500 });
+  }
+}

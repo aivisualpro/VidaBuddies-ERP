@@ -41,7 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const logEntry = {
       action: `Uploaded ${file.name}`,
       by: session.name || session.email || 'System',
-      date: new Date()
+      date: new Date(),
+      fileId: uploadedFile.id,
+      fileLink: uploadedFile.webViewLink
     };
 
     if (docIndex === -1) {

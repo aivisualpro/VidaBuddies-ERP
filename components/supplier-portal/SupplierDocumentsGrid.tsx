@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf } from "lucide-react";
+import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf, Trash } from "lucide-react";
 import Image from "next/image";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
@@ -65,9 +65,12 @@ const REQUIRED_DOCS = [
 const CATEGORIES = [...new Set(REQUIRED_DOCS.map(d => d.category))];
 
 interface LogEntry {
+  _id?: string;
   action: string;
   by: string;
   date: string;
+  fileId?: string;
+  fileLink?: string;
 }
 
 interface DocumentData {
@@ -213,6 +216,33 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     }
   };
 
+  const deleteLogEntry = async (docName: string, logId: string) => {
+    try {
+      const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docName, logId }),
+      });
+
+      if (!response.ok) throw new Error("Delete failed");
+      
+      const updatedDocs = await response.json();
+      const statesMap: Record<string, DocumentData> = {};
+      updatedDocs.forEach((d: any) => {
+        if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
+        statesMap[d.name] = d;
+      });
+      setDocStates(statesMap);
+      
+      // Update active logs state locally if modal open
+      setActiveLogs(prev => prev.filter(l => l._id !== logId));
+      
+      toast.success("File history deleted successfully!");
+    } catch (error) {
+      toast.error("Failed to delete log entry.");
+    }
+  };
+
   const verifyDoc = (docName: string) => {
     updateDocumentData(docName, { isVerified: true }, "Marked as Verified");
     toast.success("Document verified!");
@@ -239,9 +269,8 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     updateDocumentData(docName, { isNA: newNA }, newNA ? 'Marked as N/A' : 'Unmarked N/A');
   };
 
-  const openLogs = (docName: string, logs?: LogEntry[], fileLink?: string, type: 'attachments' | 'notes' = 'attachments') => {
+  const openLogs = (docName: string, logs?: LogEntry[], type: 'attachments' | 'notes' = 'attachments') => {
     setActiveDocName(docName);
-    setActiveFileLink(fileLink);
     setActiveLogType(type);
     const allLogs = logs ? [...logs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
     if (type === 'attachments') {
@@ -313,15 +342,8 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     
     return (
       <tr key={i} className={`hover:bg-muted/10 transition-colors ${isNA ? 'opacity-40' : ''}`}>
-        <td className="px-4 py-2 font-medium text-foreground">
-          {state.fileLink ? (
-            <a href={state.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1.5">
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              {doc.name}
-            </a>
-          ) : (
-            doc.name
-          )}
+        <td className="px-4 py-2 font-medium text-foreground flex items-center gap-2 mt-2">
+          {doc.name}
         </td>
         <td className="px-4 py-2">
           <div className={`inline-flex px-2 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${statusInfo.bg} ${statusInfo.color}`}>
@@ -370,10 +392,10 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             <Button variant="ghost" size="icon" className={`h-7 w-7 ${isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
               {isNA ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, 'attachments')}>
                <Paperclip className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'notes')}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, 'notes')}>
                <MessageSquare className="h-3.5 w-3.5" />
             </Button>
 
@@ -424,14 +446,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         </div>
         <div className="px-4 py-3 space-y-3">
           <div className="font-semibold text-sm text-foreground leading-tight">
-            {state.fileLink ? (
-              <a href={state.fileLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1.5">
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                {doc.name}
-              </a>
-            ) : (
-              doc.name
-            )}
+            {doc.name}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-16 shrink-0">Expiry</span>
@@ -475,10 +490,10 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             <Button variant="ghost" size="icon" className={`h-8 w-8 ${state.isNA ? 'text-zinc-500 hover:text-green-500' : 'text-muted-foreground hover:text-zinc-500'}`} title={state.isNA ? 'Undo N/A' : 'Mark as N/A'} onClick={() => toggleNA(doc.name)}>
               {state.isNA ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'attachments')}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Attachment History" onClick={() => openLogs(doc.name, state.logs, 'attachments')}>
               <Paperclip className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, state.fileLink, 'notes')}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, state.logs, 'notes')}>
               <MessageSquare className="h-4 w-4" />
             </Button>
           </div>
@@ -702,31 +717,44 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       </div>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
-        <DialogContent className="sm:max-w-[500px] rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
+        <DialogContent className="sm:max-w-[700px] rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-black uppercase tracking-tight">
-              {activeLogType === 'attachments' ? 'Attachment History' : 'Notes History'}
+              {activeLogType === 'attachments' ? activeDocName : `Notes: ${activeDocName}`}
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground text-[10px] tracking-widest font-bold uppercase pt-1">
+            <DialogDescription className="sr-only">
               {activeDocName}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mt-4 inline-flex flex-col w-full text-sm">
             {activeLogs.length > 0 ? (
               activeLogs.map((log, i) => (
-                <div key={i} className="flex flex-col gap-1 border-b border-border/50 pb-3 last:border-0">
-                  {log.action.startsWith('Uploaded') && activeFileLink ? (
-                    <a href={activeFileLink} target="_blank" rel="noopener noreferrer" className="font-bold text-xs uppercase tracking-widest text-primary hover:underline flex items-center gap-1">
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                      {log.action}
-                    </a>
-                  ) : (
-                    <span className="font-bold text-xs uppercase tracking-widest">{log.action}</span>
-                  )}
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
-                    <span>By: <span className="text-primary">{log.by}</span></span>
-                    <span>{new Date(log.date).toLocaleString()}</span>
+                <div key={i} className="flex border-b border-border/50 pb-3 last:border-0 items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1 flex-1">
+                    {log.action.startsWith('Uploaded') && log.fileLink ? (
+                      <a href={log.fileLink} target="_blank" rel="noopener noreferrer" className="font-bold text-xs uppercase tracking-widest text-primary hover:underline flex items-start gap-1.5 break-words">
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        <span className="flex-1">{log.action}</span>
+                      </a>
+                    ) : (
+                      <span className="font-bold text-xs uppercase tracking-widest text-[#a1a1aa]">{log.action}</span>
+                    )}
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">
+                      <span>By: <span className="text-primary">{log.by}</span></span>
+                      <span>{new Date(log.date).toLocaleString()}</span>
+                    </div>
                   </div>
+                  {log.action.startsWith('Uploaded') && log._id && (
+                    <Button 
+                      title="Delete document" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => deleteLogEntry(activeDocName, log._id!)} 
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 mt-0.5"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               ))
             ) : (

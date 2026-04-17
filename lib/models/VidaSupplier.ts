@@ -17,6 +17,8 @@ export interface IVidaSupplierDocumentLog {
   action: string;
   by: string;
   date: Date;
+  fileId?: string;
+  fileLink?: string;
 }
 
 export interface IVidaSupplierDocument {
@@ -73,7 +75,9 @@ const VidaSupplierLocationSchema: Schema = new Schema({
 const VidaSupplierDocumentLogSchema: Schema = new Schema({
   action: { type: String, required: true },
   by: { type: String, required: true },
-  date: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now },
+  fileId: { type: String },
+  fileLink: { type: String }
 });
 
 const VidaSupplierDocumentSchema: Schema = new Schema({
