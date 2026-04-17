@@ -14,6 +14,7 @@ import connectToDatabase from "@/lib/db";
 import VidaSupplier, { IVidaSupplierDocument } from "@/lib/models/VidaSupplier";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import DashboardHeader from "./dashboard-header";
 
 export const revalidate = 0; // Ensure data is always fresh
 
@@ -110,73 +111,22 @@ export default async function DashboardPage() {
 
   const recentDocs = allActivities.slice(0, 10);
   const topActionItems = actionItems.slice(0, 5);
-
-  const compliancePercentage = totalDocsCount > 0 ? Math.round((totalApproved / totalDocsCount) * 100) : 0;
-
   return (
-    <div className="flex-1 h-full overflow-y-auto p-4 space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Suppliers</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{suppliers.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {suppliersWithPending} with pending reviews
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Reviews</CardTitle>
-            <Clock className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{totalPending}</div>
-            <p className="text-xs text-muted-foreground">
-              Documents waiting for approval
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Expiring Soon (30d)</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{totalExpiring}</div>
-            <p className="text-xs text-muted-foreground">
-              Missing or expiring documents
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Compliance Health</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{compliancePercentage}%</div>
-            <p className="text-xs text-muted-foreground">
-              Of uploaded documents approved
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="flex-1 h-full pt-4 flex flex-col overflow-hidden">
+      <DashboardHeader 
+        totalSuppliers={suppliers.length} 
+        totalPending={totalPending} 
+        totalExpiring={totalExpiring} 
+      />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4 flex flex-col">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 flex-1 min-h-0">
+        <Card className="col-span-4 flex flex-col h-full overflow-hidden border-b-0 rounded-b-none">
           <CardHeader>
             <CardTitle>Supplier Compliance Overview</CardTitle>
-            <CardDescription>
-              Status of all suppliers across the network.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 overflow-auto">
+          <CardContent className="flex flex-col flex-1 overflow-hidden [&_[data-slot=table-container]]:flex-1 [&_[data-slot=table-container]]:overflow-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-card z-20 shadow-sm [&_th]:bg-card text-xs">
                 <TableRow>
                   <TableHead>Supplier</TableHead>
                   <TableHead className="text-center">Total Docs</TableHead>
@@ -213,10 +163,9 @@ export default async function DashboardPage() {
                   
                   return (
                     <TableRow key={supp._id}>
-                      <TableCell className="font-medium">
-                        <Link href={`/quality-control/suppliers/${supp._id}/documents`} className="hover:underline flex flex-col">
-                          <span>{supp.name}</span>
-                          <span className="text-xs text-muted-foreground font-normal">{supp.vbId}</span>
+                      <TableCell>
+                        <Link href={`/quality-control/suppliers/${supp._id}/documents`} className="hover:underline">
+                          {supp.name}
                         </Link>
                       </TableCell>
                       <TableCell className="text-center">{sTotal}</TableCell>
@@ -251,7 +200,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
         
-        <Card className="col-span-3 flex flex-col">
+        <Card className="col-span-3 flex flex-col h-full overflow-hidden border-b-0 rounded-b-none">
           <CardHeader>
             <CardTitle>Action Items</CardTitle>
             <CardDescription>

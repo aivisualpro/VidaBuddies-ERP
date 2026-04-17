@@ -51,11 +51,6 @@ const data = {
       url: "/admin/settings",
       icon: IconSettings,
     },
-    {
-      title: "Search",
-      url: "#",
-      icon: IconSearch,
-    },
   ],
   admin: [
     {

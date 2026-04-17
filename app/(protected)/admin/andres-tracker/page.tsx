@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, useMemo, Fragment } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
-import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
@@ -66,6 +67,7 @@ const EditableCell = ({ value, isExpanded, onSave, className = "", type = "text"
 export default function AndresTrackerPage() {
   const router = useRouter();
   const { setLeftContent, setRightContent } = useHeaderActions();
+  const [globalSearch, setGlobalSearch] = useState("");
   const [isAddPOOpen, setIsAddPOOpen] = useState(false);
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const { 
@@ -169,7 +171,11 @@ export default function AndresTrackerPage() {
     }
 
     let base = [...(purchaseOrders || [])]
-      .filter((po) => !po.isArchived)
+      .filter((po) => {
+        if (po.isArchived) return false;
+        if (!globalSearch) return true;
+        return JSON.stringify(po).toLowerCase().includes(globalSearch.toLowerCase());
+      })
       .map((po) => {
         let containerCount = 0;
         let remainingCount = 0;
@@ -231,7 +237,7 @@ export default function AndresTrackerPage() {
     });
 
     return base;
-  }, [purchaseOrders, vbpoSort, storeProducts]);
+  }, [purchaseOrders, vbpoSort, storeProducts, globalSearch]);
 
   const toggleVbpoSort = (key: typeof vbpoSort.key) => {
     setVbpoSort(prev => ({
@@ -289,6 +295,11 @@ export default function AndresTrackerPage() {
       });
     });
 
+    if (globalSearch) {
+      const q = globalSearch.toLowerCase();
+      flatList = flatList.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+    }
+
     flatList.sort((a, b) => {
       let aVal, bVal;
       switch(shipSort.key) {
@@ -309,7 +320,7 @@ export default function AndresTrackerPage() {
       return 0;
     });
     return flatList;
-  }, [purchaseOrders, shipSort, storeProducts, storeCustomers, storeSuppliers]);
+  }, [purchaseOrders, shipSort, storeProducts, storeCustomers, storeSuppliers, globalSearch]);
 
   const toggleShipSort = (key: typeof shipSort.key) => {
     setShipSort(prev => ({
@@ -341,6 +352,11 @@ export default function AndresTrackerPage() {
       });
     });
 
+    if (globalSearch) {
+      const q = globalSearch.toLowerCase();
+      flatList = flatList.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+    }
+
     flatList.sort((a, b) => {
       let aVal, bVal;
       switch (cpoSort.key) {
@@ -371,7 +387,7 @@ export default function AndresTrackerPage() {
     });
 
     return flatList;
-  }, [purchaseOrders, storeCustomers, cpoSort]);
+  }, [purchaseOrders, storeCustomers, cpoSort, globalSearch]);
 
   const toggleCpoSort = (key: typeof cpoSort.key) => {
     setCpoSort(prev => ({
@@ -416,6 +432,11 @@ export default function AndresTrackerPage() {
         });
       });
 
+    if (globalSearch) {
+      const q = globalSearch.toLowerCase();
+      flatList = flatList.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+    }
+
     flatList.sort((a, b) => {
       let aVal, bVal;
       switch (invSort.key) {
@@ -432,7 +453,7 @@ export default function AndresTrackerPage() {
     });
 
     return flatList;
-  }, [purchaseOrders, storeWarehouses, storeProducts, invSort]);
+  }, [purchaseOrders, storeWarehouses, storeProducts, invSort, globalSearch]);
 
   const toggleInvSort = (key: typeof invSort.key) => {
     setInvSort(prev => ({
@@ -452,9 +473,16 @@ export default function AndresTrackerPage() {
         </h1>
       </div>
     );
-
-    setRightContent(null);
-
+     setRightContent(
+        <div className="relative w-[250px] md:w-[300px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search all columns..." 
+            className="pl-9 bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 h-9 w-full"
+            onChange={(e) => setGlobalSearch(e.target.value)}
+          />
+        </div>
+    );
     return () => {
       setLeftContent(null);
       setRightContent(null);

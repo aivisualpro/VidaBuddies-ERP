@@ -268,14 +268,7 @@ export function SimpleDataTable<TData, TValue>({
           </TableBody>
         </table>
       </div>
-      <div className="flex items-center justify-end py-1.5 px-1">
-        <div className="text-[11px] text-muted-foreground font-medium">
-          {table.getFilteredRowModel().rows.length} records
-          {table.getFilteredSelectedRowModel().rows.length > 0 && (
-            <span className="ml-2">({table.getFilteredSelectedRowModel().rows.length} selected)</span>
-          )}
-        </div>
-      </div>
+
     </div>
   );
 }

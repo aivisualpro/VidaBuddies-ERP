@@ -25,34 +25,7 @@ export default function QualityControlLayout({ children }: { children: React.Rea
       
       const activeTab = pathname.includes("/suppliers") ? "suppliers" : "dashboard";
       
-      if (activeTab === "dashboard") {
-        setRightContent(
-          <TooltipProvider>
-            <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-9 w-9">
-                    <Mail className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
-                  Send Reminders
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-9 w-9">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-[10px] font-black uppercase tracking-widest bg-black text-white">
-                  Export Pre-Sales Pack
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
-        );
-      } else {
+      if (activeTab !== "dashboard") {
         setRightContent(null);
       }
     } else {
@@ -85,7 +58,7 @@ export default function QualityControlLayout({ children }: { children: React.Rea
       )}
       
       {activeTab === 'suppliers' && !isDeepRoute ? (
-        <div className="flex-1 overflow-hidden rounded-xl bg-card border shadow-sm p-4 mt-4">
+        <div className="flex-1 overflow-hidden rounded-xl bg-card border shadow-sm mt-4">
           <div className="h-full overflow-y-auto w-full">
             {children}
           </div>
