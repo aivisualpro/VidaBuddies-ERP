@@ -19,6 +19,10 @@ import {
   IconShoppingCart,
   IconTruck,
   IconUser,
+  IconChartBar,
+  IconCalculator,
+  IconCurrencyDollar,
+  IconFileInvoice,
 } from "@tabler/icons-react";
 
 import { NavDocuments } from "@/components/nav-documents";
@@ -103,6 +107,38 @@ const data = {
       icon: IconCheckbox,
     },
   ],
+  sales: [
+    {
+      name: "Sales Dashboard",
+      url: "/admin/sales/dashboard",
+      icon: IconChartBar,
+    },
+    {
+      name: "Quote Builder",
+      url: "/admin/sales/quote-builder",
+      icon: IconCalculator,
+    },
+    {
+      name: "Supplier Pricing",
+      url: "/admin/sales/supplier-pricing",
+      icon: IconCurrencyDollar,
+    },
+    {
+      name: "Freight",
+      url: "/admin/sales/freight",
+      icon: IconTruck,
+    },
+    {
+      name: "Shipment Tracking",
+      url: "/admin/sales/shipment-tracking",
+      icon: IconRoute,
+    },
+    {
+      name: "Accounting",
+      url: "/admin/sales/accounting",
+      icon: IconFileInvoice,
+    },
+  ],
   reports: [
     {
       name: "Andres Tracker",
@@ -117,12 +153,12 @@ const data = {
   ],
 };
 
-export function AppSidebar({ 
-  isSupplierProp = false, 
+export function AppSidebar({
+  isSupplierProp = false,
   initialPermissions = [],
   initialIsAdmin = false,
-  ...props 
-}: React.ComponentProps<typeof Sidebar> & { 
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
   isSupplierProp?: boolean,
   initialPermissions?: any[],
   initialIsAdmin?: boolean
@@ -171,16 +207,17 @@ export function AppSidebar({
       if (perm) {
         return perm.actions?.view === true;
       }
-      
+
       // Fallback: If no permission record exists for this module, what to do?
       // Defaulting to FALSE prevents unauthorized users from seeing everything if their permission load failed or is incomplete.
-      return false; 
+      return false;
     });
   };
 
   const filteredAdmin = filterItems(data.admin);
   const filteredInventory = filterItems(data.inventory);
   const filteredManagement = filterItems(data.management);
+  const filteredSales = filterItems(data.sales);
   const filteredReports = filterItems(reports);
   const filteredSecondary = filterItems(data.navSecondary);
 
@@ -204,7 +241,7 @@ export function AppSidebar({
                   className="object-contain w-auto h-8 group-data-[collapsible=icon]:hidden"
                   priority
                 />
-                 <Image
+                <Image
                   src="/sidebar-logo.png"
                   alt="Company Logo"
                   width={40}
@@ -221,6 +258,7 @@ export function AppSidebar({
         {filteredAdmin.length > 0 && <NavDocuments items={filteredAdmin} label="Admin" />}
         {filteredInventory.length > 0 && <NavDocuments items={filteredInventory} label="Inventory" />}
         {filteredManagement.length > 0 && <NavDocuments items={filteredManagement} label="Management" />}
+        {filteredSales.length > 0 && <NavDocuments items={filteredSales} label="Sales" />}
         {filteredReports.length > 0 && <NavDocuments items={filteredReports} label="Reports" />}
         {filteredSecondary.length > 0 && <NavSecondary items={filteredSecondary} className="mt-auto" />}
       </SidebarContent>
