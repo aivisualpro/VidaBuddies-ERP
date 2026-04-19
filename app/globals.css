@@ -128,7 +128,7 @@ body {
 
 :root {
   --font-sans: var(--font-poppins);
-  --header-height: calc(var(--spacing) * 12 + 1px);
+  --header-height: 56px;
 }
 
 .theme-scaled {

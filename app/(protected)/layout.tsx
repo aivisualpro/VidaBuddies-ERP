@@ -62,16 +62,18 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         className="h-screen overflow-hidden"
         style={
           {
-            "--header-height": "calc(var(--spacing) * 12)",
+            "--header-height": "3rem",
           } as React.CSSProperties
         }
       >
         <StoreInitializer isSupplier={session?.role === "Supplier"} />
         <AppSidebar variant="inset" isSupplierProp={session?.role === "Supplier"} initialPermissions={initialPermissions} initialIsAdmin={isSuperAdmin} />
-        <SidebarInset className="flex flex-col h-full overflow-hidden bg-background shadow-none border-none m-0">
+        <SidebarInset className="flex flex-col h-full w-full overflow-hidden bg-background">
           <SiteHeader />
-          <div className="flex-1 overflow-auto p-[16px]">
-            {children}
+          <div className="flex-1 overflow-auto p-4 lg:p-6 origin-top-left flex flex-col items-center">
+            <div className="w-full max-w-[1600px] h-full flex flex-col">
+              {children}
+            </div>
           </div>
         </SidebarInset>
       </SidebarProvider>

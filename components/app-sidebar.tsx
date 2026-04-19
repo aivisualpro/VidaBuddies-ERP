@@ -130,8 +130,8 @@ const data = {
       icon: IconCurrencyDollar,
     },
     {
-      name: "Freight",
-      url: "/admin/sales/freight",
+      name: "Freight Requests",
+      url: "/admin/sales/freight-requests",
       icon: IconTruck,
     },
     {
