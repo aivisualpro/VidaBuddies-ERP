@@ -23,6 +23,7 @@ import {
   IconCalculator,
   IconCurrencyDollar,
   IconFileInvoice,
+  IconMessage,
 } from "@tabler/icons-react";
 
 import { NavDocuments } from "@/components/nav-documents";
@@ -45,6 +46,11 @@ const data = {
     avatar: "",
   },
   navSecondary: [
+    {
+      title: "Chat",
+      url: "/admin/chat",
+      icon: IconMessage,
+    },
     {
       title: "Notifications",
       url: "/admin/notifications",
