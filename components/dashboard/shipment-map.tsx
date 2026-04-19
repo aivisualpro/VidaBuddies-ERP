@@ -6,6 +6,8 @@ import L from "leaflet";
 import { IconShip, IconMapPin } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTheme } from "next-themes";
+import { Dialog } from "@/components/ui/dialog";
+import { ContainerTimelineModal } from "./container-timeline-modal";
 
 // Fix for default marker icons
 const DefaultIcon = L.icon({
@@ -34,6 +36,7 @@ export interface MapLocation {
     updatedAt?: string;
     vessel?: string;
     type?: string;
+    rawJson?: string;
 }
 
 function formatDate(dateString?: string) {
@@ -54,6 +57,7 @@ export default function ShipmentMap({ locations }: { locations: MapLocation[] })
     // Default center (World view)
     const center: [number, number] = [20, 0];
     const [hoverInfo, setHoverInfo] = useState<{ loc: MapLocation } | null>(null);
+    const [selectedContainer, setSelectedContainer] = useState<MapLocation | null>(null);
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
     const tileUrl = isDark
@@ -79,8 +83,11 @@ export default function ShipmentMap({ locations }: { locations: MapLocation[] })
                             mouseout: () => {
                                 setHoverInfo(null);
                             },
-                            // Update position if mouse moves within the marker logic (optional)
-                            // Usually not needed for pin-centered tooltips
+                            click: () => {
+                                if (loc.containerNo) {
+                                    setSelectedContainer(loc);
+                                }
+                            }
                         }}
                     />
                 ))}
@@ -220,6 +227,14 @@ export default function ShipmentMap({ locations }: { locations: MapLocation[] })
                     </div>
                 </div>
             )}
+
+            {/* Native Clone Tracking Modal */}
+            <ContainerTimelineModal 
+                isOpen={!!selectedContainer}
+                onClose={() => setSelectedContainer(null)}
+                containerNo={selectedContainer?.containerNo || ""}
+                rawJson={selectedContainer?.rawJson || null}
+            />
         </div>
     );
 }

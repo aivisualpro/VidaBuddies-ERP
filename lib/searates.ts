@@ -47,6 +47,8 @@ interface SeaRatesResponse {
         event_code?: string;
         status?: string;
         voyage?: string;
+        actual?: boolean;
+        description?: string;
       }>;
     }>;
     route?: {
@@ -127,8 +129,13 @@ function mapSeaRatesToRow(json: SeaRatesResponse) {
   const fromLoc = locs[0] || null;
   const toLoc   = locs.length ? locs[locs.length - 1] : null;
 
-  // latest container event
-  const events = (cont.events || []).slice().sort((a,b) => new Date(b.date||0).getTime() - new Date(a.date||0).getTime());
+  // latest container event (must be an actual past event to accurately reflect current location)
+  const allEvents = cont.events || [];
+  const completedEvents = allEvents.filter(e => e && e.actual === true);
+  // fallback to all events if none are marked actual (some shipping lines don't use boolean)
+  const eventsToSort = completedEvents.length > 0 ? completedEvents : allEvents;
+  const events = eventsToSort.slice().sort((a,b) => new Date(b.date||0).getTime() - new Date(a.date||0).getTime());
+  
   const ev = events[0] || {};
   const evLoc = ev.location ? byId(locs, ev.location) : null;
   const evFac = ev.facility ? byId(facs, ev.facility) : null;

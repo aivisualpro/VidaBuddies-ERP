@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaSupplier from "@/lib/models/VidaSupplier";
 import { encryptPassword, decryptPassword } from "@/lib/encryption";
+import mongoose from "mongoose";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid supplier ID format" }, { status: 400 });
+    }
+
     await connectToDatabase();
     const item = await VidaSupplier.findById(id).lean();
     if (!item) {
@@ -26,6 +32,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid supplier ID format" }, { status: 400 });
+    }
+
     await connectToDatabase();
     const body = await req.json();
     
@@ -52,6 +63,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid supplier ID format" }, { status: 400 });
+    }
+
     await connectToDatabase();
     const deletedItem = await VidaSupplier.findByIdAndDelete(id);
     if (!deletedItem) {

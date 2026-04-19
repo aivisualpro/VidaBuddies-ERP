@@ -57,17 +57,18 @@ export default function DashboardPage() {
                           locations.push({
                             lat, 
                             lng,
-                            title: lastRecord.last_event_location || ship.vessellTrip || "Unknown Location",
+                            title: (lastRecord.last_event_code === 'DEPA' || ship.status === 'IN_TRANSIT' || ship.status === 'In Transit' || ship.status === 'On Water') ? `On Water (${lastRecord.vessel_names || 'Vessel'})` : (lastRecord.last_event_location || ship.vessellTrip || "Unknown Location"),
                             containerNo: ship.containerNo,
                             vbid: po.vbpoNo,
                             status: ship.status,
                             origin: lastRecord.pol_name || ship.fromPort?.name || "N/A",
                             destination: lastRecord.pod_name || ship.toPort?.name || "N/A",
-                            eta: lastRecord.pod_predictive_eta || ship.eta || null,
-                            departure: lastRecord.pol_date || ship.etd || null,
+                            eta: lastRecord.pod_predictive_eta || lastRecord.pod_date || ship.updatedETA || ship.ETA || null,
+                            departure: lastRecord.pol_date || null,
                             updatedAt: lastRecord.updated_at || null,
                             vessel: lastRecord.vessel_names || ship.vesselName || null,
-                            type: lastRecord.container_size_type || ""
+                            type: lastRecord.container_size_type || "",
+                            rawJson: lastRecord.raw_json || null
                           });
                         }
                       }

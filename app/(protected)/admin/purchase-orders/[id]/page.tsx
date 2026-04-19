@@ -223,6 +223,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; poNo?: string; svbid?: string; title?: string } | null>(null);
+  const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; title?: string } | null>(null);
 
   const [isEditPOOpen, setIsEditPOOpen] = useState(false);
   const [editPOData, setEditPOData] = useState<Partial<PurchaseOrder>>({});
@@ -1013,6 +1014,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={() => setTimelineOpen({ vbpoNo: po?.vbpoNo, poNo: po?.customerPO?.[ship._cpoIdx]?.poNo, svbid: ship.svbid, title: `Timeline — ${ship.svbid || 'Shipping'}` })}>
                             <Clock className="h-3.5 w-3.5" />
                           </Button>
+                          {ship.containerNo && !ship.containerNo.toUpperCase().startsWith("TBD") && ship.status !== 'Delivered' && (
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 rounded-lg" title="Live SeaRates Map" onClick={() => setLiveTrackingOpen({ containerNo: ship.containerNo, title: `Live Tracking — ${ship.containerNo}` })}>
+                              <MapPin className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={() => { const locId = ship.supplierLocation; if (locId) { const matchedSup = suppliers.find((s: any) => s.location?.some((l: any) => l.vbId === locId)); setSelectedSupplierForShipping(matchedSup?._id || matchedSup?.vbId || ""); } else { setSelectedSupplierForShipping(ship.supplier || ""); } setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship }); }}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -1735,6 +1741,24 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         title={timelineOpen?.title}
         users={users}
       />
+
+      {/* Live Tracking Map Modal */}
+      <Dialog open={!!liveTrackingOpen} onOpenChange={(v) => { if (!v) setLiveTrackingOpen(null); }}>
+        <DialogContent className="max-w-[90vw] w-[1400px] h-[90vh] p-0 flex flex-col overflow-hidden bg-slate-50 gap-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0 bg-white">
+            <DialogTitle>{liveTrackingOpen?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 w-full relative">
+            {liveTrackingOpen && (
+              <iframe
+                src={`https://www.searates.com/container/tracking/?number=${liveTrackingOpen.containerNo}&type=CT`}
+                className="absolute inset-0 w-full h-full border-0"
+                allowFullScreen
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isEditPOOpen} onOpenChange={setIsEditPOOpen}>
         <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">

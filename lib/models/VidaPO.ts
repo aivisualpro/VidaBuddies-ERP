@@ -92,6 +92,7 @@ export interface IShippingTrackingRecord {
   last_event_vessel?: string;
   last_event_voyage?: string;
   latlong?: string;
+  raw_json?: string;
   timestamp: Date;
 }
 
@@ -210,6 +211,7 @@ const VidaPOShippingSchema: Schema = new Schema({
     last_event_vessel: String,
     last_event_voyage: String,
     latlong: String,
+    raw_json: String,
     timestamp: { type: Date, default: Date.now }
   }]
 });

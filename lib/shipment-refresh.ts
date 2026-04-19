@@ -100,21 +100,15 @@ export async function refreshContainerTracking(container: string) {
         const history = shippingRecord.shippingTrackingRecords || [];
         const lastRecord = history.length > 0 ? history[history.length - 1] : null;
 
-        let hasChanged = true;
-        if (lastRecord) {
-          const keysToCompare = [
-            'status', 'latlong', 'last_event_date', 'last_event_status',
-            'last_event_location', 'pod_predictive_eta', 'pol_date', 'pod_date'
-          ];
+        let hasChanged = false;
 
-          const isSame = keysToCompare.every(k => {
-            // @ts-ignore
-            return lastRecord[k] === data[k];
-          });
-
-          if (isSame) {
-            hasChanged = false;
-          }
+        if (!lastRecord) {
+            hasChanged = true;
+        } else {
+            // Force a new footprint if the DB is missing the new raw_json structure!
+            if (!lastRecord.raw_json || lastRecord.status !== data.status || lastRecord.last_event_code !== data.last_event_code || lastRecord.latlong !== data.latlong || lastRecord.pod_predictive_eta !== data.pod_predictive_eta) {
+                hasChanged = true;
+            }
         }
 
         const mappedStatus = mapTrackingStatusToAppStatus(data.status);

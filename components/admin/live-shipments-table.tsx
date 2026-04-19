@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { IconMapPin, IconRefresh, IconShip, IconCircleCheck, IconCircleX, IconCalendar } from "@tabler/icons-react";
+import { IconMapPin, IconRefresh, IconShip, IconCircleCheck, IconCircleX, IconCalendar, IconCode } from "@tabler/icons-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -57,6 +59,7 @@ interface TrackingData {
   last_event_vessel: string;
   last_event_voyage: string;
   latlong: string;
+  raw_json?: string;
 }
 
 export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[] }) {
@@ -95,6 +98,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
   const { setActions } = useHeaderActions();
   const [searchQuery, setSearchQuery] = useState("");
   const [now, setNow] = useState<number | null>(null);
+  const [rawJsonData, setRawJsonData] = useState<{ containerNo: string, json: string } | null>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -277,6 +281,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                 <TableHead className="p-1 h-8 min-w-[60px]">Ev Ves</TableHead>
                 <TableHead className="p-1 h-8">Ev Voy</TableHead>
                 <TableHead className="p-1 h-8 min-w-[60px]">Lat/Long</TableHead>
+                <TableHead className="p-1 h-8 min-w-[50px] text-center">Raw</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -306,7 +311,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                             variant="ghost"
                             size="icon"
                             className="h-5 w-5"
-                            onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${data.latlong}`, '_blank')}
+                            onClick={() => window.open(`https://www.searates.com/container/tracking/?number=${container.containerNo}&type=CT`, '_blank')}
                           >
                             <IconMapPin className="h-3 w-3" />
                           </Button>
@@ -406,12 +411,25 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                     <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_vessel || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_voyage || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words leading-tight text-[9px]">{data?.latlong || "-"}</TableCell>
+                    <TableCell className="p-1 align-middle text-center">
+                      {(data?.raw_json) ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-primary hover:bg-primary/20"
+                          onClick={() => setRawJsonData({ containerNo: container.containerNo, json: data.raw_json! })}
+                          title="View Raw SeaRates JSON"
+                        >
+                          <IconCode className="h-4 w-4" />
+                        </Button>
+                      ) : "-"}
+                    </TableCell>
                   </TableRow>
                 );
               })}
               {filteredContainers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={35} className="h-24 text-center text-sm p-4">
+                  <TableCell colSpan={37} className="h-24 text-center text-sm p-4">
                     No active shipments found.
                   </TableCell>
                 </TableRow>
@@ -420,6 +438,31 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
           </table>
         </div>
       </div>
+
+      <Dialog open={!!rawJsonData} onOpenChange={(open) => !open && setRawJsonData(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden border-border bg-zinc-950 dark:bg-zinc-950/90 shadow-2xl">
+          <DialogHeader className="px-6 py-4 border-b border-white/10 shrink-0 bg-background/50 backdrop-blur-md">
+            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-[#E3FF34]">
+              <IconCode className="h-4 w-4" />
+              Raw Tracking Data <span className="text-muted-foreground/50 opacity-50 px-2 font-normal text-xs lowercase">searates json</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+              Container <span className="text-white font-bold">{rawJsonData?.containerNo}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto w-full bg-[#0d0d0d] font-mono text-[11px] leading-relaxed p-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+            <pre className="text-green-400/90 pb-8">
+              {rawJsonData?.json ? (() => {
+                try {
+                  return JSON.stringify(JSON.parse(rawJsonData.json), null, 2);
+                } catch(e) {
+                  return rawJsonData.json;
+                }
+              })() : ''}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
