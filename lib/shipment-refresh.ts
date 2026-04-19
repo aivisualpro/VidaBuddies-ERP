@@ -22,6 +22,17 @@ export async function refreshContainerTracking(container: string) {
     throw new Error('Container number is required');
   }
 
+  // Gracefully handle placeholders like TBD, TBA, or very short strings
+  const c = container.toUpperCase().trim();
+  if (c.startsWith('TBD') || c.startsWith('TBA') || c.length < 5) {
+    return {
+      _disconnected: true, // Reuse the disconnected logic to skip further processing
+      message: `Container ${container} is a placeholder. Skipping live tracking.`,
+      status: 'Pending',
+      container
+    };
+  }
+
   // 0. Connect to DB first and check if this shipment is already Delivered.
   //    Once delivered, the container number can be reused by other businesses,
   //    so we MUST NOT track it anymore to avoid returning someone else's data.
@@ -106,21 +117,51 @@ export async function refreshContainerTracking(container: string) {
           }
         }
 
-        if (hasChanged) {
-          // @ts-ignore
-          const newRecord = { ...data, timestamp: new Date() };
+        const mappedStatus = mapTrackingStatusToAppStatus(data.status);
+        const newUpdatedETAStr = data.pod_predictive_eta || data.pod_date || null;
+        const newUpdatedETA = newUpdatedETAStr ? new Date(newUpdatedETAStr) : null;
 
-          // Map the raw SeaRates status to one of the app's standardized statuses
-          const mappedStatus = mapTrackingStatusToAppStatus(data.status);
+        // Determine if we need to sync top-level fields
+        const currentShippingStatus = shippingRecord.status;
+        const currentUpdatedETA = shippingRecord.updatedETA ? new Date(shippingRecord.updatedETA).getTime() : null;
+        
+        let needsTopLevelUpdate = false;
+        if (mappedStatus && mappedStatus !== currentShippingStatus) {
+            needsTopLevelUpdate = true;
+        }
+        if (newUpdatedETA && newUpdatedETA.getTime() !== currentUpdatedETA) {
+            needsTopLevelUpdate = true;
+        }
 
-          // Build update: always push the tracking record
-          const updateOps: any = {
-            $push: { "customerPO.$[cpo].shipping.$[ship].shippingTrackingRecords": newRecord },
-          };
+        // Also check if initial ETA is empty
+        const currentETA = shippingRecord.ETA;
+        if (!currentETA && newUpdatedETAStr) {
+            needsTopLevelUpdate = true;
+        }
 
-          // Only update the shipping status if we got a valid mapped status
+        if (hasChanged || needsTopLevelUpdate) {
+          const updateOps: any = { $set: {} };
+
+          if (hasChanged) {
+            const newRecord = { ...data, timestamp: new Date() };
+            updateOps.$push = { "customerPO.$[cpo].shipping.$[ship].shippingTrackingRecords": newRecord };
+          }
+
           if (mappedStatus) {
-            updateOps.$set = { "customerPO.$[cpo].shipping.$[ship].status": mappedStatus };
+            updateOps.$set["customerPO.$[cpo].shipping.$[ship].status"] = mappedStatus;
+          }
+
+          if (newUpdatedETAStr) {
+            updateOps.$set["customerPO.$[cpo].shipping.$[ship].updatedETA"] = newUpdatedETA;
+            if (!currentETA) {
+                // Populate the base ETA field once if it's currently completely blank!
+                updateOps.$set["customerPO.$[cpo].shipping.$[ship].ETA"] = newUpdatedETA;
+            }
+          }
+
+          // Cleanup $set if empty
+          if (Object.keys(updateOps.$set).length === 0) {
+              delete updateOps.$set;
           }
 
           // Atomic update
@@ -136,14 +177,16 @@ export async function refreshContainerTracking(container: string) {
             }
           );
 
-          // Create a notification (but NOT for delivered — those are disconnected above)
-          await VidaNotification.create({
-            title: `Shipment Update: ${container}`,
-            message: `Status: ${data.status || 'Unknown'}. Last event: ${data.last_event_status || 'N/A'} at ${data.last_event_location || 'unknown location'}.`,
-            type: 'info',
-            relatedId: container,
-            link: '/admin/live-shipments'
-          });
+          if (hasChanged) {
+            // Create a notification (but NOT for delivered — those are disconnected above)
+            await VidaNotification.create({
+              title: `Shipment Update: ${container}`,
+              message: `Status: ${data.status || 'Unknown'}. Last event: ${data.last_event_status || 'N/A'} at ${data.last_event_location || 'unknown location'}.`,
+              type: 'info',
+              relatedId: container,
+              link: '/admin/live-shipments'
+            });
+          }
         }
       }
     }
