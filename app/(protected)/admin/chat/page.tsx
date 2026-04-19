@@ -273,23 +273,22 @@ export default function ChatPage() {
                                 </div>
                               )}
 
-                              <div className={`flex flex-col max-w-[70%] xl:max-w-[55%] ${!isMe && !showAvatar ? 'ml-11' : ''}`}>
+                              <div className={`flex flex-col gap-1.5 max-w-[70%] xl:max-w-[55%] ${!isMe && !showAvatar ? 'ml-11' : ''}`}>
                                   <div 
-                                    className={`px-5 py-3.5 text-[14.5px] leading-relaxed relative flex flex-col gap-1.5
+                                    className={`px-5 py-3 text-[14.5px] leading-relaxed relative flex flex-col gap-1.5 shadow-sm
                                       ${isMe 
-                                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-3xl rounded-br-sm' 
-                                        : 'bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/5 text-zinc-800 dark:text-zinc-200 rounded-3xl rounded-bl-sm'
+                                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-3xl rounded-br-md' 
+                                        : 'bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/5 text-zinc-800 dark:text-zinc-200 rounded-3xl rounded-bl-md'
                                       }
                                     `}
                                   >
-                                      {!isMe && showAvatar && (
-                                         <span className="text-[11px] font-black uppercase tracking-wider text-indigo-500 dark:text-indigo-400">{activeContact.name}</span>
-                                      )}
-                                      <span className="font-medium">{msg.text}</span>
-                                      <span className={`text-[10.5px] font-bold ${isMe ? 'text-blue-200 self-end' : 'text-zinc-400 self-start'} flex items-center gap-1.5`}>
-                                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        {isMe && <IconChecks size={14} stroke={3} className="text-indigo-300" />}
-                                      </span>
+                                      <span className="font-medium inline-block">{msg.text}</span>
+                                  </div>
+                                  <div className={`flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 ${isMe ? 'self-end mr-1.5' : 'self-start ml-1.5'}`}>
+                                    <span>{isMe ? 'You' : activeContact.name}</span>
+                                    <span>&bull;</span>
+                                    <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    {isMe && <IconChecks size={14} stroke={3} className="text-blue-500 dark:text-blue-400 -ml-0.5" />}
                                   </div>
                               </div>
 
@@ -350,10 +349,6 @@ export default function ChatPage() {
                <div className="h-24 w-24 rounded-full bg-white dark:bg-zinc-900 shadow-2xl flex items-center justify-center mb-6 border border-black/5 dark:border-white/5">
                  <IconSend size={44} stroke={1.5} className="-translate-x-1 translate-y-1 text-blue-600 dark:text-blue-400" />
                </div>
-               <h3 className="text-2xl font-black text-zinc-900 dark:text-zinc-100 mb-2 tracking-tight">Active Comms Array</h3>
-               <p className="text-[15px] font-medium text-zinc-500 max-w-sm">
-                 Select a team member from the directory panel to initiate an encrypted conversational channel.
-               </p>
             </div>
           )}
         </div>
