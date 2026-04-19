@@ -273,7 +273,7 @@ export default function ChatPage() {
                                 </div>
                               )}
 
-                              <div className={`flex flex-col gap-1.5 max-w-[70%] xl:max-w-[55%] ${!isMe && !showAvatar ? 'ml-11' : ''}`}>
+                              <div className="flex flex-col gap-1.5 max-w-[70%] xl:max-w-[55%]">
                                   <div 
                                     className={`px-5 py-3 text-[14.5px] leading-relaxed relative flex flex-col gap-1.5 shadow-sm
                                       ${isMe 
