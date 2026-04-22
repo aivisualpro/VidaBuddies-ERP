@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmailChipInput, EmailContact } from "@/components/email-chip-input";
 import {
   Send,
@@ -61,6 +69,9 @@ export interface EmailInitialData {
   attachments?: AttachmentFile[];
   from?: string;
   sentAt?: string;
+  id?: string;
+  type?: string;
+  reference?: string;
 }
 
 interface EmailComposeDialogProps {
@@ -107,7 +118,25 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [emailType, setEmailType] = useState("Invoice");
+  const [reference, setReference] = useState("");
   const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([]);
+  
+  const { purchaseOrders } = useUserDataStore();
+  
+  const availableReferences = useMemo(() => {
+    if (!vbpoNo) return [];
+    const po = purchaseOrders.find((p) => p.vbpoNo === vbpoNo);
+    if (!po) return [];
+    
+    const refs: string[] = [];
+    po.customerPO?.forEach((cpo: any) => {
+      cpo.shipping?.forEach((ship: any) => {
+        if (ship.svbid) refs.push(ship.svbid);
+      });
+    });
+    return refs;
+  }, [purchaseOrders, vbpoNo]);
 
   // Templates
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -139,6 +168,8 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
         setCc(parseEmails(initialData.cc));
         setSubject(initialData.subject || "");
         setBody(initialData.body || "");
+        setEmailType(initialData.type || "Invoice");
+        setReference(initialData.reference || "");
         setLocalAttachments(initialData.attachments || []);
       } else {
         setLocalAttachments([...attachments]);
@@ -182,6 +213,11 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
       return;
     }
 
+    if (emailType === "Invoice" && !reference) {
+      toast.error("Please select a Reference shipment for the Invoice.");
+      return;
+    }
+
     setSending(true);
     try {
       const res = await fetch("/api/admin/send-email", {
@@ -192,6 +228,8 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
           cc: cc.join(", "),
           subject,
           body,
+          type: emailType,
+          reference: reference,
           vbpoNo,
           folderPath,
           fileIds: localAttachments.filter(
@@ -226,7 +264,52 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
     setShowTemplates(false);
     setShowSaveTemplate(false);
     setTemplateName("");
+    setEmailType("Invoice");
+    setReference("");
+    setLocalAttachments([]);
     onClose();
+  };
+
+  const handleTypeChange = async (newType: string) => {
+    setEmailType(newType);
+    if (isViewMode && initialData?.id) {
+      try {
+        await fetch("/api/admin/emails", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: initialData.id, type: newType }),
+        });
+        toast.success("Type updated");
+        window.dispatchEvent(new CustomEvent("vb-email-records-updated", { detail: { vbpoNo } }));
+        onSent?.();
+      } catch {
+        toast.error("Failed to update type");
+      }
+    }
+  };
+
+  const handleReferenceChange = async (newRef: string) => {
+    setReference(newRef);
+    if (isViewMode && initialData?.id) {
+      try {
+        const res = await fetch("/api/admin/emails", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: initialData.id, reference: newRef }),
+        });
+        const d = await res.json();
+        if (!res.ok) {
+          toast.error("Save failed: " + (d.error || "unknown error"));
+          return;
+        }
+        toast.success("Reference updated");
+        // Broadcast so PO detail page can immediately refresh its emailRecords
+        window.dispatchEvent(new CustomEvent("vb-email-records-updated", { detail: { vbpoNo } }));
+        onSent?.();
+      } catch (err: any) {
+        toast.error("Failed to update reference: " + err.message);
+      }
+    }
   };
 
   const applyTemplate = (template: EmailTemplate) => {
@@ -498,6 +581,46 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                 placeholder="Add recipients..."
               />
             </div>
+
+            {/* Type */}
+            <div className="flex items-center px-6 border-b border-border/30">
+              <div className="flex items-center gap-2 w-[60px] shrink-0 py-2.5">
+                <File className="h-3.5 w-3.5 text-muted-foreground/50" />
+                <span className="text-xs font-semibold text-muted-foreground">Type</span>
+              </div>
+              <div className="py-2.5">
+                <Select value={emailType} onValueChange={handleTypeChange}>
+                  <SelectTrigger className="h-8 text-xs border-0 shadow-none focus:ring-0 px-2 w-[150px] font-medium text-muted-foreground hover:bg-muted/30">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Invoice">Invoice</SelectItem>
+                    <SelectItem value="Custom">Custom</SelectItem>
+                    <SelectItem value="Documents">Documents</SelectItem>
+                    <SelectItem value="PO">PO</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {emailType === "Invoice" && availableReferences.length > 0 && (
+                <div className="flex-1 max-w-[200px]">
+                  <Select value={reference} onValueChange={handleReferenceChange}>
+                    <SelectTrigger className="h-8 text-xs bg-background/50 border-input/40 shadow-sm focus:ring-1 focus:ring-primary/20 transition-all font-medium">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <FileText className="h-3 w-3" />
+                        <SelectValue placeholder="Select reference" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent align="start" className="min-w-[140px] max-w-[200px] border-border/40 shadow-md">
+                      {availableReferences.map(ref => (
+                        <SelectItem key={ref} value={ref} className="text-xs font-semibold">{ref}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
 
             {/* Cc */}
             <div className="flex items-start px-6">

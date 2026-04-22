@@ -21,6 +21,8 @@ export interface IEmailRecord {
   direction?: 'inbound' | 'outbound';
   error?: string;
   sentAt: Date;
+  type?: string;
+  reference?: string;
 }
 
 const EmailAttachmentSchema = new Schema({
@@ -44,7 +46,9 @@ const EmailRecordSchema: Schema = new Schema({
   direction: { type: String, enum: ['inbound', 'outbound'], default: 'outbound' },
   error: { type: String },
   sentAt: { type: Date, default: Date.now },
-});
+  type: { type: String, default: 'Invoice' },
+  reference: { type: String, default: '' },
+}, { strict: false });
 
 const EmailRecord: Model<IEmailRecord> =
   mongoose.models.EmailRecord ||

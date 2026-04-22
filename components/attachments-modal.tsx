@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import {
   Dialog,
   DialogContent,
@@ -1249,12 +1249,27 @@ export function AttachmentsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {emailRecords.map((email: any, idx: number) => (
-                      <tr
-                        key={email._id || idx}
-                        onClick={() => {
+                    {Object.entries(emailRecords.reduce((acc: any, email: any) => {
+                      const t = email.type || "Invoice";
+                      if (!acc[t]) acc[t] = [];
+                      acc[t].push(email);
+                      return acc;
+                    }, {} as Record<string, any[]>)).map(([type, groupedEmails]: [string, any]) => (
+                      <Fragment key={type}>
+                        <tr className="bg-muted/10 border-b border-border/20">
+                          <td colSpan={7} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">
+                            {type} ({groupedEmails.length})
+                          </td>
+                        </tr>
+                        {groupedEmails.map((email: any, idx: number) => (
+                          <tr
+                            key={email._id || idx}
+                            onClick={() => {
                           setEmailComposeMode("view");
                           setEmailInitialData({
+                            id: email._id,
+                            type: email.type || "Invoice",
+                            reference: email.reference || "",
                             to: (email.to || []).join(", "),
                             cc: (email.cc || []).join(", "),
                             subject: email.subject || "",
@@ -1323,6 +1338,8 @@ export function AttachmentsModal({
                         </td>
                       </tr>
                     ))}
+                    </Fragment>
+                  ))}
                   </tbody>
                 </table>
               )}

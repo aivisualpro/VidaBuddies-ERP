@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { to, cc, subject, body, fileIds, vbpoNo, folderPath, htmlContentForAttachedPdf, pdfName } = await request.json();
+    const { to, cc, subject, body, fileIds, vbpoNo, folderPath, htmlContentForAttachedPdf, pdfName, type, reference } = await request.json();
 
     if (!to || !subject) {
       return NextResponse.json(
@@ -161,6 +161,8 @@ export async function POST(request: NextRequest) {
           status,
           error: error || undefined,
           sentAt: new Date(),
+          type: type || "Invoice",
+          reference: reference || "",
         });
       } catch (dbErr: any) {
         console.error("[Email API] DB save error:", dbErr);

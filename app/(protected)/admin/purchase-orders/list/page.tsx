@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
@@ -92,6 +92,7 @@ export default function PurchaseOrdersPage() {
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
+  const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
 
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
@@ -132,6 +133,7 @@ export default function PurchaseOrdersPage() {
 
   const fetchEmailCountsForPOs = async (poList: PurchaseOrder[]) => {
     const counts: Record<string, number> = {};
+    const invCounts: Record<string, number> = {};
     try {
       // Batch: fetch all emails across all POs
       const promises = poList.map(async (po) => {
@@ -140,11 +142,13 @@ export default function PurchaseOrdersPage() {
           const data = await res.json();
           if (res.ok && data.emails) {
             counts[po.vbpoNo] = data.emails.length;
+            invCounts[po.vbpoNo] = data.emails.filter((e: any) => e.type === "Invoice").length;
           }
         } catch { /* silent */ }
       });
       await Promise.all(promises);
       setEmailCounts(counts);
+      setInvoiceCounts(invCounts);
     } catch (error) {
       console.error("Failed to fetch email counts", error);
     }
@@ -385,12 +389,30 @@ export default function PurchaseOrdersPage() {
             if (status === 'delivered') count++;
           });
         });
-        if (count === 0) return <span className="text-muted-foreground">-</span>;
+        
+        const vbpoNo = row.original.vbpoNo;
+        const invCount = invoiceCounts[vbpoNo] || 0;
+        
+        if (count === 0 && invCount === 0) return <span className="text-muted-foreground">-</span>;
+        
+        const isDeficient = count > 0 && invCount < count;
+
         return (
-          <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-            <CheckCircle2 className="h-3 w-3" />
-            {count}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+              <CheckCircle2 className="h-3 w-3" />
+              {count}
+            </span>
+            <span className="text-muted-foreground/50 text-[10px] font-bold">/</span>
+            <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full ${
+              isDeficient 
+                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.2)]" 
+                : "bg-muted text-muted-foreground"
+            }`}>
+              <FileCheck className="h-3 w-3" />
+              {invCount}
+            </span>
+          </div>
         );
       },
     },
