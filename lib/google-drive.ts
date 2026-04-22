@@ -334,3 +334,18 @@ export async function deleteFiles(fileIds: string[]): Promise<number> {
 
   return deleted;
 }
+
+/**
+ * Rename a file or folder in Google Drive.
+ */
+export async function renameFile(fileId: string, newName: string): Promise<string> {
+  const drive = getDrive();
+  const res = await drive.files.update({
+    fileId,
+    requestBody: {
+      name: newName,
+    },
+    supportsAllDrives: true,
+  });
+  return res.data.id!;
+}

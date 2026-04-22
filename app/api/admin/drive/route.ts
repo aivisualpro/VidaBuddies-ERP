@@ -6,6 +6,7 @@ import {
   uploadFile,
   listFiles,
   deleteFiles,
+  renameFile,
 } from "@/lib/google-drive";
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
@@ -154,6 +155,33 @@ export async function DELETE(request: NextRequest) {
     console.error("[Drive API] Delete error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to delete files" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PUT — Rename a file or folder in Google Drive
+ * Body: { fileId: string, newName: string }
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const { fileId, newName } = await request.json();
+
+    if (!fileId || !newName) {
+      return NextResponse.json(
+        { error: "fileId and newName are required" },
+        { status: 400 }
+      );
+    }
+
+    const renamedId = await renameFile(fileId, newName);
+
+    return NextResponse.json({ success: true, id: renamedId });
+  } catch (error: any) {
+    console.error("[Drive API] Rename error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to rename file" },
       { status: 500 }
     );
   }

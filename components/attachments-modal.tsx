@@ -42,6 +42,7 @@ import {
   Mail,
   Send,
   Clock,
+  Pencil,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -177,6 +178,10 @@ export function AttachmentsModal({
   const [merging, setMerging] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeFileName, setMergeFileName] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameFileId, setRenameFileId] = useState("");
+  const [renameFileName, setRenameFileName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -541,6 +546,46 @@ export function AttachmentsModal({
     }
   };
 
+  const handleRename = async () => {
+    if (!renameFileName.trim()) {
+      toast.error("Filename is required");
+      return;
+    }
+    setRenaming(true);
+    try {
+      const file = files.find(f => f.id === renameFileId);
+      const isFolder = file?.mimeType === "application/vnd.google-apps.folder";
+      let finalName = renameFileName.trim();
+      if (!isFolder && file?.name.includes('.')) {
+        const ext = file.name.substring(file.name.lastIndexOf('.'));
+        if (!finalName.endsWith(ext)) {
+          finalName += ext;
+        }
+      }
+
+      const res = await fetch("/api/admin/drive", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: renameFileId,
+          newName: finalName,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Renamed successfully");
+        setRenameDialogOpen(false);
+        fetchFiles();
+      } else {
+        toast.error("Rename failed", { description: data.error });
+      }
+    } catch {
+      toast.error("Rename failed");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -788,6 +833,25 @@ export function AttachmentsModal({
                   >
                     <Mail className="h-3.5 w-3.5" />
                     Email ({selectedIds.size})
+                  </Button>
+                )}
+                {selectedIds.size === 1 && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => {
+                    const fileId = Array.from(selectedIds)[0];
+                    const file = files.find(f => f.id === fileId);
+                    if (file) {
+                      setRenameFileId(fileId);
+                      const isFolder = file.mimeType === "application/vnd.google-apps.folder";
+                      let name = file.name;
+                      if (!isFolder && name.includes('.')) {
+                        name = name.substring(0, name.lastIndexOf('.'));
+                      }
+                      setRenameFileName(name);
+                      setRenameDialogOpen(true);
+                    }
+                  }} disabled={uploading}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Rename
                   </Button>
                 )}
                 {selectedIds.size > 0 && (
@@ -1056,7 +1120,7 @@ export function AttachmentsModal({
                           }}>
                             <div className="min-w-0">
                               <p className={cn(
-                                "text-[13px] font-semibold truncate leading-tight",
+                                "text-[13px] font-semibold break-all whitespace-normal leading-tight",
                                 isFolder ? "text-yellow-700 dark:text-yellow-500" : "text-foreground hover:text-primary cursor-pointer transition-colors"
                               )}>
                                 {file.name}
@@ -1363,6 +1427,62 @@ export function AttachmentsModal({
               <Button type="button" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm gap-2" onClick={handleMerge} disabled={merging || !mergeFileName.trim()}>
                 {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                 {merging ? "Merging..." : "Save & Merge"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={(v) => !renaming && setRenameDialogOpen(v)}>
+        <DialogContent className="max-w-md p-6 gap-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-indigo-500" />
+              Rename File
+            </DialogTitle>
+            <DialogDescription>
+              Provide a new name for the file. 
+              {(() => {
+                const file = files.find(f => f.id === renameFileId);
+                const isFolder = file?.mimeType === "application/vnd.google-apps.folder";
+                return !isFolder && file?.name.includes('.') ? ` The extension will be preserved automatically.` : "";
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="renameFilename" className="text-sm font-semibold text-foreground">
+                File Name
+              </label>
+              <div className="relative">
+                <input
+                  id="renameFilename"
+                  type="text"
+                  value={renameFileName}
+                  onChange={(e) => setRenameFileName(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-12"
+                  autoFocus
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-semibold text-muted-foreground pointer-events-none">
+                  {(() => {
+                    const file = files.find(f => f.id === renameFileId);
+                    const isFolder = file?.mimeType === "application/vnd.google-apps.folder";
+                    if (!isFolder && file?.name.includes('.')) {
+                      return file.name.substring(file.name.lastIndexOf('.'));
+                    }
+                    return "";
+                  })()}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setRenameDialogOpen(false)} disabled={renaming}>
+                Cancel
+              </Button>
+              <Button type="button" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm gap-2" onClick={handleRename} disabled={renaming || !renameFileName.trim()}>
+                {renaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                {renaming ? "Renaming..." : "Save"}
               </Button>
             </div>
           </div>
