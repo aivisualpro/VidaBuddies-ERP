@@ -171,9 +171,12 @@ export function AttachmentsModal({
   defaultTab,
 }: AttachmentsModalProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeFileName, setMergeFileName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -241,6 +244,9 @@ export function AttachmentsModal({
       setViewShip(!!shipNumber);
       setActiveTab(defaultTab || "internal");
       if (defaultTab === "emails") fetchEmailRecords();
+    } else {
+      setLoading(true);
+      setFiles([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, spoNumber, shipNumber, defaultTab]);
@@ -305,7 +311,9 @@ export function AttachmentsModal({
         toast.error("Failed to connect to server");
       }
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        setLoading(false);
+      }
     }
   }, [poNumber, spoNumber, shipNumber, childFolders, navStack, viewSPO, viewShip]);
 
@@ -487,6 +495,52 @@ export function AttachmentsModal({
     }
   };
 
+  const handleMergeClick = () => {
+    if (selectedIds.size < 2) {
+      toast.error("Select at least 2 documents to merge");
+      return;
+    }
+    // Generate suggested name
+    const timestamp = new Date().toISOString().split("T")[0];
+    setMergeFileName(`Merged_Documents_${poNumber}_${timestamp}`);
+    setMergeDialogOpen(true);
+  };
+
+  const handleMerge = async () => {
+    if (!mergeFileName.trim()) {
+      toast.error("Filename is required");
+      return;
+    }
+    setMerging(true);
+    try {
+      const res = await fetch("/api/admin/drive/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileIds: Array.from(selectedIds),
+          poNumber,
+          spoNumber,
+          shipNumber,
+          folderId: currentFolderId,
+          fileName: mergeFileName.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Documents merged successfully");
+        setSelectedIds(new Set());
+        setMergeDialogOpen(false);
+        fetchFiles();
+      } else {
+        toast.error("Merge failed", { description: data.error });
+      }
+    } catch {
+      toast.error("Merge failed");
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -575,12 +629,14 @@ export function AttachmentsModal({
     });
   });
 
-  // Sort: folders first, then files by name
+  // Sort: folders first, then files by newest createdTime
   const sortedFiles = [...files].sort((a, b) => {
     const aIsFolder = a.mimeType === "application/vnd.google-apps.folder" ? 0 : 1;
     const bIsFolder = b.mimeType === "application/vnd.google-apps.folder" ? 0 : 1;
     if (aIsFolder !== bIsFolder) return aIsFolder - bIsFolder;
-    return a.name.localeCompare(b.name);
+    const aTime = new Date(a.createdTime || 0).getTime();
+    const bTime = new Date(b.createdTime || 0).getTime();
+    return bTime - aTime;
   });
 
   // Filter by active tab (internal/external) — always show folders for navigation
@@ -705,6 +761,24 @@ export function AttachmentsModal({
 
             {activeTab !== "emails" && (
               <div className="flex items-center gap-2 shrink-0">
+                {(() => {
+                  const supportedMimeTypes = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+                  const canMerge = selectedIds.size > 1 && Array.from(selectedIds).every(id => {
+                    const file = files.find(f => f.id === id);
+                    return file && supportedMimeTypes.includes(file.mimeType);
+                  });
+                  return canMerge && (
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white transition-all animate-in zoom-in duration-200"
+                      onClick={handleMergeClick}
+                      disabled={merging || uploading}
+                    >
+                      {merging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                      Merge ({selectedIds.size})
+                    </Button>
+                  );
+                })()}
                 {activeTab === "external" && selectedIds.size > 0 && (
                   <Button
                     size="sm"
@@ -814,10 +888,39 @@ export function AttachmentsModal({
               onDrop={handleDrop}
             >
               {loading ? (
-                <div className="flex flex-col items-center justify-center py-24 gap-3">
-                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                  <p className="text-xs text-muted-foreground font-medium">Loading files...</p>
-                </div>
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm border-b border-border/30">
+                    <tr>
+                      <th className="w-10 px-3 py-2.5">
+                        <div className="h-4 w-4 bg-muted rounded opacity-50" />
+                      </th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[52px]">Type</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70">Name</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[100px] text-center">Visibility</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[80px] text-right">Size</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[120px]">Date</th>
+                      <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground/70 w-[48px] text-center">Link</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/20">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="px-3 py-2"><div className="h-4 w-4 bg-muted rounded" /></td>
+                        <td className="px-3 py-2"><div className="h-8 w-8 bg-muted rounded-lg" /></td>
+                        <td className="px-3 py-2">
+                          <div className="space-y-2 py-1">
+                            <div className="h-3.5 bg-muted rounded w-2/3 max-w-[200px]" />
+                            <div className="h-2.5 bg-muted rounded w-1/4 max-w-[80px]" />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2"><div className="h-5 w-16 bg-muted rounded-full mx-auto" /></td>
+                        <td className="px-3 py-2"><div className="h-3 w-12 bg-muted rounded ml-auto" /></td>
+                        <td className="px-3 py-2"><div className="h-3 w-20 bg-muted rounded" /></td>
+                        <td className="px-3 py-2"><div className="h-7 w-7 bg-muted rounded-lg mx-auto" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : tabFilteredFiles.length === 0 && !isShowingUpload ? (
                 <div className="flex flex-col items-center justify-center py-20 px-8 gap-5">
                   <div className="relative">
@@ -906,14 +1009,30 @@ export function AttachmentsModal({
                           }}
                         >
                           {/* Checkbox for Delete */}
-                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-3">
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleSelect(file.id)}
-                                className={cn("h-3.5 w-3.5", isProtected && "opacity-50 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground cursor-not-allowed")}
-                                disabled={isProtected}
-                              />
+                          <td 
+                            className="px-3 py-3 cursor-pointer group/cb" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isProtected) toggleSelect(file.id);
+                            }}
+                          >
+                            <div className="flex items-center gap-3 relative w-max">
+                              <div className="pointer-events-none">
+                                <Checkbox
+                                  checked={isSelected}
+                                  className={cn(
+                                    "h-4 w-4 transition-all duration-200", 
+                                    isProtected && "opacity-50 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground",
+                                    !isProtected && "group-hover/cb:border-primary group-hover/cb:bg-primary/5 data-[state=checked]:group-hover/cb:bg-primary"
+                                  )}
+                                  disabled={isProtected}
+                                />
+                              </div>
+                              {isSelected && (
+                                <span className="absolute -top-2 -right-2.5 bg-indigo-500 text-white text-[9px] font-black h-[18px] w-[18px] rounded-full flex items-center justify-center shadow-md pointer-events-none animate-in zoom-in duration-200 border-2 border-background">
+                                  {Array.from(selectedIds).indexOf(file.id) + 1}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -1205,6 +1324,50 @@ export function AttachmentsModal({
         files={tabFilteredFiles.filter((f) => f.mimeType !== "application/vnd.google-apps.folder")}
         onNavigate={(f) => setPreviewFile(f as DriveFile)}
       />
+
+      {/* Merge Filename Dialog */}
+      <Dialog open={mergeDialogOpen} onOpenChange={(v) => !merging && setMergeDialogOpen(v)}>
+        <DialogContent className="max-w-md p-6 gap-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-indigo-500" />
+              Name Merged Document
+            </DialogTitle>
+            <DialogDescription>
+              Provide a name for the new merged PDF. The document will be saved in the current folder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="filename" className="text-sm font-semibold text-foreground">
+                File Name
+              </label>
+              <div className="relative">
+                <input
+                  id="filename"
+                  type="text"
+                  value={mergeFileName}
+                  onChange={(e) => setMergeFileName(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
+                  autoFocus
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-semibold text-muted-foreground pointer-events-none">
+                  .pdf
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setMergeDialogOpen(false)} disabled={merging}>
+                Cancel
+              </Button>
+              <Button type="button" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm gap-2" onClick={handleMerge} disabled={merging || !mergeFileName.trim()}>
+                {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                {merging ? "Merging..." : "Save & Merge"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
