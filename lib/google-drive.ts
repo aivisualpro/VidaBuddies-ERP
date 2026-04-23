@@ -235,15 +235,7 @@ export async function uploadFile(
     supportsAllDrives: true,
   });
 
-  // Make the file accessible via link
-  await drive.permissions.create({
-    fileId: file.data.id!,
-    requestBody: {
-      role: "reader",
-      type: "anyone",
-    },
-    supportsAllDrives: true,
-  });
+  await makeFilePublic(file.data.id!);
 
   return {
     id: file.data.id!,
@@ -253,6 +245,61 @@ export async function uploadFile(
     size: file.data.size || "0",
   };
 }
+
+/**
+ * Creates a resumable upload URL for direct client-to-Google-Drive uploads.
+ */
+export async function createResumableUpload(
+  folderId: string,
+  fileName: string,
+  mimeType: string,
+  origin: string
+): Promise<string> {
+  const auth = getAuth();
+  const token = await auth.getAccessToken();
+  const accessToken = typeof token === 'string' ? token : token?.token;
+  
+  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'X-Upload-Content-Type': mimeType,
+      'Origin': origin
+    },
+    body: JSON.stringify({
+      name: fileName,
+      parents: [folderId],
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create resumable upload: ' + await response.text());
+  }
+  
+  const location = response.headers.get('location');
+  if (!location) {
+    throw new Error('No resumable upload URL returned');
+  }
+  
+  return location;
+}
+
+/**
+ * Make a Google Drive file accessible to anyone with the link.
+ */
+export async function makeFilePublic(fileId: string): Promise<void> {
+  const drive = getDrive();
+  await drive.permissions.create({
+    fileId,
+    requestBody: {
+      role: "reader",
+      type: "anyone",
+    },
+    supportsAllDrives: true,
+  });
+}
+
 
 /**
  * List all files in a folder.

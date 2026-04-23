@@ -43,7 +43,22 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
   const [formName, setFormName] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (uploading) return;
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
+    if (droppedFiles.length > 0) {
+      setFiles(prev => [...prev, ...droppedFiles]);
+    } else {
+      toast.error("Only PDF files are supported");
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
@@ -120,32 +135,35 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !file) {
-      toast.error("Name and PDF file are required.");
-      return;
-    }
-
-    if (file.type !== "application/pdf") {
-      toast.error("Please upload a PDF file.");
+    if (files.length === 0) {
+      toast.error("Please select at least one PDF file.");
       return;
     }
 
     setUploading(true);
-    toast.info("Uploading and extracting PDF...");
-    const formData = new FormData();
-    formData.append("name", formName.trim());
-    formData.append("products", JSON.stringify(selectedProducts));
-    formData.append("file", file);
+    toast.info(`Uploading and extracting ${files.length} file(s)...`);
 
     try {
-      const res = await fetch(`/api/admin/suppliers/${id}/specs`, {
-        method: "POST",
-        body: formData,
-      });
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let name = formName.trim();
+        if (!name) name = file.name.replace(/\.[^/.]+$/, "");
+        else if (files.length > 1) name = `${name} (${i + 1})`;
 
-      if (!res.ok) throw new Error("Upload failed");
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("products", JSON.stringify(selectedProducts));
+        formData.append("file", file);
 
-      toast.success("Specification extracted successfully!");
+        const res = await fetch(`/api/admin/suppliers/${id}/specs`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) throw new Error("Upload failed");
+      }
+
+      toast.success("Specifications extracted successfully!");
       setIsAddOpen(false);
       resetForm();
       fetchSpecs();
@@ -219,7 +237,7 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
     setFormName("");
     setSelectedProducts([]);
     setProductSearch("");
-    setFile(null);
+    setFiles([]);
   };
 
   const openAddModal = () => {
@@ -372,13 +390,12 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
           </DialogHeader>
           <form onSubmit={handleAddSubmit} className="grid gap-5 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="specName">File Name</Label>
+              <Label htmlFor="specName">File Name (Optional)</Label>
               <Input 
                 id="specName" 
                 value={formName} 
                 onChange={e => setFormName(e.target.value)} 
-                placeholder="e.g. Pineapple Juice Specs 2026"
-                required
+                placeholder="Leave blank to use original file name(s)"
               />
             </div>
 
@@ -430,24 +447,41 @@ export default function SupplierSpecsPage({ params }: { params: Promise<{ id: st
 
             <div className="grid gap-2">
               <Label>Upload PDF</Label>
-              <div className="relative group w-full">
+              <div className="relative group w-full" onDrop={handleDrop} onDragOver={handleDragOver}>
                 <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${uploading ? 'opacity-50 cursor-not-allowed border-primary/50' : 'hover:bg-muted/50 border-border hover:border-primary/50'}`}>
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    {file ? (
-                       <FileText className="h-8 w-8 text-primary mb-2" />
+                  <div className="flex flex-col items-center justify-center py-2">
+                    {files.length > 0 ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <FileText className="h-6 w-6 text-primary" />
+                        <p className="text-sm font-semibold text-foreground text-center px-4 w-full">
+                          {files.length} file{files.length > 1 ? 's' : ''} selected
+                        </p>
+                        <div className="flex flex-wrap gap-1 justify-center max-h-12 overflow-y-auto px-2">
+                          {files.map((f, i) => (
+                            <span key={i} className="text-[10px] bg-muted px-2 py-0.5 rounded-md border truncate max-w-[120px]">{f.name}</span>
+                          ))}
+                        </div>
+                      </div>
                     ) : (
-                       <Plus className="h-8 w-8 text-muted-foreground mb-2 group-hover:text-primary transition-colors" />
+                      <>
+                        <Plus className="h-8 w-8 text-muted-foreground mb-2 group-hover:text-primary transition-colors" />
+                        <p className="mb-1 text-sm font-semibold text-foreground text-center px-4 truncate w-full">
+                          Select PDF Documents or Drag & Drop
+                        </p>
+                        <p className="text-xs text-muted-foreground">PDF files only</p>
+                      </>
                     )}
-                    <p className="mb-1 text-sm font-semibold text-foreground text-center px-4 truncate w-full">
-                      {file ? file.name : "Select PDF Document"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">PDF files only</p>
                   </div>
                   <input 
                     type="file" 
                     className="hidden" 
                     accept=".pdf" 
-                    onChange={e => setFile(e.target.files?.[0] || null)}
+                    multiple
+                    onChange={e => {
+                      if (e.target.files) {
+                        setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                      }
+                    }}
                     disabled={uploading}
                   />
                 </label>

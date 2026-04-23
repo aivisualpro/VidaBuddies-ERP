@@ -22,49 +22,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const REQUIRED_DOCS = [
-  { category: "Company & Legal Documentation", name: "Product Liability Insurance Certificate" },
-  { category: "Company & Legal Documentation", name: "Letter of Continuing Guarantee / Food Safety Commitment" },
-  { category: "Company & Legal Documentation", name: "Ethical Code / Code of Conduct Policy" },
-  { category: "Company & Legal Documentation", name: "Supplier & Manufacturing Questionnaire" },
-  { category: "Food Safety Certifications", name: "BRCGS Food Safety Certificate & Audit Report" },
-  { category: "Food Safety Certifications", name: "IFS Food Certificate & Audit Report" },
-  { category: "Food Safety Certifications", name: "Organic Certification (if applicable)" },
-  { category: "Product Technical Documents", name: "Product Specification Sheet" },
-  { category: "Product Technical Documents", name: "Ingredient Statement" },
-  { category: "Product Technical Documents", name: "Allergen Declaration" },
-  { category: "Product Technical Documents", name: "5-Log Reduction / Pasteurization Validation" },
-  { category: "Product Technical Documents", name: "Nutritional Information" },
-  { category: "Quality & HACCP Documentation", name: "HACCP Plan - Juice Extraction & Concentration" },
-  { category: "Quality & HACCP Documentation", name: "HACCP Plan - Fruit / Grape Processing" },
-  { category: "Quality & HACCP Documentation", name: "Allergen & Cross-Contamination Program" },
-  { category: "Quality & HACCP Documentation", name: "Quality Risk Assessment / Food Defense Plan" },
-  { category: "Packaging & Material Compliance", name: "Food Contact Compliance Declaration" },
-  { category: "Packaging & Material Compliance", name: "Packaging Migration Test Report" },
-  { category: "Packaging & Material Compliance", name: "Aseptic Bag Specification" },
-  { category: "Packaging & Material Compliance", name: "Drum / Packaging Stacking Compliance" },
-  { category: "Regulatory & Safety Documentation", name: "Safety Data Sheet (SDS / MSDS)" },
-  { category: "Regulatory & Safety Documentation", name: "Proposition 65 Statement (if applicable)" },
-  { category: "Regulatory & Safety Documentation", name: "FDA / EU Food Compliance Statement" },
-  { category: "Regulatory & Safety Documentation", name: "Non-GMO Declaration" },
-  { category: "Logistics & Traceability", name: "Batch Coding & Labeling Example" },
-  { category: "Logistics & Traceability", name: "Shipping & Transport Compliance Documents" },
-  { category: "Food Safety Certifications", name: "FSSC 22000 Food Safety Certification Audit Report" },
-  { category: "Food Safety Certifications", name: "SMETA / SEDEX Ethical Trade Audit Report" },
-  { category: "Food Safety Certifications", name: "EU Organic Certification" },
-  { category: "Food Safety Certifications", name: "USDA NOP Organic Certification" },
-  { category: "Quality & HACCP Documentation", name: "OPRP Monitoring / Hazard Control Plan" },
-  { category: "Quality & HACCP Documentation", name: "Food Allergen Control Program" },
-  { category: "Regulatory & Safety Documentation", name: "Insurance Policy - Fire & Special Perils" },
-  { category: "Regulatory & Safety Documentation", name: "US FDA Food Facility Registration" },
-  { category: "Regulatory & Safety Documentation", name: "Kosher Certification" },
-  { category: "Regulatory & Safety Documentation", name: "Halal Certification" },
-  { category: "Regulatory & Safety Documentation", name: "SGF / IRMA Participation Confirmation" },
-  { category: "Food Safety Certifications", name: "FSSC 22000 Certificate (Valid to 2027)" },
-  { category: "Quality & HACCP Documentation", name: "HACCP CCP Plan Sheet" },
-  { category: "Quality & HACCP Documentation", name: "Batch Coding Procedure" },
-  { category: "Organic Certificate", name: "Organic Certificate" },
-];
+import { REQUIRED_DOCS } from "@/lib/supplier-docs";
 
 // Extract unique categories preserving order
 const CATEGORIES = [...new Set(REQUIRED_DOCS.map(d => d.category))];
@@ -269,36 +227,82 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, docName: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadingDoc(docName);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("docName", docName);
 
     try {
-      const response = await fetch(`/api/admin/suppliers/${supplierId}/documents/upload`, {
-        method: "POST",
-        body: formData,
-      });
+      let finalDocs = null;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
 
-      if (!response.ok) throw new Error("Upload failed");
-      
-      const updatedDocs = await response.json();
-      const statesMap: Record<string, DocumentData> = {};
-      updatedDocs.forEach((d: any) => {
-        if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
-        statesMap[d.name] = d;
-      });
-      setDocStates(statesMap);
-      toast.success("Document uploaded successfully!");
+        // 1. Initialize Upload
+        const initRes = await fetch(`/api/admin/suppliers/${supplierId}/documents/upload-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            docName
+          })
+        });
+
+        if (!initRes.ok) {
+          const errorText = await initRes.text();
+          throw new Error("Init failed: " + errorText);
+        }
+        const { uploadUrl } = await initRes.json();
+
+        // 2. Upload directly to Google Drive
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error("Direct upload failed");
+        }
+        
+        const uploadData = await uploadRes.json();
+        const fileId = uploadData.id;
+
+        // 3. Finalize upload
+        const finalizeRes = await fetch(`/api/admin/suppliers/${supplierId}/documents/upload-finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            docName,
+            fileName: file.name,
+            fileId
+          })
+        });
+
+        if (!finalizeRes.ok) throw new Error("Finalize failed");
+        
+        finalDocs = await finalizeRes.json();
+      }
+
+      if (finalDocs) {
+        const statesMap: Record<string, DocumentData> = {};
+        finalDocs.forEach((d: any) => {
+          if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
+          statesMap[d.name] = d;
+        });
+        setDocStates(statesMap);
+        toast.success(`Successfully uploaded ${files.length} document(s)!`);
+      }
     } catch (error) {
+      console.error(error);
       toast.error("File upload failed.");
     } finally {
       setUploadingDoc(null);
       if (fileInputRefs.current[docName]) {
         fileInputRefs.current[docName]!.value = '';
+      }
+      if (fileInputRefs.current[`m_${docName}`]) {
+        fileInputRefs.current[`m_${docName}`]!.value = '';
       }
     }
   };
@@ -365,19 +369,30 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     toast.success("Document verified!");
   };
 
-  const getStatus = (docData?: DocumentData) => {
-    if (docData?.isNA) return { label: "N/A", color: "text-white", bg: "bg-zinc-500 border-zinc-600" };
-    if (!docData || (!docData.fileId && (!docData.files || docData.files.length === 0))) return { label: "NO", color: "text-white", bg: "bg-orange-500 border-orange-600" };
-    if (docData.isVerified) return { label: "VERIFIED", color: "text-white", bg: "bg-blue-600 border-blue-700" };
-    
-    if (docData.expiryDate) {
-      const expDate = new Date(docData.expiryDate);
-      const today = new Date();
-      if (expDate < today) {
-        return { label: "EXPIRED", color: "text-white", bg: "bg-red-600 border-red-700" };
-      }
+  const renderStatus = (state?: DocumentData) => {
+    if (state?.isNA) {
+      return (
+        <div className="inline-flex px-2.5 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap bg-zinc-500 border-zinc-600 text-white">
+          N/A
+        </div>
+      );
     }
-    return { label: "YES", color: "text-white", bg: "bg-green-600 border-green-700" };
+    
+    const uploadedCount = state?.files?.length || (state?.fileId ? 1 : 0);
+    const verifiedCount = state?.files?.filter(f => f.isVerified).length || (state?.isVerified ? 1 : 0);
+
+    return (
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 text-[11px] font-black tracking-widest text-blue-500" title="Verified Documents">
+          <CheckCircle className="h-3.5 w-3.5" />
+          <span>{verifiedCount}</span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] font-black tracking-widest text-muted-foreground" title="Uploaded Documents">
+          <Upload className="h-3.5 w-3.5" />
+          <span>{uploadedCount}</span>
+        </div>
+      </div>
+    );
   };
 
   const toggleNA = (docName: string) => {
@@ -456,7 +471,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
   const renderDocRow = (doc: typeof REQUIRED_DOCS[0], i: number) => {
     const state = docStates[doc.name] || { name: doc.name };
-    const statusInfo = getStatus(state);
     const isNA = !!state.isNA;
     
     return (
@@ -465,9 +479,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           {doc.name}
         </td>
         <td className="px-4 py-2">
-          <div className={`inline-flex px-2 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${statusInfo.bg} ${statusInfo.color}`}>
-            {statusInfo.label}
-          </div>
+          {renderStatus(state)}
         </td>
         <td className="px-4 py-2">
           <div className="relative">
@@ -520,6 +532,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
             <input 
               type="file" 
+              multiple
               className="hidden" 
               ref={el => { fileInputRefs.current[doc.name] = el; }}
               onChange={(e) => handleFileUpload(e, doc.name)}
@@ -533,18 +546,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             >
               {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             </Button>
-
-            {!isSupplierView && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 text-[10px] uppercase font-bold tracking-widest text-muted-foreground hover:text-blue-500"
-                onClick={() => verifyDoc(doc.name)}
-                disabled={!state.fileId || !!state.isVerified}
-              >
-                Verify
-              </Button>
-            )}
           </div>
         </td>
       </tr>
@@ -553,15 +554,12 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
 
   const renderMobileCard = (doc: typeof REQUIRED_DOCS[0], i: number) => {
     const state = docStates[doc.name] || { name: doc.name };
-    const statusInfo = getStatus(state);
     
     return (
       <div key={i} className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
         <div className="flex items-center justify-between px-4 py-2.5 bg-muted/80 border-b border-border">
           <span className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground">{doc.category}</span>
-          <div className={`inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${statusInfo.bg} ${statusInfo.color}`}>
-            {statusInfo.label}
-          </div>
+          {renderStatus(state)}
         </div>
         <div className="px-4 py-3 space-y-3">
           <div className="font-semibold text-sm text-foreground leading-tight">
@@ -619,6 +617,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           <div className="flex items-center gap-1">
             <input 
               type="file" 
+              multiple
               className="hidden" 
               ref={el => { if (!fileInputRefs.current[`m_${doc.name}`]) fileInputRefs.current[`m_${doc.name}`] = el; }}
               onChange={(e) => handleFileUpload(e, doc.name)}
@@ -633,19 +632,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
               {uploadingDoc === doc.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
               Upload
             </Button>
-
-            {!isSupplierView && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-8 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-blue-500 hover:border-blue-500/30 gap-1.5"
-                onClick={() => verifyDoc(doc.name)}
-                disabled={!state.fileId || !!state.isVerified}
-              >
-                <CheckCircle className="h-3.5 w-3.5" />
-                Verify
-              </Button>
-            )}
           </div>
         </div>
       </div>

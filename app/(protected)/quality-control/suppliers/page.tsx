@@ -42,9 +42,12 @@ interface Supplier {
   portalPassword?: string;
   isOrganic?: boolean;
   location: SupplierLocation[];
+  documents?: any[];
 }
 
-import { Plus, Globe, Eye, EyeOff, Key, Mail as MailIcon, Leaf } from "lucide-react";
+import { Plus, Globe, Eye, EyeOff, Key, Mail as MailIcon, Leaf, CheckCircle, Upload, ArrowUpDown } from "lucide-react";
+import { REQUIRED_DOCS } from "@/lib/supplier-docs";
+import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
@@ -245,14 +248,45 @@ export default function SuppliersPage() {
     setFormData({ ...formData, location: newLocations });
   };
 
+  const getSupplierStats = (item: Supplier) => {
+    const isOrganic = !!item.isOrganic;
+    const effectiveDocs = isOrganic ? REQUIRED_DOCS : REQUIRED_DOCS.filter(d => d.category !== 'Organic Certificate');
+    const supplierDocs = item.documents || [];
+    
+    // Exclude N/A docs
+    const naDocs = supplierDocs.filter(d => d.isNA).map(d => d.name);
+    const applicableDocs = effectiveDocs.filter(d => !naDocs.includes(d.name));
+    const totalApplicable = applicableDocs.length;
+    
+    let uploaded = 0;
+    let verified = 0;
+    
+    applicableDocs.forEach(reqDoc => {
+      const sDoc = supplierDocs.find(d => d.name === reqDoc.name);
+      if (sDoc && ((sDoc.files && sDoc.files.length > 0) || sDoc.fileId)) {
+        uploaded += 1;
+      }
+      if (sDoc && ((sDoc.files && sDoc.files.some((f: any) => f.isVerified)) || sDoc.isVerified)) {
+        verified += 1;
+      }
+    });
+    
+    return { uploaded, verified, totalApplicable, remaining: totalApplicable - uploaded };
+  };
+
   const columns: ColumnDef<Supplier>[] = React.useMemo(() => [
     {
-      accessorKey: "vbId",
-      header: "VB ID",
-    },
-    {
       accessorKey: "name",
-      header: "Name",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="-ml-4 hover:bg-transparent"
+        >
+          Name
+          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+        </Button>
+      ),
       cell: ({ row }) => {
         const item = row.original;
         return (
@@ -319,36 +353,69 @@ export default function SuppliersPage() {
       },
     },
     {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const item = row.original;
+      id: "uploaded",
+      accessorFn: (row) => getSupplierStats(row).uploaded,
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="-ml-4 hover:bg-transparent"
+        >
+          Uploaded
+          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+        </Button>
+      ),
+      cell: ({ getValue }) => (
+        <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
+          <Upload className="h-3.5 w-3.5" />
+          <span>{getValue() as number}</span>
+        </div>
+      ),
+    },
+    {
+      id: "verified",
+      accessorFn: (row) => getSupplierStats(row).verified,
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="-ml-4 hover:bg-transparent"
+        >
+          Verified
+          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+        </Button>
+      ),
+      cell: ({ getValue }) => (
+        <div className="flex items-center gap-1.5 text-blue-500 font-medium">
+          <CheckCircle className="h-3.5 w-3.5" />
+          <span>{getValue() as number}</span>
+        </div>
+      ),
+    },
+    {
+      id: "remaining",
+      accessorFn: (row) => getSupplierStats(row).remaining,
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="-ml-4 hover:bg-transparent"
+        >
+          Remaining
+          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+        </Button>
+      ),
+      cell: ({ row, getValue }) => {
+        const stats = getSupplierStats(row.original);
+        const remaining = getValue() as number;
+        const progress = stats.totalApplicable > 0 ? (stats.uploaded / stats.totalApplicable) * 100 : 100;
+        
         return (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                openEditSheet(item);
-              }}
-              className="h-8 w-8 p-0"
-              title="Edit"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(item._id);
-              }}
-              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-              title="Delete"
-            >
-              <Trash className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-xs min-w-[20px]">{remaining}</span>
+            <div className="w-24">
+              <Progress value={progress} className="h-2" />
+            </div>
           </div>
         );
       },
@@ -372,6 +439,7 @@ export default function SuppliersPage() {
           onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
           rowClassName={(row) => row._id === highlightId ? 'animate-highlight-row' : ''}
           rowDataId={(row) => row._id}
+          defaultSorting={[{ id: "name", desc: false }]}
         />
       </div>
 

@@ -42,6 +42,7 @@ interface SimpleDataTableProps<TData, TValue> {
   showColumnToggle?: boolean;
   title?: string;
   loading?: boolean;
+  defaultSorting?: SortingState;
   headerExtra?: React.ReactNode;
   globalFilter?: string;
   onGlobalFilterChange?: (value: string) => void;
@@ -65,8 +66,9 @@ export function SimpleDataTable<TData, TValue>({
   globalFilterFn,
   rowClassName,
   rowDataId,
+  defaultSorting = [],
 }: SimpleDataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   );

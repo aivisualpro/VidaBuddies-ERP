@@ -2,6 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Users, Clock, AlertTriangle, ShieldCheck, ArrowRight, Clock3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { REQUIRED_DOCS } from "@/lib/supplier-docs";
 import {
   Table,
   TableBody,
@@ -129,68 +131,60 @@ export default async function DashboardPage() {
               <TableHeader className="sticky top-0 bg-card z-20 shadow-sm [&_th]:bg-card text-xs">
                 <TableRow>
                   <TableHead>Supplier</TableHead>
-                  <TableHead className="text-center">Total Docs</TableHead>
-                  <TableHead className="text-center">Pending</TableHead>
-                  <TableHead className="text-center">Expiring/Expired</TableHead>
-                  <TableHead className="text-right">Health</TableHead>
+                  <TableHead className="text-center">Uploaded</TableHead>
+                  <TableHead className="text-center">Verified</TableHead>
+                  <TableHead className="text-center">Remaining</TableHead>
+                  <TableHead className="text-right">Progress</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {suppliers.map((supp: any) => {
-                  let sTotal = 0;
-                  let sPending = 0;
-                  let sExp = 0;
-                  let sApproved = 0;
+                  const isOrganic = !!supp.isOrganic;
+                  const effectiveDocs = isOrganic ? REQUIRED_DOCS : REQUIRED_DOCS.filter(d => d.category !== 'Organic Certificate');
+                  const supplierDocs = supp.documents || [];
+                  const naDocs = supplierDocs.filter((d: any) => d.isNA).map((d: any) => d.name);
+                  const applicableDocs = effectiveDocs.filter(d => !naDocs.includes(d.name));
+                  const totalApplicable = applicableDocs.length;
                   
-                  if (Array.isArray(supp.documents)) {
-                    supp.documents.forEach((doc: IVidaSupplierDocument) => {
-                      if (doc.isNA) return;
-                      if (doc.fileId || doc.fileLink || doc.logs?.length > 0) {
-                        sTotal++;
-                        let expDate = doc.expiryDate ? new Date(doc.expiryDate) : null;
-                        if (expDate && expDate <= thirtyDaysFromNow) {
-                          sExp++;
-                        } else if (!doc.isVerified) {
-                          sPending++;
-                        } else {
-                          sApproved++;
-                        }
-                      }
-                    });
-                  }
+                  let uploaded = 0;
+                  let verified = 0;
                   
-                  const sHealth = sTotal > 0 ? Math.round((sApproved / sTotal) * 100) : 0;
+                  applicableDocs.forEach(reqDoc => {
+                    const sDoc = supplierDocs.find((d: any) => d.name === reqDoc.name);
+                    if (sDoc && ((sDoc.files && sDoc.files.length > 0) || sDoc.fileId)) {
+                      uploaded += 1;
+                    }
+                    if (sDoc && ((sDoc.files && sDoc.files.some((f: any) => f.isVerified)) || sDoc.isVerified)) {
+                      verified += 1;
+                    }
+                  });
+
+                  const remaining = totalApplicable - uploaded;
+                  const progress = totalApplicable > 0 ? Math.round((uploaded / totalApplicable) * 100) : 100;
                   
                   return (
                     <TableRow key={supp._id}>
                       <TableCell>
-                        <Link href={`/quality-control/suppliers/${supp._id}/documents`} className="hover:underline">
+                        <Link href={`/quality-control/suppliers/${supp._id}/documents`} className="hover:underline font-medium">
                           {supp.name}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-center">{sTotal}</TableCell>
                       <TableCell className="text-center">
-                        {sPending > 0 ? (
-                          <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">{sPending}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+                        <span className="text-muted-foreground font-medium">{uploaded}</span>
                       </TableCell>
                       <TableCell className="text-center">
-                        {sExp > 0 ? (
-                          <Badge variant="outline" className="text-destructive border-red-200 bg-red-50">{sExp}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+                        <span className="text-blue-500 font-medium">{verified}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-semibold text-xs">{remaining}</span>
                       </TableCell>
                       <TableCell className="text-right">
-                        {sTotal === 0 ? (
-                          <span className="text-muted-foreground text-sm">No Docs</span>
-                        ) : (
-                          <Badge variant={sHealth === 100 ? "default" : "secondary"} className={sHealth === 100 ? "bg-emerald-500 hover:bg-emerald-600" : ""}>
-                            {sHealth}%
-                          </Badge>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs font-medium w-8 text-right">{progress}%</span>
+                          <div className="w-16">
+                            <Progress value={progress} className="h-1.5" />
+                          </div>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
