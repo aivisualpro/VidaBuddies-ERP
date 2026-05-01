@@ -39,6 +39,7 @@ interface SimpleDataTableProps<TData, TValue> {
   searchKey?: string;
   onAdd?: () => void;
   onRowClick?: (data: TData) => void;
+  onRowHover?: (data: TData) => void;
   showColumnToggle?: boolean;
   title?: string;
   loading?: boolean;
@@ -57,6 +58,7 @@ export function SimpleDataTable<TData, TValue>({
   searchKey,
   onAdd,
   onRowClick,
+  onRowHover,
   showColumnToggle = true,
   title,
   loading,
@@ -245,6 +247,7 @@ export function SimpleDataTable<TData, TValue>({
                   data-state={row.getIsSelected() && "selected"}
                   data-row-id={rowDataId?.(row.original)}
                   onClick={() => onRowClick?.(row.original)}
+                  onMouseEnter={() => onRowHover?.(row.original)}
                   className={`${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row.original) || ""}`}
                 >
                   {row.getVisibleCells().map((cell) => (

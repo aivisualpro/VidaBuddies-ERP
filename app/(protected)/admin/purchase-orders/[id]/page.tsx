@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, useRef, use, useMemo } from "react";
 import { DetailPageSkeleton } from "@/components/skeletons";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -188,22 +188,78 @@ function ProductMultiSelect({ products, initialSelected }: { products: Record<st
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { refetchPurchaseOrders } = useUserDataStore();
   const [po, setPO] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<Record<string, string>>({});
-  const [locations, setLocations] = useState<Record<string, string>>({});
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [supplierLocations, setSupplierLocations] = useState<Record<string, string>>({});
   const [selectedSupplierForShipping, setSelectedSupplierForShipping] = useState<string>("");
-  const [products, setProducts] = useState<Record<string, string>>({});
-  const [warehouses, setWarehouses] = useState<any[]>([]);
   const [selectedCustomerForCPO, setSelectedCustomerForCPO] = useState<string>("");
   const [selectedLocationForCPO, setSelectedLocationForCPO] = useState<string>("");
   const [selectedWarehouseForCPO, setSelectedWarehouseForCPO] = useState<string>("");
   const [selectedUOMForCPO, setSelectedUOMForCPO] = useState<string>("");
   const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
+
+  // ─── Pull ALL reference data from global Zustand store (already loaded at app init) ───
+  const {
+    refetchPurchaseOrders,
+    users: rawStoreUsers,
+    customers: storeCustomers,
+    suppliers: storeSuppliers,
+    products: storeProducts,
+    warehouses: storeWarehouses,
+  } = useUserDataStore();
+
+  // Derive lookup maps from store data (zero API calls)
+  const users = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    if (Array.isArray(rawStoreUsers)) {
+      rawStoreUsers.forEach((u: any) => {
+        if (u.email) mapping[u.email.toLowerCase()] = u.name;
+      });
+    }
+    return mapping;
+  }, [rawStoreUsers]);
+
+  const customers = storeCustomers || [];
+
+  const locations = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    customers.forEach((cust: any) => {
+      if (cust.location && Array.isArray(cust.location)) {
+        cust.location.forEach((loc: any) => {
+          if (loc.vbId) mapping[loc.vbId] = loc.locationName || loc.vbId;
+        });
+      }
+    });
+    return mapping;
+  }, [customers]);
+
+  const suppliers = storeSuppliers || [];
+
+  const supplierLocations = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    suppliers.forEach((sup: any) => {
+      if (sup.location && Array.isArray(sup.location)) {
+        sup.location.forEach((loc: any) => {
+          if (loc.vbId) {
+            mapping[loc.vbId] = loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId;
+          }
+        });
+      }
+    });
+    return mapping;
+  }, [suppliers]);
+
+  const products = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    if (Array.isArray(storeProducts)) {
+      storeProducts.forEach((p: any) => {
+        mapping[p._id] = p.name;
+        if (p.vbId) mapping[p.vbId] = p.name;
+      });
+    }
+    return mapping;
+  }, [storeProducts]);
+
+  const warehouses = storeWarehouses || [];
 
   const [emailRecords, setEmailRecords] = useState<any[]>([]);
   const [openShippings, setOpenShippings] = useState<Record<string, boolean>>({});
@@ -227,51 +283,31 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
-  const fetchCustomers = async () => {
-    try {
-      const response = await fetch("/api/admin/customers");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setCustomers(data);
-        const mapping: Record<string, string> = {};
-        data.forEach((cust: any) => {
-          if (cust.location && Array.isArray(cust.location)) {
-            cust.location.forEach((loc: any) => {
-              if (loc.vbId) {
-                mapping[loc.vbId] = loc.locationName || loc.vbId;
-              }
-            });
-          }
-        });
-        setLocations(mapping);
-      }
-    } catch (error) {
-      console.error("Failed to fetch customers", error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch("/api/admin/users");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        const mapping: Record<string, string> = {};
-        data.forEach((u: any) => {
-          mapping[u.email.toLowerCase()] = u.name;
-        });
-        setUsers(mapping);
-      }
-    } catch (error) {
-      console.error("Failed to fetch users", error);
-    }
-  };
-
   const fetchPO = async () => {
     try {
-      const response = await fetch(`/api/admin/purchase-orders/${id}`);
-      if (!response.ok) throw new Error("Failed to fetch purchase order");
-      const data = await response.json();
-      setPO(data);
+      // Fire all 3 requests in parallel — id is already known from the URL
+      const [poRes, cpoRes, shipRes] = await Promise.all([
+        fetch(`/api/admin/purchase-orders/${id}`),
+        fetch(`/api/admin/vb-customer-po?vidaPOId=${id}`),
+        fetch(`/api/admin/vb-shipping`),
+      ]);
+
+      if (!poRes.ok) throw new Error("Failed to fetch purchase order");
+      const [poData, cpoList, shipList] = await Promise.all([
+        poRes.json(),
+        cpoRes.ok ? cpoRes.json() : [],
+        shipRes.ok ? shipRes.json() : [],
+      ]);
+
+      // Assemble into the legacy shape: po.customerPO[].shipping[]
+      const assembledCPOs = (cpoList as any[]).map((cpo: any) => {
+        const cpoShippings = (shipList as any[]).filter(
+          (s: any) => s.customerPOId === cpo._id || s.customerPOId?.toString() === cpo._id?.toString()
+        );
+        return { ...cpo, shipping: cpoShippings };
+      });
+
+      setPO({ ...poData, customerPO: assembledCPOs });
     } catch (error) {
       toast.error("Error loading purchase order details");
     } finally {
@@ -287,45 +323,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     } catch { /* silent */ }
   };
 
-  useEffect(() => {
-    if (po?.vbpoNo) {
-      fetchEmailRecords(po.vbpoNo);
-    }
-  }, [po?.vbpoNo]);
-
-  // Listen for real-time email record updates from modals (e.g. reference saved)
-  useEffect(() => {
-    const handler = () => {
-      if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
-    };
-    window.addEventListener("vb-email-records-updated", handler);
-    return () => window.removeEventListener("vb-email-records-updated", handler);
-  }, [po?.vbpoNo]);
-
-  const fetchSuppliers = async () => {
-    try {
-      const response = await fetch("/api/admin/suppliers");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setSuppliers(data);
-        // Also build a flat mapping for display in shipping cards
-        const mapping: Record<string, string> = {};
-        data.forEach((sup: any) => {
-          if (sup.location && Array.isArray(sup.location)) {
-            sup.location.forEach((loc: any) => {
-              if (loc.vbId) {
-                mapping[loc.vbId] = loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId;
-              }
-            });
-          }
-        });
-        setSupplierLocations(mapping);
-      }
-    } catch (error) {
-      console.error("Failed to fetch suppliers", error);
-    }
-  };
-
   // Get filtered locations for the selected supplier
   const getSupplierLocationOptions = (): { id: string; name: string }[] => {
     if (!selectedSupplierForShipping) return [];
@@ -337,42 +334,23 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }));
   };
 
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch("/api/admin/products");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        const mapping: Record<string, string> = {};
-        data.forEach((p: any) => {
-          mapping[p._id] = p.name;
-          if (p.vbId) mapping[p.vbId] = p.name;
-        });
-        setProducts(mapping);
-      }
-    } catch (error) {
-      console.error("Failed to fetch products", error);
+  useEffect(() => {
+    if (po?.vbpoNo) {
+      fetchEmailRecords(po.vbpoNo);
     }
-  };
+  }, [po?.vbpoNo]);
 
-  const fetchWarehouses = async () => {
-    try {
-      const response = await fetch("/api/admin/warehouse");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setWarehouses(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch warehouses", error);
-    }
-  };
+  // Listen for real-time email record updates from modals
+  useEffect(() => {
+    const handler = () => {
+      if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
+    };
+    window.addEventListener("vb-email-records-updated", handler);
+    return () => window.removeEventListener("vb-email-records-updated", handler);
+  }, [po?.vbpoNo]);
 
   useEffect(() => {
     fetchPO();
-    fetchUsers();
-    fetchCustomers();
-    fetchSuppliers();
-    fetchProducts();
-    fetchWarehouses();
   }, [id]);
 
   // Auto-select single location when customer changes
@@ -421,30 +399,28 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     // Optimistic Update
     if (!po) return;
 
+    const ship = po.customerPO[cpoIdx]?.shipping?.[shipIdx];
+    if (!ship?._id) return;
+
     const newPO = { ...po };
     if (newPO.customerPO[cpoIdx]?.shipping?.[shipIdx]) {
-      newPO.customerPO[cpoIdx].shipping[shipIdx] = {
-        ...newPO.customerPO[cpoIdx].shipping[shipIdx],
+      newPO.customerPO[cpoIdx].shipping![shipIdx] = {
+        ...newPO.customerPO[cpoIdx].shipping![shipIdx],
         [field]: value
       };
-      setPO(newPO);
     }
+    setPO(newPO);
 
     try {
-      const updateKey = `customerPO.${cpoIdx}.shipping.${shipIdx}.${field}`;
-      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
+      const response = await fetch(`/api/admin/vb-shipping/${ship._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [updateKey]: value })
+        body: JSON.stringify({ [field]: value })
       });
 
       if (!response.ok) throw new Error("Update failed");
-
-      // Quietly success or toast
-      // toast.success("Updated successfully");
     } catch (error) {
       toast.error("Failed to update");
-      // Revert (could fetchPO() to be safe)
       fetchPO();
     }
   };
@@ -458,8 +434,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           setPO((currentPO) => {
             if (!currentPO) return currentPO;
             const newCPOs = [...currentPO.customerPO];
-            // Ensure we are deleting the correct index or find by ID if safe
-            // For now, trusting index as per original logic, but finding by ID is safer for robustness
             const realIdx = newCPOs.findIndex(c => c._id === cpoId);
             if (realIdx !== -1) {
               newCPOs.splice(realIdx, 1);
@@ -469,12 +443,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           });
 
           try {
-            const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                $pull: { customerPO: { _id: cpoId } }
-              })
+            const response = await fetch(`/api/admin/vb-customer-po/${cpoId}`, {
+              method: 'DELETE',
             });
 
             if (!response.ok) throw new Error("Failed to delete");
@@ -482,7 +452,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             fetchPO();
           } catch (e) {
             toast.error("Error deleting Customer PO");
-            fetchPO(); // Revert/Refresh
+            fetchPO();
           }
         }
       }
@@ -501,26 +471,27 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     if (formattedData.qtyReceived) formattedData.qtyReceived = Number(formattedData.qtyReceived);
 
     try {
-      let body = {};
       if (editingCPO) {
-        // Update specific fields using dot notation
-        const updateObj: any = {};
-        Object.keys(formattedData).forEach(key => {
-          updateObj[`customerPO.${editingCPO.idx}.${key}`] = formattedData[key];
+        // Update existing standalone VBcustomerPO
+        const cpoId = po?.customerPO?.[editingCPO.idx]?._id;
+        if (!cpoId) throw new Error("Missing CPO ID");
+        const response = await fetch(`/api/admin/vb-customer-po/${cpoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData)
         });
-        body = updateObj;
+        if (!response.ok) throw new Error("Failed to update");
       } else {
-        // Add new
-        body = { $push: { customerPO: formattedData } };
+        // Create new standalone VBcustomerPO linked to this PO
+        formattedData.vidaPOId = po?._id;
+        formattedData.vbpoNo = po?.vbpoNo || '';
+        const response = await fetch('/api/admin/vb-customer-po', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData)
+        });
+        if (!response.ok) throw new Error("Failed to create");
       }
-
-      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) throw new Error("Failed to save");
 
       toast.success(editingCPO ? "Customer PO Updated" : "Customer PO Added");
       setIsAddCPOOpen(false);
@@ -556,21 +527,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 return { ...currentPO, customerPO: newCPOs };
               }
             }
-            if (newCPOs[cpoIdx]?.shipping?.[shipIdx]?._id === shipId) {
-              newCPOs[cpoIdx].shipping.splice(shipIdx, 1);
-              return { ...currentPO, customerPO: newCPOs };
-            }
 
             return currentPO;
           });
 
           try {
-            const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                $pull: { [`customerPO.${cpoIdx}.shipping`]: { _id: shipId } }
-              })
+            const response = await fetch(`/api/admin/vb-shipping/${shipId}`, {
+              method: 'DELETE',
             });
 
             if (!response.ok) throw new Error("Failed to delete shipping");
@@ -634,24 +597,28 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }
 
     try {
-      let body = {};
       if (editingShipping) {
-        const updateObj: any = {};
-        Object.keys(formattedData).forEach(key => {
-          updateObj[`customerPO.${editingShipping.cpoIdx}.shipping.${editingShipping.shipIdx}.${key}`] = formattedData[key];
+        // Update existing standalone VBshipping
+        const shipId = po?.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx]?._id;
+        if (!shipId) throw new Error("Missing Shipping ID");
+        const response = await fetch(`/api/admin/vb-shipping/${shipId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData)
         });
-        body = updateObj;
+        if (!response.ok) throw new Error("Failed to update shipping");
       } else if (addingShippingToCPO) {
-        body = { $push: { [`customerPO.${addingShippingToCPO.idx}.shipping`]: formattedData } };
+        // Create new standalone VBshipping linked to the parent CPO
+        const parentCpo = po?.customerPO?.[addingShippingToCPO.idx];
+        formattedData.customerPOId = parentCpo?._id;
+        formattedData.poNo = parentCpo?.poNo || '';
+        const response = await fetch('/api/admin/vb-shipping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData)
+        });
+        if (!response.ok) throw new Error("Failed to create shipping");
       }
-
-      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) throw new Error("Failed to save shipping");
 
       toast.success(editingShipping ? "Shipping Updated" : "Shipping Added");
       setAddingShippingToCPO(null);

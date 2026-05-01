@@ -4,6 +4,8 @@ import VidaWarehouse from './VidaWarehouse';
 import VidaProduct from './VidaProduct';
 import VidaPO from './VidaPO';
 import VidaUser from './VidaUser';
+import VBcustomerPO from './VBcustomerPO';
+import VBshipping from './VBshipping';
 
 export {
   VidaCustomer,
@@ -12,4 +14,6 @@ export {
   VidaProduct,
   VidaPO,
   VidaUser,
+  VBcustomerPO,
+  VBshipping,
 };

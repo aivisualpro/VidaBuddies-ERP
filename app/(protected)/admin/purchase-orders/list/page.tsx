@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUserDataStore } from "@/store/useUserDataStore";
@@ -95,6 +95,9 @@ export default function PurchaseOrdersPage() {
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
 
+  // Prefetch cache — must be declared before any conditional returns (Rules of Hooks)
+  const prefetchedIds = useRef(new Set<string>());
+
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
     vbpoNo: "",
     orderType: "",
@@ -105,10 +108,10 @@ export default function PurchaseOrdersPage() {
 
 
 
-  // After data loads, fetch email counts
+  // After data loads, fetch email counts in ONE batch call
   useEffect(() => {
     if (data.length > 0) {
-      fetchEmailCountsForPOs(data);
+      fetchEmailCounts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.length]);
@@ -131,24 +134,20 @@ export default function PurchaseOrdersPage() {
     }
   };
 
-  const fetchEmailCountsForPOs = async (poList: PurchaseOrder[]) => {
-    const counts: Record<string, number> = {};
-    const invCounts: Record<string, number> = {};
+  const fetchEmailCounts = async () => {
     try {
-      // Batch: fetch all emails across all POs
-      const promises = poList.map(async (po) => {
-        try {
-          const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(po.vbpoNo)}`);
-          const data = await res.json();
-          if (res.ok && data.emails) {
-            counts[po.vbpoNo] = data.emails.length;
-            invCounts[po.vbpoNo] = data.emails.filter((e: any) => e.type === "Invoice").length;
-          }
-        } catch { /* silent */ }
-      });
-      await Promise.all(promises);
-      setEmailCounts(counts);
-      setInvoiceCounts(invCounts);
+      const res = await fetch("/api/admin/emails/counts");
+      const data = await res.json();
+      if (res.ok && data.counts) {
+        const eCounts: Record<string, number> = {};
+        const iCounts: Record<string, number> = {};
+        Object.entries(data.counts).forEach(([vbpoNo, val]: [string, any]) => {
+          eCounts[vbpoNo] = val.total || 0;
+          iCounts[vbpoNo] = val.invoices || 0;
+        });
+        setEmailCounts(eCounts);
+        setInvoiceCounts(iCounts);
+      }
     } catch (error) {
       console.error("Failed to fetch email counts", error);
     }
@@ -691,6 +690,17 @@ export default function PurchaseOrdersPage() {
     </div>
   );
 
+  // Prefetch detail page on hover for instant navigation
+  const handleRowHover = (row: PurchaseOrder) => {
+    if (prefetchedIds.current.has(row._id)) return;
+    prefetchedIds.current.add(row._id);
+    // Prefetch the Next.js page bundle
+    router.prefetch(`/admin/purchase-orders/${row._id}`);
+    // Prefetch the data APIs into browser cache
+    fetch(`/api/admin/purchase-orders/${row._id}`).catch(() => {});
+    fetch(`/api/admin/vb-customer-po?vidaPOId=${row._id}`).catch(() => {});
+  };
+
   return (
     <div className="w-full h-full">
       <SimpleDataTable
@@ -698,6 +708,7 @@ export default function PurchaseOrdersPage() {
         data={filteredData}
         onAdd={userRole === 'NIGALU' ? undefined : openAddSheet}
         onRowClick={(row) => router.push(`/admin/purchase-orders/${row._id}`)}
+        onRowHover={handleRowHover}
         showColumnToggle={false}
         headerExtra={headerFilters}
       />
