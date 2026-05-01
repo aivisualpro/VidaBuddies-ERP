@@ -21,6 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmailChipInput, EmailContact } from "@/components/email-chip-input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Send,
   Loader2,
@@ -120,6 +122,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   const [sending, setSending] = useState(false);
   const [emailType, setEmailType] = useState("Invoice");
   const [reference, setReference] = useState("");
+  const [isShipping, setIsShipping] = useState(true);
   const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([]);
   
   const { purchaseOrders } = useUserDataStore();
@@ -213,7 +216,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
       return;
     }
 
-    if (emailType === "Invoice" && !reference) {
+    if (emailType === "Invoice" && isShipping && !reference) {
       toast.error("Please select a Reference shipment for the Invoice.");
       return;
     }
@@ -229,7 +232,8 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
           subject,
           body,
           type: emailType,
-          reference: reference,
+          reference: isShipping ? reference : "",
+          isShipping: emailType === "Invoice" ? isShipping : undefined,
           vbpoNo,
           folderPath,
           fileIds: localAttachments.filter(
@@ -266,6 +270,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
     setTemplateName("");
     setEmailType("Invoice");
     setReference("");
+    setIsShipping(true);
     setLocalAttachments([]);
     onClose();
   };
@@ -602,21 +607,46 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
                 </Select>
               </div>
 
-              {emailType === "Invoice" && availableReferences.length > 0 && (
-                <div className="flex-1 max-w-[200px]">
-                  <Select value={reference} onValueChange={handleReferenceChange}>
-                    <SelectTrigger className="h-8 text-xs bg-background/50 border-input/40 shadow-sm focus:ring-1 focus:ring-primary/20 transition-all font-medium">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <FileText className="h-3 w-3" />
-                        <SelectValue placeholder="Select reference" />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent align="start" className="min-w-[140px] max-w-[200px] border-border/40 shadow-md">
-                      {availableReferences.map(ref => (
-                        <SelectItem key={ref} value={ref} className="text-xs font-semibold">{ref}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {emailType === "Invoice" && (
+                <div className="flex items-center gap-3 ml-2">
+                  {/* Shipping Toggle */}
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="is-shipping-toggle"
+                      size="sm"
+                      checked={isShipping}
+                      onCheckedChange={setIsShipping}
+                      disabled={isViewMode}
+                    />
+                    <Label
+                      htmlFor="is-shipping-toggle"
+                      className={cn(
+                        "text-[10px] font-semibold cursor-pointer select-none transition-colors",
+                        isShipping ? "text-emerald-600" : "text-muted-foreground/60"
+                      )}
+                    >
+                      Shipping
+                    </Label>
+                  </div>
+
+                  {/* Reference dropdown — only when shipping is ON */}
+                  {isShipping && availableReferences.length > 0 && (
+                    <div className="flex-1 max-w-[200px]">
+                      <Select value={reference} onValueChange={handleReferenceChange}>
+                        <SelectTrigger className="h-8 text-xs bg-background/50 border-input/40 shadow-sm focus:ring-1 focus:ring-primary/20 transition-all font-medium">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <FileText className="h-3 w-3" />
+                            <SelectValue placeholder="Select reference" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent align="start" className="min-w-[140px] max-w-[200px] border-border/40 shadow-md">
+                          {availableReferences.map(ref => (
+                            <SelectItem key={ref} value={ref} className="text-xs font-semibold">{ref}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
