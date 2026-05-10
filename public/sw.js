@@ -38,6 +38,59 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// ── Push Notification event ──────────────────────────────────
+// Handles incoming Web Push messages and displays a native notification
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: 'VidaBuddies', body: event.data.text() };
+  }
+
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/icon-192x192.png',
+    badge: payload.badge || '/icon-192x192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      url: payload.url || '/',
+    },
+    tag: payload.tag || 'vida-notification',
+    renotify: true,
+    requireInteraction: false,
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'VidaBuddies', options)
+  );
+});
+
+// ── Notification Click handler ──────────────────────────────
+// Opens the target URL when the user clicks a push notification
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Focus an existing tab if one matches
+        for (const client of clientList) {
+          if (client.url.includes(targetUrl) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // Otherwise open a new window
+        return self.clients.openWindow(targetUrl);
+      })
+  );
+});
+
 // Fetch event — Network-first strategy for API/dynamic content,
 // Cache-first for static assets
 self.addEventListener('fetch', (event) => {

@@ -3,6 +3,9 @@ import type { BellNotification } from "@/lib/notifications/types";
 
 type TabValue = "reminders" | "shipments" | "all";
 
+/** Cache TTL in milliseconds (30 seconds) */
+const CACHE_TTL_MS = 30_000;
+
 export interface NotificationState {
   open: boolean;
   activeTab: TabValue;
@@ -10,6 +13,8 @@ export interface NotificationState {
   unreadCount: number;
   /** True when a brand-new notification has arrived since the panel was last opened */
   hasNewSinceLastOpen: boolean;
+  /** Timestamp of last fetch — used for 30s cache */
+  lastFetchedAt: number;
 
   setOpen: (v: boolean) => void;
   setActiveTab: (t: TabValue) => void;
@@ -18,6 +23,10 @@ export interface NotificationState {
   markRead: (id: string) => Promise<void>;
   /** Called by Pusher subscriber when a realtime notification arrives */
   pushIncoming: (n: BellNotification) => void;
+  /** Returns true if cache is still fresh (< 30s old) */
+  isCacheFresh: () => boolean;
+  /** Force invalidate cache */
+  invalidateCache: () => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -26,6 +35,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   items: [],
   unreadCount: 0,
   hasNewSinceLastOpen: false,
+  lastFetchedAt: 0,
 
   setOpen: (v) => {
     set({ open: v });
@@ -41,6 +51,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({
       items,
       unreadCount: items.filter((i) => !i.read).length,
+      lastFetchedAt: Date.now(),
     }),
 
   markAllRead: async () => {
@@ -49,7 +60,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const updated = items.map((i) => ({ ...i, read: true }));
     set({ items: updated, unreadCount: 0 });
 
-    // API call will be wired in Step 3
     try {
       await fetch("/api/notifications/mark-all-read", { method: "POST" });
     } catch (error) {
@@ -68,7 +78,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       unreadCount: updated.filter((i) => !i.read).length,
     });
 
-    // API call will be wired in Step 3
     try {
       await fetch(`/api/notifications/${id}`, {
         method: "PATCH",
@@ -90,5 +99,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       unreadCount: updated.filter((i) => !i.read).length,
       hasNewSinceLastOpen: true,
     });
+  },
+
+  isCacheFresh: () => {
+    const { lastFetchedAt } = get();
+    return Date.now() - lastFetchedAt < CACHE_TTL_MS;
+  },
+
+  invalidateCache: () => {
+    set({ lastFetchedAt: 0 });
   },
 }));

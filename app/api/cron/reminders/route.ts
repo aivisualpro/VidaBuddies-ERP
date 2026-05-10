@@ -5,6 +5,9 @@ import VidaTimeline from "@/lib/models/VidaTimeline";
 import VidaNotification from "@/lib/models/VidaNotification";
 import { buildLookups } from "@/lib/timeline/lookups";
 import { triggerNotification } from "@/lib/pusher/server";
+import { sendPushToUser } from "@/lib/push/web-push";
+import { sendMail } from "@/lib/email/send";
+import { renderReminderEmail, type ReminderEmailItem } from "@/lib/email/templates/reminder";
 import type { BellNotification } from "@/lib/notifications/types";
 
 /**
@@ -19,6 +22,9 @@ import type { BellNotification } from "@/lib/notifications/types";
  *
  * On each newly created notification, triggers a Pusher event so the user
  * sees a live toast + badge increment without refreshing.
+ *
+ * After processing all items for a user, sends a single daily digest email
+ * (deduplicated via email-specific dedupKey).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -37,7 +43,7 @@ export async function GET(req: NextRequest) {
     ).lean();
 
     if (superAdmins.length === 0) {
-      return NextResponse.json({ fanned: 0, message: "No active Super Admins" });
+      return NextResponse.json({ fanned: 0, emailsSent: 0, message: "No active Super Admins" });
     }
 
     // End of today
@@ -59,19 +65,23 @@ export async function GET(req: NextRequest) {
       .lean();
 
     if (items.length === 0) {
-      return NextResponse.json({ fanned: 0, message: "No due reminders" });
+      return NextResponse.json({ fanned: 0, emailsSent: 0, message: "No due reminders" });
     }
 
     const lookups = await buildLookups();
+    const appUrl = process.env.APP_URL || "http://localhost:3000";
     let fanned = 0;
+    let emailsSent = 0;
+    let pushesSent = 0;
 
     // Fan out: for each Super Admin × each due reminder
     for (const admin of superAdmins) {
       const userId = (admin as any)._id.toString();
       const userEmail = (admin as any).email;
-      const userName = (admin as any).name;
+      const userName = (admin as any).name || "there";
 
       const newNotifications: BellNotification[] = [];
+      const emailItems: ReminderEmailItem[] = [];
 
       for (const item of items) {
         const timelineId = (item as any)._id.toString();
@@ -90,6 +100,18 @@ export async function GET(req: NextRequest) {
 
         const title = `Reminder: ${(item as any).type}${vbDisplay ? ` ${vbDisplay}` : ""}`.trim();
         const message = (item as any).comments || "—";
+
+        // Always collect for email (even if deduped in notification)
+        emailItems.push({
+          title,
+          comments: (item as any).comments || undefined,
+          vbNumber: vbDisplay || undefined,
+          vbSerial: serialDisplay || undefined,
+          vbShipment: shipDisplay || undefined,
+          reminder: new Date((item as any).reminder || (item as any).timestamp),
+          status: (item as any).status || "Open",
+          link: "/admin/active-actions",
+        });
 
         try {
           const result = await VidaNotification.updateOne(
@@ -153,11 +175,81 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      // Email enqueue will be added in Step 5
+      // ── Web Push (OS-level notifications) ──────────────
+      if (newNotifications.length > 0) {
+        try {
+          const pushResult = await sendPushToUser(userId, {
+            title: `🔔 ${items.length} reminder${items.length !== 1 ? "s" : ""} due`,
+            body: newNotifications[0].title + (newNotifications.length > 1 ? ` (+${newNotifications.length - 1} more)` : ""),
+            icon: "/icon-192x192.png",
+            badge: "/icon-192x192.png",
+            url: "/admin/active-actions",
+            tag: `reminders-${todayStr}`,
+          });
+          pushesSent += pushResult.sent;
+        } catch (pushErr: any) {
+          console.error(`[Cron] Push failed for ${userId}:`, pushErr.message);
+        }
+      }
+
+      // ── Daily email digest (one per user per day) ──────────
+      if (emailItems.length > 0) {
+        const emailDedupKey = `email-digest:${todayStr}:${userId}`;
+
+        try {
+          // Check if we already sent a digest email today for this user
+          const existing = await VidaNotification.findOne({ dedupKey: emailDedupKey }).lean();
+
+          if (!existing) {
+            // Render and send the email
+            const { subject, html, text } = renderReminderEmail({
+              userName,
+              items: emailItems,
+              appUrl,
+            });
+
+            const result = await sendMail({
+              to: userEmail,
+              subject,
+              html,
+              text,
+            });
+
+            // Record the email send with a dedup marker
+            await VidaNotification.updateOne(
+              { dedupKey: emailDedupKey },
+              {
+                $setOnInsert: {
+                  title: `Daily digest email sent to ${userEmail}`,
+                  message: `${emailItems.length} reminders`,
+                  type: "info" as const,
+                  kind: "system" as const,
+                  read: true,
+                  userEmail,
+                  dedupKey: emailDedupKey,
+                  createdAt: new Date(),
+                },
+              },
+              { upsert: true }
+            );
+
+            if (result.success) {
+              emailsSent++;
+              console.log(`[Cron] Digest email sent to ${userEmail} (${emailItems.length} items)`);
+            } else {
+              console.error(`[Cron] Email failed for ${userEmail}:`, result.error);
+            }
+          }
+        } catch (emailErr: any) {
+          console.error(`[Cron] Email error for ${userEmail}:`, emailErr);
+        }
+      }
     }
 
     return NextResponse.json({
       fanned,
+      emailsSent,
+      pushesSent,
       superAdmins: superAdmins.length,
       dueReminders: items.length,
     });
