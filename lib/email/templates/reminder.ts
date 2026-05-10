@@ -35,12 +35,12 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max).trimEnd() + "…";
 }
 
-function statusColor(status: string): { bg: string; text: string } {
+function statusPill(status: string): { bg: string; text: string; darkBg: string; darkText: string } {
   switch (status) {
     case "In Progress":
-      return { bg: "#DBEAFE", text: "#1D4ED8" };
+      return { bg: "#EFF6FF", text: "#1D4ED8", darkBg: "#1E3A5F", darkText: "#93C5FD" };
     default: // Open
-      return { bg: "#FEF3C7", text: "#B45309" };
+      return { bg: "#FFFBEB", text: "#B45309", darkBg: "#4A3728", darkText: "#FCD34D" };
   }
 }
 
@@ -58,38 +58,43 @@ export function renderReminderEmail(input: RenderInput): {
   // ── Build item rows ──────────────────────────────────────
   const itemRows = items
     .map((item) => {
-      const sc = statusColor(item.status);
-      const comments = item.comments ? truncate(item.comments, 140) : "";
+      const sc = statusPill(item.status);
+      const comments = item.comments || "";
       const chips: string[] = [];
       if (item.vbNumber) chips.push(item.vbNumber);
       if (item.vbSerial) chips.push(item.vbSerial);
       if (item.vbShipment) chips.push(item.vbShipment);
       const chipsHtml = chips.length
-        ? `<div style="margin-top:6px;">${chips.map((c) => `<span style="display:inline-block;background:#F1F5F9;color:#64748B;font-size:11px;padding:2px 8px;border-radius:4px;margin-right:4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">${c}</span>`).join("")}</div>`
+        ? `<div style="margin-top:8px;">${chips.map((c) => `<span class="chip" style="display:inline-block;background:#F1F5F9;color:#475569;font-size:11px;padding:3px 10px;border-radius:6px;margin-right:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;border:1px solid #E2E8F0;">${c}</span>`).join("")}</div>`
         : "";
 
       return `
         <tr>
-          <td style="padding:16px 20px;border-bottom:1px solid #F1F5F9;">
+          <td class="item-border" style="padding:20px 24px;border-bottom:1px solid #F1F5F9;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td width="8" valign="top" style="padding-top:4px;">
-                  <div style="width:8px;height:8px;border-radius:50%;background:${sc.text};"></div>
+                <td valign="top" style="padding-right:16px;">
+                  <!-- Status dot -->
+                  <div style="width:10px;height:10px;border-radius:50%;background:${sc.text};margin-top:6px;"></div>
                 </td>
-                <td style="padding-left:14px;" valign="top">
-                  <div style="font-size:14px;font-weight:600;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.4;">
+                <td style="width:100%;" valign="top">
+                  <!-- Title -->
+                  <div class="item-title" style="font-size:15px;font-weight:700;color:#1E293B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.4;">
                     ${item.title}
                   </div>
-                  ${comments ? `<div style="font-size:13px;color:#64748B;margin-top:3px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">${comments}</div>` : ""}
-                  <div style="margin-top:8px;">
-                    <span style="display:inline-block;background:${sc.bg};color:${sc.text};font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+                  <!-- Comments -->
+                  ${comments ? `<div class="item-comments" style="font-size:13px;color:#475569;margin-top:6px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">${comments}</div>` : ""}
+                  <!-- Status pill -->
+                  <div style="margin-top:10px;">
+                    <span style="display:inline-block;background:${sc.bg};color:${sc.text};font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;text-transform:uppercase;letter-spacing:0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;border:1px solid ${sc.text}20;">
                       ${item.status}
                     </span>
                   </div>
+                  <!-- Chips -->
                   ${chipsHtml}
                 </td>
-                <td width="80" align="right" valign="top" style="padding-top:2px;">
-                  <a href="${appUrl}${item.link}" style="display:inline-block;background:#0F172A;color:#FFFFFF;font-size:12px;font-weight:600;padding:6px 14px;border-radius:6px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+                <td width="90" align="right" valign="top" style="padding-top:4px;">
+                  <a href="${appUrl}${item.link}" style="display:inline-block;background:#0F172A;color:#FFFFFF;font-size:12px;font-weight:700;padding:8px 16px;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;letter-spacing:0.3px;">
                     Open →
                   </a>
                 </td>
@@ -109,34 +114,54 @@ export function renderReminderEmail(input: RenderInput): {
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
   <title>${subject}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
   <style>
+    /* Reset */
+    body, table, td { margin: 0; padding: 0; }
+    img { border: 0; display: block; }
+    
+    /* Dark mode overrides */
     @media (prefers-color-scheme: dark) {
-      .email-bg { background-color: #0F172A !important; }
-      .card-bg { background-color: #1E293B !important; border-color: #334155 !important; }
-      .text-dark { color: #F1F5F9 !important; }
-      .text-muted { color: #94A3B8 !important; }
-      .chip-bg { background-color: #334155 !important; color: #94A3B8 !important; }
-      .row-border { border-color: #334155 !important; }
+      .email-wrapper { background-color: #0B1120 !important; }
+      .card-outer { background-color: #111827 !important; border-color: #1F2937 !important; }
+      .brand-bar { background-color: #111827 !important; }
+      .hero-greeting { color: #94A3B8 !important; }
+      .hero-headline { color: #F8FAFC !important; }
+      .hero-date { color: #64748B !important; }
+      .item-title { color: #F1F5F9 !important; }
+      .item-comments { color: #94A3B8 !important; }
+      .item-border { border-color: #1F2937 !important; }
+      .chip { background-color: #1E293B !important; color: #94A3B8 !important; border-color: #334155 !important; }
+      .cta-button { background: #3B82F6 !important; }
       .footer-text { color: #64748B !important; }
-      .hero-bg { background-color: #1E293B !important; border-color: #334155 !important; }
+      .footer-link { color: #94A3B8 !important; }
+      .divider { border-color: #1F2937 !important; }
     }
   </style>
 </head>
-<body style="margin:0;padding:0;background-color:#F8FAFC;-webkit-font-smoothing:antialiased;" class="email-bg">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8FAFC;" class="email-bg">
+<body style="margin:0;padding:0;background-color:#F1F5F9;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F1F5F9;" class="email-wrapper">
     <tr>
-      <td align="center" style="padding:24px 16px 40px;">
+      <td align="center" style="padding:32px 16px 48px;">
         <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
 
-          <!-- Brand Bar -->
+          <!-- ══════════ Brand Bar ══════════ -->
           <tr>
-            <td style="background:#0F172A;padding:0 24px;height:56px;border-radius:12px 12px 0 0;">
+            <td class="brand-bar" style="background:#0F172A;padding:0 28px;height:56px;border-radius:16px 16px 0 0;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="font-size:18px;font-weight:700;color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;letter-spacing:-0.3px;">
+                  <td style="font-size:20px;font-weight:800;color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;letter-spacing:-0.5px;">
                     VidaBuddies
                   </td>
-                  <td align="right" style="font-size:20px;color:#FFFFFF;">
+                  <td align="right" style="font-size:22px;">
                     🔔
                   </td>
                 </tr>
@@ -144,55 +169,56 @@ export function renderReminderEmail(input: RenderInput): {
             </td>
           </tr>
 
-          <!-- Hero Card -->
+          <!-- ══════════ Hero Card ══════════ -->
           <tr>
-            <td style="background:#FFFFFF;padding:28px 24px 20px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;" class="hero-bg">
-              <div style="font-size:13px;color:#64748B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin-bottom:6px;" class="text-muted">
+            <td class="card-outer" style="background:#FFFFFF;padding:32px 28px 24px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;">
+              <div class="hero-greeting" style="font-size:14px;color:#64748B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin-bottom:8px;">
                 Hey ${firstName} 👋
               </div>
-              <div style="font-size:22px;font-weight:700;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.3;" class="text-dark">
+              <div class="hero-headline" style="font-size:24px;font-weight:800;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.3;letter-spacing:-0.3px;">
                 You have ${items.length} reminder${items.length !== 1 ? "s" : ""} due today
               </div>
-              <div style="font-size:13px;color:#94A3B8;margin-top:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" class="text-muted">
+              <div class="hero-date" style="font-size:13px;color:#94A3B8;margin-top:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
                 ${today}
               </div>
             </td>
           </tr>
 
-          <!-- Divider -->
+          <!-- ══════════ Divider ══════════ -->
           <tr>
-            <td style="background:#FFFFFF;padding:0 24px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;" class="card-bg">
-              <div style="border-top:1px solid #E2E8F0;" class="row-border"></div>
+            <td class="card-outer" style="background:#FFFFFF;padding:0 28px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;">
+              <div class="divider" style="border-top:2px solid #F1F5F9;"></div>
             </td>
           </tr>
 
-          <!-- Items -->
+          <!-- ══════════ Items ══════════ -->
           <tr>
-            <td style="background:#FFFFFF;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;" class="card-bg">
+            <td class="card-outer" style="background:#FFFFFF;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${itemRows}
               </table>
             </td>
           </tr>
 
-          <!-- CTA Button -->
+          <!-- ══════════ CTA Button ══════════ -->
           <tr>
-            <td style="background:#FFFFFF;padding:24px 24px 28px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;border-radius:0 0 12px 12px;text-align:center;" class="card-bg">
+            <td class="card-outer" style="background:#FFFFFF;padding:28px 28px 32px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;border-radius:0 0 16px 16px;text-align:center;">
               <a href="${appUrl}/admin/active-actions"
-                 style="display:inline-block;background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);color:#FFFFFF;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;letter-spacing:0.2px;">
+                 class="cta-button"
+                 style="display:inline-block;background:#0F172A;color:#FFFFFF;font-size:14px;font-weight:700;padding:14px 36px;border-radius:10px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;letter-spacing:0.3px;">
                 View all in Active Actions →
               </a>
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- ══════════ Footer ══════════ -->
           <tr>
-            <td style="padding:24px 24px 0;text-align:center;">
-              <div style="font-size:12px;color:#94A3B8;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" class="footer-text">
-                You're receiving this because you're a <strong>Super Admin</strong> in VidaBuddies.<br/>
-                <a href="${appUrl}/admin/settings" style="color:#64748B;text-decoration:underline;">Manage in Settings</a>
+            <td style="padding:28px 28px 0;text-align:center;">
+              <div class="footer-text" style="font-size:12px;color:#64748B;line-height:1.7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+                You're receiving this because you're a <strong style="color:#475569;">Super Admin</strong> in VidaBuddies.<br/>
+                <a href="${appUrl}/admin/settings" class="footer-link" style="color:#475569;text-decoration:underline;">Manage in Settings</a>
               </div>
-              <div style="font-size:11px;color:#CBD5E1;margin-top:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" class="footer-text">
+              <div class="footer-text" style="font-size:11px;color:#94A3B8;margin-top:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
                 © ${new Date().getFullYear()} VidaBuddies • All rights reserved
               </div>
             </td>

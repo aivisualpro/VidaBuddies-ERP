@@ -178,13 +178,13 @@ function ReminderCard({
       <div
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-          isOverdue ? "bg-red-500/10" : "bg-amber-500/10"
+          isOverdue ? "bg-orange-500/10" : "bg-amber-500/10"
         )}
       >
         <CalendarClock
           className={cn(
             "h-4 w-4",
-            isOverdue ? "text-red-500" : "text-amber-500"
+            isOverdue ? "text-orange-400" : "text-amber-500"
           )}
         />
       </div>
@@ -239,7 +239,7 @@ function ReminderCard({
             className={cn(
               "text-[10px] ml-auto",
               isOverdue
-                ? "text-red-500/80 font-semibold"
+                ? "text-orange-400/90 font-semibold"
                 : "text-muted-foreground/60"
             )}
           >
@@ -381,7 +381,7 @@ function RemindersTab() {
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
           {reminders.length} due today
           {overdueCount > 0 && (
-            <span className="text-red-500/80 ml-1">
+            <span className="text-orange-400/90 ml-1">
               ({overdueCount} overdue)
             </span>
           )}

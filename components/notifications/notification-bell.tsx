@@ -62,6 +62,22 @@ export function NotificationBell() {
     };
   }, []);
 
+  // Fetch unread count on mount (so badge shows immediately)
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/reminders");
+        if (!res.ok) return;
+        const data: BellNotification[] = await res.json();
+        useNotificationStore.getState().setItems(data);
+      } catch {
+        // Silent fail — badge just stays at 0
+      }
+    })();
+  }, [isSuperAdmin]);
+
   // Subscribe to Pusher private channel when we have a userId
   useEffect(() => {
     if (!isSuperAdmin || !userId) return;
