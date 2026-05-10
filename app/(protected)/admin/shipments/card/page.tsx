@@ -344,6 +344,8 @@ export default function ShipmentsCardPage() {
         mode="standalone"
         editingData={editingItem}
         onSaved={fetchData}
+        presetVBNumber={sidebarVBNumber}
+        presetVBSerial={sidebarVBSerial}
       />
       </div>
     </div>

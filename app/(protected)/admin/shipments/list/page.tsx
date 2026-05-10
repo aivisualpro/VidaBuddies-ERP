@@ -6,6 +6,7 @@ import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash2, Ship, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
@@ -70,6 +71,7 @@ export default function ShipmentsListPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { suppliers: storeSuppliers } = useUserDataStore();
   const suppliers = storeSuppliers || [];
@@ -97,7 +99,6 @@ export default function ShipmentsListPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this Shipment?")) return;
     try {
       const res = await fetch(`/api/admin/vb-shipping/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed");
@@ -105,6 +106,8 @@ export default function ShipmentsListPage() {
       fetchData();
     } catch {
       toast.error("Failed to delete");
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -248,7 +251,7 @@ export default function ShipmentsListPage() {
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); handleDelete(row.original._id); }}
+            onClick={(e) => { e.stopPropagation(); setDeleteId(row.original._id); }}
             className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -319,7 +322,29 @@ export default function ShipmentsListPage() {
         mode="standalone"
         editingData={editingItem}
         onSaved={fetchData}
+        presetVBNumber={sidebarVBNumber}
+        presetVBSerial={sidebarVBSerial}
       />
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Shipment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this shipment? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteId && handleDelete(deleteId)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

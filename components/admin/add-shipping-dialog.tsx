@@ -20,9 +20,13 @@ interface AddShippingDialogProps {
   editingData?: Record<string, any> | null;
   /** Called after successful save */
   onSaved?: () => void;
+  /** Pre-fill VB Number from sidebar Level-1 selection */
+  presetVBNumber?: string | null;
+  /** Pre-fill VB Number Serial from sidebar Level-2 selection */
+  presetVBSerial?: string | null;
 }
 
-export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded", editingData, onSaved }: AddShippingDialogProps) {
+export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded", editingData, onSaved, presetVBNumber, presetVBSerial }: AddShippingDialogProps) {
   const { purchaseOrders, suppliers, products: pList } = useUserDataStore();
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -32,6 +36,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
   const [selectedSupplierLocation, setSelectedSupplierLocation] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("Ordered");
   const [selectedCarrier, setSelectedCarrier] = useState("");
+  const [autoShipmentNumber, setAutoShipmentNumber] = useState("");
 
   // For standalone mode: VB PO options from purchaseOrders & CPO options from API
   const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
@@ -100,6 +105,22 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
     }
   }, [mode, open]);
 
+  // Auto-generate VBShipmentNumber when CPO is selected
+  useEffect(() => {
+    if (!selectedCPO || !open) {
+      setAutoShipmentNumber("");
+      return;
+    }
+    // Only auto-generate for new records, not editing
+    if (editingData) return;
+    fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${selectedCPO}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.nextNumber) setAutoShipmentNumber(res.nextNumber);
+      })
+      .catch(() => {});
+  }, [selectedCPO, open, editingData]);
+
   // Reset form when editing data changes
   useEffect(() => {
     if (!open) return;
@@ -108,17 +129,20 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       setSelectedSupplierLocation(editingData.supplierLocation || "");
       setSelectedStatus(editingData.status || "Ordered");
       setSelectedCarrier(editingData.carrier || "");
-      setSelectedVBPO(editingData.vbpoNo || editingData.poNo || "");
-      setSelectedCPO(editingData.customerPOId || "");
+      setSelectedVBPO(editingData.VBNumber || editingData.vbpoNo || editingData.poNo || "");
+      setSelectedCPO(editingData.VBSerialNumber || editingData.customerPOId || "");
+      setAutoShipmentNumber(editingData.VBShipmentNumber || editingData.svbid || "");
     } else {
-      setSelectedVBPO("");
-      setSelectedCPO("");
+      // Pre-fill from sidebar context if available
+      setSelectedVBPO(presetVBNumber || "");
+      setSelectedCPO(presetVBSerial || "");
       setSelectedSupplierForShipping("");
       setSelectedSupplierLocation("");
       setSelectedStatus("Ordered");
       setSelectedCarrier("");
+      setAutoShipmentNumber("");
     }
-  }, [open, editingData]);
+  }, [open, editingData, presetVBNumber, presetVBSerial]);
 
   const handleSaveShipping = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,18 +171,8 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       if (selectedCPO) {
         formattedData.VBSerialNumber = selectedCPO; // vbcustomerpos._id as string
       }
-      // VBShipmentNumber: use manual input or auto-generate
-      const manualShipNum = formattedData.svbid?.trim();
-      if (manualShipNum) {
-        formattedData.VBShipmentNumber = manualShipNum;
-      } else {
-        // Auto-generate from VBSerialNumber display name
-        const matchedCpo = standaloneCPOs.find((c: any) => c._id === selectedCPO);
-        const serialName = matchedCpo?.VBSerialNumber || matchedCpo?.poNo || '';
-        formattedData.VBShipmentNumber = serialName
-          ? `${serialName}-${Date.now().toString(36).slice(-3)}`
-          : '';
-      }
+      // VBShipmentNumber: use the controlled input value (already auto-populated or user-edited)
+      formattedData.VBShipmentNumber = autoShipmentNumber || formattedData.svbid?.trim() || '';
       // Clean up legacy form field
       delete formattedData.svbid;
     }
@@ -329,7 +343,13 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">VB Shipment Number</Label>
-                    <Input name="svbid" className="text-sm" placeholder="Auto-generated if left blank" defaultValue={editingData?.VBShipmentNumber || editingData?.svbid || ""} />
+                    <Input
+                      name="svbid"
+                      className="text-sm"
+                      placeholder="Auto-generated on CPO select"
+                      value={autoShipmentNumber || editingData?.VBShipmentNumber || editingData?.svbid || ""}
+                      onChange={(e) => setAutoShipmentNumber(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Status</Label>
