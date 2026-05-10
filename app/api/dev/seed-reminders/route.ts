@@ -32,7 +32,7 @@ export async function GET() {
       createdBy: "seed-script",
     },
     {
-      type: "Shipping Status",
+      type: "Shipping",
       comments: "Container MSKU-9921 expected at port today. Confirm customs clearance status with broker.",
       status: "In Progress",
       category: "Logistics",

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useLayoutEffect } from "react";
 import { toast } from "sonner";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { ActiveActionsGroupSidebar } from "@/components/admin/active-actions-sidebar";
+import { TimelineEntryDialog } from "@/components/admin/timeline-entry-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 import {
@@ -15,8 +16,6 @@ import {
   Ship,
   CalendarClock,
   Pencil,
-  Trash2,
-  Plus,
   ChevronDown,
   User,
   Tag,
@@ -50,9 +49,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 
 const TYPE_COLORS: Record<string, string> = {
   Notes: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20",
-  "Shipping Status": "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  Shipping: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
   "Action Required": "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
 };
+
 
 export default function ActiveActionsPage() {
   const { setActions, setLeftContent } = useHeaderActions();
@@ -66,6 +66,7 @@ export default function ActiveActionsPage() {
   const [filterVBNumber, setFilterVBNumber] = useState<string | null>(null);
   const [filterVBSerial, setFilterVBSerial] = useState<string | null>(null);
   const [filterVBShipment, setFilterVBShipment] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
 
   const fetchData = async () => {
     try {
@@ -107,6 +108,21 @@ export default function ActiveActionsPage() {
       fetchData();
     } catch {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleReminderChange = async (entryId: string, dateStr: string) => {
+    try {
+      const res = await fetch(`/api/admin/timeline/${entryId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reminder: dateStr || null }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(dateStr ? `Reminder set` : `Reminder cleared`);
+      fetchData();
+    } catch {
+      toast.error("Failed to update reminder");
     }
   };
 
@@ -231,10 +247,10 @@ export default function ActiveActionsPage() {
               </button>
 
               {/* Type tabs */}
-              {(["Notes", "Shipping Status", "Action Required"] as const).map((type) => {
+              {(["Notes", "Shipping", "Action Required"] as const).map((type) => {
                 const isActive = filterType === type;
                 const typeStyle = TYPE_COLORS[type] || "bg-muted text-muted-foreground border-border";
-                const Icon = type === "Notes" ? MessageSquare : type === "Shipping Status" ? Ship : AlertCircle;
+                const Icon = type === "Notes" ? MessageSquare : type === "Shipping" ? Ship : AlertCircle;
                 return (
                   <button
                     key={type}
@@ -264,24 +280,20 @@ export default function ActiveActionsPage() {
             </div>
 
             {/* Active filter breadcrumb */}
-            {(filterType || filterVBNumber) && (
+            {(filterVBNumber || filterVBSerial || filterVBShipment) && (
               <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                {filterType && <span className="font-bold text-foreground/60">{filterType}</span>}
                 {filterVBNumber && (
-                  <>
-                    <span className="text-muted-foreground/40">/</span>
-                    <span className="font-semibold text-primary/70">{filterVBNumber}</span>
-                  </>
+                  <span className="font-semibold text-primary/70">{filterVBNumber}</span>
                 )}
                 {filterVBSerial && (
                   <>
-                    <span className="text-muted-foreground/40">/</span>
+                    {filterVBNumber && <span className="text-muted-foreground/40">/</span>}
                     <span className="font-medium">{filterVBSerial}</span>
                   </>
                 )}
                 {filterVBShipment && (
                   <>
-                    <span className="text-muted-foreground/40">/</span>
+                    {(filterVBNumber || filterVBSerial) && <span className="text-muted-foreground/40">/</span>}
                     <span className="font-medium text-violet-500">{filterVBShipment}</span>
                   </>
                 )}
@@ -304,18 +316,18 @@ export default function ActiveActionsPage() {
             </div>
           ) : (
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="text-left py-2 px-2 whitespace-nowrap">Status</th>
-                  <th className="text-left py-2 px-2 whitespace-nowrap">Type</th>
-                  <th className="text-left py-2 px-2 whitespace-nowrap">VB #</th>
-                  <th className="text-left py-2 px-2 whitespace-nowrap">Serial #</th>
-                  <th className="text-left py-2 px-2 whitespace-nowrap">Shipment #</th>
-                  <th className="text-left py-2 px-2">Category</th>
-                  <th className="text-left py-2 px-2 min-w-[250px]">Comments</th>
-                  <th className="text-left py-2 px-2">Date</th>
-                  <th className="text-left py-2 px-2">Reminder</th>
-                  <th className="text-left py-2 px-2">By</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap">Status</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap">Type</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap">VB #</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap">Serial #</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap">Shipment #</th>
+                  <th className="text-left py-1.5 px-1.5 whitespace-nowrap min-w-[120px]">Category</th>
+                  <th className="text-left py-1.5 px-1.5 min-w-[250px]">Comments</th>
+                  <th className="text-left py-1.5 px-1.5">Date</th>
+                  <th className="text-left py-1.5 px-1.5">Reminder</th>
+                  <th className="text-left py-1.5 px-1.5">By</th>
                 </tr>
               </thead>
               <tbody>
@@ -327,15 +339,15 @@ export default function ActiveActionsPage() {
                   return (
                     <tr
                       key={entry._id}
+                      onClick={() => setEditingEntry(entry)}
                       className={cn(
-                        "border-b border-border/40 transition-colors hover:bg-muted/20 group",
-                        isClosed && "opacity-50"
+                        "border-b border-border/40 transition-colors hover:bg-muted/20 group cursor-pointer"
                       )}
                     >
                       {/* Status — clickable dropdown */}
-                      <td className="py-2 px-2 whitespace-nowrap">
+                      <td className="py-2 px-1.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="relative inline-flex">
-                          <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all", cfg.bg, cfg.color, cfg.border)}>
+                          <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all", cfg.bg, cfg.color, cfg.border)}>
                             <StatusIcon className="h-2.5 w-2.5" />
                             {entry.status || "Open"}
                             <ChevronDown className="h-2.5 w-2.5 opacity-50" />
@@ -354,24 +366,30 @@ export default function ActiveActionsPage() {
                       </td>
 
                       {/* Type */}
-                      <td className="py-2 px-2 whitespace-nowrap">
-                        <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md border", TYPE_COLORS[entry.type] || "bg-muted text-muted-foreground border-border")}>
-                          {entry.type}
-                        </span>
+                      <td className="py-2 px-1.5 whitespace-nowrap">
+                        {(() => {
+                          const TypeIcon = entry.type === "Notes" ? MessageSquare : entry.type === "Shipping" ? Ship : AlertCircle;
+                          return (
+                            <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border", TYPE_COLORS[entry.type] || "bg-muted text-muted-foreground border-border")}>
+                              <TypeIcon className="h-3 w-3" />
+                              {entry.type}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* VBNumber */}
-                      <td className="py-2 px-2 whitespace-nowrap">
+                      <td className="py-2 px-1.5 whitespace-nowrap">
                         <span className="font-semibold text-foreground">{entry._VBNumberDisplay || entry.VBNumber || "—"}</span>
                       </td>
 
                       {/* VBSerialNumber */}
-                      <td className="py-2 px-2 whitespace-nowrap">
+                      <td className="py-2 px-1.5 whitespace-nowrap">
                         <span className="text-muted-foreground">{entry._VBSerialNumberDisplay || entry.VBSerialNumber || "—"}</span>
                       </td>
 
                       {/* VBShipmentNumber */}
-                      <td className="py-2 px-2 whitespace-nowrap">
+                      <td className="py-2 px-1.5 whitespace-nowrap">
                         {(entry._VBShipmentNumberDisplay || entry.VBShipmentNumber) ? (
                           <span className="text-violet-600 dark:text-violet-400 font-medium">{entry._VBShipmentNumberDisplay || entry.VBShipmentNumber}</span>
                         ) : (
@@ -380,7 +398,7 @@ export default function ActiveActionsPage() {
                       </td>
 
                       {/* Category */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-1.5">
                         {entry.category ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                             <Tag className="h-2.5 w-2.5" />
@@ -392,29 +410,53 @@ export default function ActiveActionsPage() {
                       </td>
 
                       {/* Comments */}
-                      <td className="py-2 px-2">
-                        <p className={cn("text-foreground/80 line-clamp-2", isClosed && "line-through")}>{entry.comments || "—"}</p>
+                      <td className="py-2 px-1.5">
+                        <p className="text-foreground/80" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{entry.comments || "—"}</p>
                       </td>
 
                       {/* Date */}
-                      <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">
+                      <td className="py-2 px-1.5 text-muted-foreground whitespace-nowrap">
                         {formatDate(entry.date || entry.timestamp)}
                       </td>
 
-                      {/* Reminder */}
-                      <td className="py-2 px-2">
-                        {entry.reminder ? (
-                          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                            <CalendarClock className="h-3 w-3" />
-                            {formatDate(entry.reminder)}
-                          </span>
+                      {/* Reminder — clickable date picker if not Closed */}
+                      <td className="py-2 px-1.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {isClosed ? (
+                          entry.reminder ? (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground/50">
+                              <CalendarClock className="h-3 w-3" />
+                              {formatDate(entry.reminder)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )
                         ) : (
-                          <span className="text-muted-foreground/40">—</span>
+                          <div className="relative inline-flex cursor-pointer group/rem">
+                            {entry.reminder ? (
+                              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 cursor-pointer hover:underline">
+                                <CalendarClock className="h-3 w-3" />
+                                {formatDate(entry.reminder)}
+                                <Pencil className="h-2.5 w-2.5 opacity-0 group-hover/rem:opacity-60 transition-opacity" />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-muted-foreground/40 hover:text-primary/60 cursor-pointer transition-colors">
+                                <CalendarClock className="h-3 w-3" />
+                                <span className="text-[10px]">Set</span>
+                              </span>
+                            )}
+                            <input
+                              type="date"
+                              value={entry.reminder ? new Date(entry.reminder).toISOString().split("T")[0] : ""}
+                              onChange={(e) => handleReminderChange(entry._id, e.target.value)}
+                              className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                              aria-label="Set reminder date"
+                            />
+                          </div>
                         )}
                       </td>
 
                       {/* Created By */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-1.5">
                         <span className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
                           <User className="h-3 w-3" />
                           {resolveUser(entry.createdBy)}
@@ -428,6 +470,18 @@ export default function ActiveActionsPage() {
           )}
         </div>
       </div>
+
+      {/* Edit Dialog */}
+      <TimelineEntryDialog
+        open={!!editingEntry}
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
+        onSaved={() => { setEditingEntry(null); fetchData(); }}
+        onDelete={(id) => {
+          setEditingEntry(null);
+          handleDelete(id);
+        }}
+      />
     </div>
   );
 }

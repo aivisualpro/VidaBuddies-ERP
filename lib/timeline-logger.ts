@@ -5,7 +5,7 @@ interface TimelineLogOptions {
     VBNumber?: string;
     VBSerialNumber?: string;
     VBShipmentNumber?: string;
-    type?: "Notes" | "Shipping Status" | "Action Required";
+    type?: "Notes" | "Shipping" | "Action Required";
     category?: string;
     comments: string;
     status?: string;

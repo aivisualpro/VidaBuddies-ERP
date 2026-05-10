@@ -7,12 +7,10 @@ import {
     DialogHeader,
     DialogTitle,
     DialogDescription,
-    DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { TimelineEntryDialog } from "@/components/admin/timeline-entry-dialog";
 import {
     Plus,
     Search,
@@ -23,8 +21,6 @@ import {
     Clock,
     Pencil,
     Bot,
-    ChevronDown,
-    ChevronRight,
     Package,
     Anchor,
 } from "lucide-react";
@@ -57,7 +53,7 @@ interface TimelineModalProps {
     users?: Record<string, string>;
 }
 
-const TYPE_OPTIONS = ["Notes", "Shipping Status", "Action Required"];
+const TYPE_OPTIONS = ["Notes", "Shipping", "Action Required"];
 
 const CATEGORY_OPTIONS = [
     "Arrival Notice",
@@ -79,150 +75,20 @@ const CATEGORY_OPTIONS = [
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
     Notes: <MessageSquare className="h-3.5 w-3.5" />,
-    "Shipping Status": <Ship className="h-3.5 w-3.5" />,
+    Shipping: <Ship className="h-3.5 w-3.5" />,
     "Action Required": <AlertTriangle className="h-3.5 w-3.5" />,
 };
 
 const TYPE_COLORS: Record<string, string> = {
     Notes:
-        "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800",
-    "Shipping Status":
-        "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800",
+        "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
+    Shipping:
+        "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400",
     "Action Required":
-        "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
+        "bg-red-500/10 text-red-600 border-red-500/20 dark:text-red-400",
 };
 
-// ---- Edit Dialog sub-component ----
-function EditEntryDialog({
-    entry,
-    onClose,
-    onSaved,
-}: {
-    entry: TimelineEntry | null;
-    onClose: () => void;
-    onSaved: () => void;
-}) {
-    const [formType, setFormType] = useState("Notes");
-    const [formCategory, setFormCategory] = useState("");
-    const [formComments, setFormComments] = useState("");
-    const [formDate, setFormDate] = useState("");
-    const [formReminder, setFormReminder] = useState("");
-    const [formStatus, setFormStatus] = useState("Open");
-    const [saving, setSaving] = useState(false);
-    const [customCategory, setCustomCategory] = useState("");
-    const [showCustomCategory, setShowCustomCategory] = useState(false);
-
-    useEffect(() => {
-        if (entry) {
-            setFormType(entry.type);
-            setFormCategory(entry.category || "");
-            setFormComments(entry.comments || "");
-            setFormDate(entry.date ? new Date(entry.date).toISOString().split("T")[0] : "");
-            setFormReminder(entry.reminder ? new Date(entry.reminder).toISOString().split("T")[0] : "");
-            setFormStatus(entry.status || "Open");
-            setShowCustomCategory(false);
-            setCustomCategory("");
-        }
-    }, [entry]);
-
-    const handleSave = async () => {
-        if (!entry) return;
-        setSaving(true);
-        try {
-            const body: any = {
-                type: formType,
-                category: showCustomCategory ? customCategory : formCategory,
-                comments: formComments,
-                date: formDate || undefined,
-                reminder: formReminder || undefined,
-                status: formStatus,
-            };
-            const res = await fetch(`/api/admin/timeline/${entry._id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error();
-            toast.success("Timeline entry updated");
-            onSaved();
-            onClose();
-        } catch {
-            toast.error("Failed to update entry");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <Dialog open={!!entry} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent className="max-w-[520px] p-0 gap-0">
-                <DialogHeader className="px-5 pt-5 pb-3 border-b">
-                    <DialogTitle className="text-sm flex items-center gap-2">
-                        <Pencil className="h-4 w-4 text-primary" />
-                        Edit Timeline Entry
-                    </DialogTitle>
-                    <DialogDescription className="sr-only">Modify the details of this timeline entry</DialogDescription>
-                </DialogHeader>
-                <div className="px-5 py-4 space-y-3">
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</Label>
-                            <select value={formType} onChange={(e) => setFormType(e.target.value)} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Category</Label>
-                            {showCustomCategory ? (
-                                <div className="flex gap-1">
-                                    <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Custom..." className="h-8 text-xs" />
-                                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-[10px]" onClick={() => { setShowCustomCategory(false); setCustomCategory(""); }}>✕</Button>
-                                </div>
-                            ) : (
-                                <select value={formCategory} onChange={(e) => { if (e.target.value === "__add_new__") { setShowCustomCategory(true); setFormCategory(""); } else { setFormCategory(e.target.value); } }} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                    <option value="">Select...</option>
-                                    {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                                    <option value="__add_new__">＋ Add New...</option>
-                                </select>
-                            )}
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</Label>
-                            <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                <option value="Open">Open</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Closed">Closed</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</Label>
-                            <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="h-8 text-xs" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reminder</Label>
-                            <Input type="date" value={formReminder} onChange={(e) => setFormReminder(e.target.value)} className="h-8 text-xs" />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Comments</Label>
-                        <textarea value={formComments} onChange={(e) => setFormComments(e.target.value)} placeholder="Add details..." className="w-full min-h-[80px] border rounded-md px-3 py-2 text-xs bg-background resize-y" />
-                    </div>
-                </div>
-                <DialogFooter className="px-5 pb-4 pt-2 border-t gap-2">
-                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>Cancel</Button>
-                    <Button size="sm" className="h-8 text-xs" onClick={handleSave} disabled={saving || !formComments.trim()}>
-                        {saving ? "Saving..." : "Update Entry"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-// ---- Table rows for a group ----
+// ---- Table rows ----
 function TimelineTable({
     entries,
     resolveUser,
@@ -262,7 +128,7 @@ function TimelineTable({
                                         : "—"}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap align-top">
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${TYPE_COLORS[entry.type] || "bg-muted"}`}>
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border ${TYPE_COLORS[entry.type] || "bg-muted text-muted-foreground border-border"}`}>
                                     {TYPE_ICONS[entry.type]}
                                     {entry.type}
                                 </span>
@@ -274,10 +140,9 @@ function TimelineTable({
                                 {entry.comments || "—"}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap align-top">
-                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${entry.status === "Completed" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                                    : entry.status === "In Progress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                                        : entry.status === "Closed" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                                            : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${entry.status === "In Progress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                    : entry.status === "Closed" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
                                     }`}>
                                     {entry.status || "Open"}
                                 </span>
@@ -316,42 +181,6 @@ function TimelineTable({
     );
 }
 
-// ---- Accordion Section ----
-function AccordionSection({
-    label,
-    icon,
-    count,
-    defaultOpen = true,
-    children,
-    level = 0,
-}: {
-    label: string;
-    icon: React.ReactNode;
-    count: number;
-    defaultOpen?: boolean;
-    children: React.ReactNode;
-    level?: number;
-}) {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className={level === 0 ? "mb-1" : ""}>
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-muted/50 transition-colors ${level === 0
-                    ? "bg-muted/40 border-y border-border/50"
-                    : "bg-muted/20 border-b border-border/30 pl-6"
-                    }`}
-            >
-                {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                {icon}
-                <span className="flex-1 text-left">{label}</span>
-                <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{count}</span>
-            </button>
-            {isOpen && <div>{children}</div>}
-        </div>
-    );
-}
-
 // ---- Main Component ----
 export default function TimelineModal({
     open,
@@ -365,19 +194,9 @@ export default function TimelineModal({
     const [entries, setEntries] = useState<TimelineEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [saving, setSaving] = useState(false);
     const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
-
-    // Add form state
-    const [customCategory, setCustomCategory] = useState("");
-    const [showCustomCategory, setShowCustomCategory] = useState(false);
-    const [formType, setFormType] = useState("Notes");
-    const [formCategory, setFormCategory] = useState("");
-    const [formComments, setFormComments] = useState("");
-    const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
-    const [formReminder, setFormReminder] = useState("");
-    const [formStatus, setFormStatus] = useState("Open");
+    const [showAddDialog, setShowAddDialog] = useState(false);
+    const [sidebarSelection, setSidebarSelection] = useState<string>("all");
 
     const fetchEntries = async () => {
         setLoading(true);
@@ -396,43 +215,11 @@ export default function TimelineModal({
     };
 
     useEffect(() => {
-        if (open) { fetchEntries(); setShowAddForm(false); setSearch(""); }
+        if (open) { fetchEntries(); setShowAddDialog(false); setSearch(""); setSidebarSelection("all"); }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, VBNumber, VBSerialNumber, VBShipmentNumber]);
 
-    const handleAdd = async () => {
-        setSaving(true);
-        try {
-            const body: any = {
-                type: formType,
-                category: showCustomCategory ? customCategory : formCategory,
-                comments: formComments,
-                date: formDate || undefined,
-                reminder: formReminder || undefined,
-                status: formStatus,
-            };
-            if (VBNumber) body.VBNumber = VBNumber;
-            if (VBSerialNumber) body.VBSerialNumber = VBSerialNumber;
-            if (VBShipmentNumber) body.VBShipmentNumber = VBShipmentNumber;
-            const res = await fetch("/api/admin/timeline", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error();
-            toast.success("Timeline entry added");
-            setShowAddForm(false);
-            resetForm();
-            fetchEntries();
-        } catch {
-            toast.error("Failed to add entry");
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this timeline entry?")) return;
         try {
             const res = await fetch(`/api/admin/timeline/${id}`, { method: "DELETE" });
             if (!res.ok) throw new Error();
@@ -443,15 +230,8 @@ export default function TimelineModal({
         }
     };
 
-    const resetForm = () => {
-        setFormType("Notes"); setFormCategory(""); setFormComments("");
-        setFormDate(new Date().toISOString().split("T")[0]);
-        setFormReminder(""); setFormStatus("Open");
-        setCustomCategory(""); setShowCustomCategory(false);
-    };
-
-    // Filter
-    const filtered = useMemo(() => {
+    // Filter by search
+    const searchFiltered = useMemo(() => {
         let result = entries;
         if (search) {
             const q = search.toLowerCase();
@@ -464,7 +244,6 @@ export default function TimelineModal({
                 e.createdBy?.toLowerCase().includes(q)
             );
         }
-        // Sort latest first
         return [...result].sort((a, b) => {
             const dateA = new Date(a.date || a.timestamp).getTime();
             const dateB = new Date(b.date || b.timestamp).getTime();
@@ -472,59 +251,52 @@ export default function TimelineModal({
         });
     }, [entries, search]);
 
-    // Group: VBSerialNumber → VBShipmentNumber → entries
-    const grouped = useMemo(() => {
-        const result: {
-            VBSerialNumber: string;
-            displayName: string;
-            entries: TimelineEntry[];
-            shippings: { VBShipmentNumber: string; displayName: string; entries: TimelineEntry[] }[];
-        }[] = [];
+    // Build sidebar tree
+    const sidebarTree = useMemo(() => {
+        const serials = new Map<string, {
+            display: string;
+            count: number;
+            shippings: Map<string, { display: string; count: number }>;
+        }>();
 
-        const poMap = new Map<string, TimelineEntry[]>();
-        const generalEntries: TimelineEntry[] = [];
+        searchFiltered.forEach((entry) => {
+            const serialKey = entry.VBSerialNumber || "";
+            if (!serialKey) return;
 
-        filtered.forEach((entry) => {
-            const key = entry.VBSerialNumber || "";
-            if (!key) {
-                generalEntries.push(entry);
-            } else {
-                if (!poMap.has(key)) poMap.set(key, []);
-                poMap.get(key)!.push(entry);
+            if (!serials.has(serialKey)) {
+                serials.set(serialKey, {
+                    display: entry._VBSerialNumberDisplay || serialKey,
+                    count: 0,
+                    shippings: new Map(),
+                });
+            }
+            const serial = serials.get(serialKey)!;
+            serial.count++;
+
+            if (entry.VBShipmentNumber) {
+                const shipKey = entry.VBShipmentNumber;
+                if (!serial.shippings.has(shipKey)) {
+                    serial.shippings.set(shipKey, {
+                        display: entry._VBShipmentNumberDisplay || shipKey,
+                        count: 0,
+                    });
+                }
+                serial.shippings.get(shipKey)!.count++;
             }
         });
 
-        // Build grouped structure
-        poMap.forEach((poEntries, poKey) => {
-            const shipMap = new Map<string, TimelineEntry[]>();
-            const poLevelEntries: TimelineEntry[] = [];
+        return serials;
+    }, [searchFiltered]);
 
-            poEntries.forEach((entry) => {
-                if (entry.VBShipmentNumber) {
-                    if (!shipMap.has(entry.VBShipmentNumber)) shipMap.set(entry.VBShipmentNumber, []);
-                    shipMap.get(entry.VBShipmentNumber)!.push(entry);
-                } else {
-                    poLevelEntries.push(entry);
-                }
-            });
-
-            const shippings: { VBShipmentNumber: string; displayName: string; entries: TimelineEntry[] }[] = [];
-            shipMap.forEach((shipEntries, shipKey) => {
-                const shipDisplay = shipEntries[0]?._VBShipmentNumberDisplay || shipKey;
-                shippings.push({ VBShipmentNumber: shipKey, displayName: shipDisplay, entries: shipEntries });
-            });
-
-            const poDisplay = poEntries[0]?._VBSerialNumberDisplay || poKey;
-            result.push({ VBSerialNumber: poKey, displayName: poDisplay, entries: poLevelEntries, shippings });
-        });
-
-        // Add general entries (no VBSerialNumber) as a special group
-        if (generalEntries.length > 0) {
-            result.unshift({ VBSerialNumber: "", displayName: "General", entries: generalEntries, shippings: [] });
+    // Filter by sidebar selection
+    const displayEntries = useMemo(() => {
+        if (sidebarSelection === "all") return searchFiltered;
+        if (sidebarSelection.startsWith("ship:")) {
+            const shipId = sidebarSelection.slice(5);
+            return searchFiltered.filter((e) => e.VBShipmentNumber === shipId);
         }
-
-        return result;
-    }, [filtered]);
+        return searchFiltered.filter((e) => e.VBSerialNumber === sidebarSelection);
+    }, [searchFiltered, sidebarSelection]);
 
     const resolveUser = (email?: string) => {
         if (!email) return "System";
@@ -534,13 +306,12 @@ export default function TimelineModal({
 
     const displayTitle = title || (VBShipmentNumber ? `Timeline — ${VBShipmentNumber}` : VBSerialNumber ? `Timeline — ${VBSerialNumber}` : VBNumber ? `Timeline — ${VBNumber}` : "Timeline");
 
-    // Check if we should show accordion grouping (only when viewing at VB PO level with multiple groups)
-    const showAccordion = !VBShipmentNumber && grouped.length > 0 && (grouped.length > 1 || grouped[0]?.shippings.length > 0);
+    const showSidebar = !VBShipmentNumber && sidebarTree.size > 0;
 
     return (
         <>
             <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-                <DialogContent className="max-w-[950px] h-[80vh] p-0 gap-0 flex flex-col overflow-hidden">
+                <DialogContent className="max-w-[1050px] h-[80vh] p-0 gap-0 flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="px-5 pt-5 pb-3 border-b space-y-3">
                         <DialogHeader>
@@ -561,131 +332,93 @@ export default function TimelineModal({
                                     className="h-7 w-full pl-8 pr-3 rounded-md border border-input bg-background text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 />
                             </div>
-                            <Button size="sm" className="h-7 px-3 text-xs" onClick={() => { resetForm(); setShowAddForm(!showAddForm); }}>
+                            <Button size="sm" className="h-7 px-3 text-xs" onClick={() => setShowAddDialog(true)}>
                                 <Plus className="h-3 w-3 mr-1" /> Add
                             </Button>
                         </div>
                     </div>
 
-                    {/* Add Form */}
-                    {showAddForm && (
-                        <div className="px-5 py-3 border-b bg-muted/30 space-y-3">
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="space-y-1">
-                                    <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</Label>
-                                    <select value={formType} onChange={(e) => setFormType(e.target.value)} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                        {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Category</Label>
-                                    {showCustomCategory ? (
-                                        <div className="flex gap-1">
-                                            <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Custom category..." className="h-8 text-xs" />
-                                            <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-[10px]" onClick={() => { setShowCustomCategory(false); setCustomCategory(""); }}>✕</Button>
-                                        </div>
-                                    ) : (
-                                        <select value={formCategory} onChange={(e) => { if (e.target.value === "__add_new__") { setShowCustomCategory(true); setFormCategory(""); } else { setFormCategory(e.target.value); } }} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                            <option value="">Select category...</option>
-                                            {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                                            <option value="__add_new__">＋ Add New...</option>
-                                        </select>
-                                    )}
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</Label>
-                                    <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} className="w-full h-8 border rounded-md px-2 text-xs bg-background">
-                                        <option value="Open">Open</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Completed">Completed</option>
-                                        <option value="Closed">Closed</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</Label>
-                                    <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="h-8 text-xs" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reminder</Label>
-                                    <Input type="date" value={formReminder} onChange={(e) => setFormReminder(e.target.value)} className="h-8 text-xs" />
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Comments</Label>
-                                <textarea value={formComments} onChange={(e) => setFormComments(e.target.value)} placeholder="Add details, notes, or context..." className="w-full min-h-[60px] border rounded-md px-3 py-2 text-xs bg-background resize-y" />
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => { setShowAddForm(false); resetForm(); }}>Cancel</Button>
-                                <Button size="sm" className="h-7 text-xs" onClick={handleAdd} disabled={saving || !formComments.trim()}>
-                                    {saving ? "Saving..." : "Add Entry"}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
+                    {/* Body: Sidebar + Content */}
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Sidebar */}
+                        {showSidebar && (
+                            <div className="w-[175px] min-w-[175px] border-r overflow-y-auto bg-muted/10 scrollbar-thin scrollbar-thumb-muted">
+                                {/* All */}
+                                <button
+                                    onClick={() => setSidebarSelection("all")}
+                                    className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition-colors ${sidebarSelection === "all"
+                                        ? "bg-primary/10 text-primary border-l-2 border-primary"
+                                        : "text-foreground/70 hover:bg-muted/40"
+                                        }`}
+                                >
+                                    <span>All</span>
+                                    <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{searchFiltered.length}</span>
+                                </button>
 
-                    {/* Timeline Content */}
-                    <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-muted">
-                        {loading ? (
-                            <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">Loading timeline...</div>
-                        ) : filtered.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
-                                <Clock className="h-8 w-8 opacity-30" />
-                                <span className="text-xs">No timeline entries yet. Click &quot;Add&quot; to create one.</span>
-                            </div>
-                        ) : showAccordion ? (
-                            // Grouped accordion view
-                            <div>
-                                {grouped.map((group) => {
-                                    const totalCount = group.entries.length + group.shippings.reduce((acc, s) => acc + s.entries.length, 0);
-                                    const groupLabel = group.VBSerialNumber ? `Customer PO: ${group.displayName}` : "General";
-
-                                    return (
-                                        <AccordionSection
-                                            key={group.VBSerialNumber || "__general__"}
-                                            label={groupLabel}
-                                            icon={<Package className="h-3.5 w-3.5 text-primary" />}
-                                            count={totalCount}
-                                            defaultOpen={true}
+                                {/* Serial groups */}
+                                {Array.from(sidebarTree.entries()).map(([serialKey, serial]) => (
+                                    <div key={serialKey}>
+                                        <button
+                                            onClick={() => setSidebarSelection(serialKey)}
+                                            className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors ${sidebarSelection === serialKey
+                                                ? "bg-primary/10 text-primary border-l-2 border-primary font-semibold"
+                                                : "text-foreground/60 hover:bg-muted/40 font-medium"
+                                                }`}
                                         >
-                                            {/* PO-level entries (no VBShipmentNumber) */}
-                                            {group.entries.length > 0 && (
-                                                <TimelineTable entries={group.entries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
-                                            )}
+                                            <span className="flex items-center gap-1.5 truncate">
+                                                <Package className="h-3 w-3 shrink-0" />
+                                                <span className="truncate">{serial.display}</span>
+                                            </span>
+                                            <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full ml-1 shrink-0">{serial.count}</span>
+                                        </button>
 
-                                            {/* Shipping sub-groups */}
-                                            {group.shippings.map((ship) => (
-                                                <AccordionSection
-                                                    key={ship.VBShipmentNumber}
-                                                    label={`Shipping: ${ship.displayName}`}
-                                                    icon={<Anchor className="h-3 w-3 text-violet-500" />}
-                                                    count={ship.entries.length}
-                                                    defaultOpen={true}
-                                                    level={1}
-                                                >
-                                                    <TimelineTable entries={ship.entries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
-                                                </AccordionSection>
-                                            ))}
-                                        </AccordionSection>
-                                    );
-                                })}
+                                        {/* Shipping children */}
+                                        {Array.from(serial.shippings.entries()).map(([shipKey, ship]) => (
+                                            <button
+                                                key={shipKey}
+                                                onClick={() => setSidebarSelection(`ship:${shipKey}`)}
+                                                className={`w-full flex items-center justify-between pl-7 pr-3 py-1.5 text-[10px] transition-colors ${sidebarSelection === `ship:${shipKey}`
+                                                    ? "bg-primary/10 text-primary border-l-2 border-primary font-semibold"
+                                                    : "text-foreground/50 hover:bg-muted/40 font-medium"
+                                                    }`}
+                                            >
+                                                <span className="flex items-center gap-1 truncate">
+                                                    <Anchor className="h-2.5 w-2.5 shrink-0 text-violet-500" />
+                                                    <span className="truncate">{ship.display}</span>
+                                                </span>
+                                                <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full ml-1 shrink-0">{ship.count}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            // Flat table view (when already filtered to a specific PO or shipping)
-                            <TimelineTable entries={filtered} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
                         )}
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-muted">
+                            {loading ? (
+                                <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">Loading timeline...</div>
+                            ) : displayEntries.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+                                    <Clock className="h-8 w-8 opacity-30" />
+                                    <span className="text-xs">No timeline entries yet. Click &quot;Add&quot; to create one.</span>
+                                </div>
+                            ) : (
+                                <TimelineTable entries={displayEntries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
+                            )}
+                        </div>
                     </div>
 
                     {/* Footer Stats */}
                     <div className="px-5 py-2 border-t bg-muted/20 flex items-center justify-between text-[10px] text-muted-foreground">
                         <span>
-                            {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
+                            {displayEntries.length} {displayEntries.length === 1 ? "entry" : "entries"}
+                            {sidebarSelection !== "all" && ` (filtered)`}
                             {search && ` matching "${search}"`}
                         </span>
                         <div className="flex gap-3">
                             {TYPE_OPTIONS.map((t) => {
-                                const count = filtered.filter((e) => e.type === t).length;
+                                const count = displayEntries.filter((e) => e.type === t).length;
                                 if (count === 0) return null;
                                 return <span key={t} className="flex items-center gap-1">{TYPE_ICONS[t]} {count}</span>;
                             })}
@@ -694,11 +427,22 @@ export default function TimelineModal({
                 </DialogContent>
             </Dialog>
 
-            {/* Edit Dialog (separate modal) */}
-            <EditEntryDialog
+            {/* Add/Edit Dialog (shared component) */}
+            <TimelineEntryDialog
+                open={showAddDialog}
+                onClose={() => setShowAddDialog(false)}
+                parentIds={{ VBNumber, VBSerialNumber, VBShipmentNumber }}
+                onSaved={() => { setShowAddDialog(false); fetchEntries(); }}
+            />
+            <TimelineEntryDialog
+                open={!!editingEntry}
                 entry={editingEntry}
                 onClose={() => setEditingEntry(null)}
-                onSaved={fetchEntries}
+                onSaved={() => { setEditingEntry(null); fetchEntries(); }}
+                onDelete={(id) => {
+                    setEditingEntry(null);
+                    handleDelete(id);
+                }}
             />
         </>
     );

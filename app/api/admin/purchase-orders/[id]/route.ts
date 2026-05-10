@@ -78,8 +78,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
             if (oldStatus !== newStatus) {
               logs.push({
                 comments: `Shipping status changed from "${oldStatus}" to "${newStatus}"`,
-                type: "Shipping Status",
-                category: "Shipping Status",
+                type: "Shipping",
+                category: "Shipping",
                 poNo,
                 svbid,
               });

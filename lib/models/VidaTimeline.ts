@@ -6,7 +6,7 @@ export interface IVidaTimeline extends Document {
     VBShipmentNumber?: string;
     date?: Date;
     reminder?: Date;
-    type: string; // Notes, Shipping Status, Action Required
+    type: string; // Notes, Shipping, Action Required
     comments?: string;
     status?: string;
     category?: string;
@@ -23,7 +23,7 @@ const VidaTimelineSchema: Schema = new Schema({
     type: {
         type: String,
         required: true,
-        enum: ['Notes', 'Shipping Status', 'Action Required'],
+        enum: ['Notes', 'Shipping', 'Action Required'],
         default: 'Notes'
     },
     comments: { type: String },
