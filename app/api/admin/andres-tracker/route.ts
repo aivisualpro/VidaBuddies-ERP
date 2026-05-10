@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const [pos, customers, suppliers, products] = await Promise.all([
       VidaPO.find({}),
       VidaCustomer.find({}),
-      VidaSupplier.find({}),
+      VidaSupplier.find({ isDeleted: { $ne: true } }),
       VidaProduct.find({})
     ]);
 

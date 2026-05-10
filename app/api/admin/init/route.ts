@@ -38,7 +38,7 @@ export async function GET() {
         VidaProduct.find({}).lean(),
         VidaCategory.find({}).lean(),
         VidaWarehouse.find({}).lean(),
-        VidaSupplier.find({}).lean(),
+        VidaSupplier.find({ isDeleted: { $ne: true } }).lean(),
         VidaCustomer.find({}).lean(),
         VidaUser.find({}).lean(),
         VidaCarrier.find({}).sort({ name: 1 }).lean(),

@@ -11,7 +11,7 @@ function generateVbId(): string {
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
-    const items = await VidaSupplier.find({}).lean();
+    const items = await VidaSupplier.find({ isDeleted: { $ne: true } }).lean();
     const itemsDecrypted = items.map(item => ({
       ...item,
       portalPassword: item.portalPassword ? decryptPassword(item.portalPassword as string) : null

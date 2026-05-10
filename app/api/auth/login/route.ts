@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
     if (!user || user.password !== password) {
       // Check if it's a supplier
-      const supplier = await VidaSupplier.findOne({ portalEmail: email.toLowerCase() });
+      const supplier = await VidaSupplier.findOne({ portalEmail: email.toLowerCase(), isDeleted: { $ne: true } });
       if (supplier && supplier.portalPassword) {
          try {
            const decrypted = decryptPassword(supplier.portalPassword);

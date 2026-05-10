@@ -76,9 +76,10 @@ export interface IVidaSupplier extends Document {
   phone?: string;
   productsSupplied?: string[];
   isOrganic?: boolean;
+  isDeleted?: boolean;
   location: IVidaSupplierLocation[];
   documents?: IVidaSupplierDocument[];
-  customDocNames?: string[];  // admin-defined "Others" doc names
+  customDocNames?: string[];
   surveyResponses?: IVidaSurveyResponse[];
   contacts?: IVidaSupplierContact[];
 }
@@ -164,6 +165,7 @@ const VidaSupplierSchema: Schema = new Schema({
   phone: { type: String, default: '' },
   productsSupplied: { type: [String], default: [] },
   isOrganic: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false },
   location: [VidaSupplierLocationSchema],
   documents: { type: [VidaSupplierDocumentSchema], default: [] },
   customDocNames: { type: [String], default: [] },

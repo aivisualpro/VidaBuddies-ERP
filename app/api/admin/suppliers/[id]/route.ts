@@ -69,8 +69,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     await connectToDatabase();
-    const deletedItem = await VidaSupplier.findByIdAndDelete(id);
-    if (!deletedItem) {
+    const supplier = await VidaSupplier.findByIdAndUpdate(
+      id,
+      { isDeleted: true },
+      { new: true }
+    );
+    if (!supplier) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
     return NextResponse.json({ success: true });
