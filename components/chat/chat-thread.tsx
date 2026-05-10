@@ -14,12 +14,14 @@ interface ChatThreadProps {
   conversationId: string | null;
   conversation: any; // populated conversation document
   currentUserId: string;
+  users: any[];
 }
 
 export function ChatThread({
   conversationId,
   conversation,
   currentUserId,
+  users,
 }: ChatThreadProps) {
   const {
     messages,
@@ -230,6 +232,8 @@ export function ChatThread({
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         sending={sending}
+        currentUserId={currentUserId}
+        users={users}
       />
     </div>
   );

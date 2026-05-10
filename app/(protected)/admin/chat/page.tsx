@@ -74,6 +74,7 @@ export default function ChatPage() {
           conversationId={activeConvId}
           conversation={conversation}
           currentUserId={currentUser.id}
+          users={allUsers}
         />
       ) : (
         <EmptyState />

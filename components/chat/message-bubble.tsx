@@ -1,9 +1,119 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Check, CheckCheck } from "lucide-react";
+import { Check, CheckCheck, FileText, Volume2 } from "lucide-react";
+import Link from "next/link";
 import { MessageActions } from "./message-actions";
+import { Lightbox } from "./lightbox";
 import type { ChatMsg } from "@/hooks/use-chat";
+
+/* ─── Ref chip color classes ─── */
+const REF_CHIP_CLASSES: Record<string, string> = {
+  VBNumber:
+    "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/25",
+  VBSerialNumber:
+    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25",
+  VBShipmentNumber:
+    "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30 hover:bg-violet-500/25",
+};
+
+const REF_LINK_MAP: Record<string, string> = {
+  VBNumber: "/admin/purchase-orders/list",
+  VBSerialNumber: "/admin/customer-pos/list",
+  VBShipmentNumber: "/admin/shipments/list",
+};
+
+const MENTION_CHIP_CLASS =
+  "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30";
+
+/**
+ * Renders message text with inline chips for #refs and @mentions.
+ * Walks the text looking for chip markers inserted by the composer.
+ */
+function renderChippedText(
+  text: string,
+  refs: any[],
+  mentions: any[],
+  isMe: boolean
+): React.ReactNode[] {
+  if (!text) return [];
+
+  // Build lookup maps for fast matching
+  const refMap = new Map<string, any>();
+  (refs || []).forEach((r: any) => refMap.set(`#${r.display}`, r));
+  const mentionMap = new Map<string, any>();
+  (mentions || []).forEach((m: any) => mentionMap.set(`@${m.name}`, m));
+
+  // Collect all chip markers and their positions
+  const allMarkers = [
+    ...Array.from(refMap.keys()),
+    ...Array.from(mentionMap.keys()),
+  ].sort((a, b) => b.length - a.length); // longest first to avoid partial matches
+
+  if (allMarkers.length === 0) {
+    return [<span key="t" className="whitespace-pre-wrap break-words">{text}</span>];
+  }
+
+  // Build regex from markers (escaped)
+  const escaped = allMarkers.map((m) =>
+    m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  );
+  const regex = new RegExp(`(${escaped.join("|")})`, "g");
+
+  const parts = text.split(regex);
+  const nodes: React.ReactNode[] = [];
+
+  parts.forEach((part, i) => {
+    const ref = refMap.get(part);
+    if (ref) {
+      const href = `${REF_LINK_MAP[ref.kind] || "/admin"}?focus=${ref.refId}`;
+      nodes.push(
+        <Link
+          key={`ref-${i}`}
+          href={href}
+          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-semibold border no-underline transition-colors ${
+            isMe
+              ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/30"
+              : REF_CHIP_CLASSES[ref.kind] || ""
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </Link>
+      );
+      return;
+    }
+
+    const mention = mentionMap.get(part);
+    if (mention) {
+      nodes.push(
+        <span
+          key={`mention-${i}`}
+          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-semibold border cursor-default ${
+            isMe
+              ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30"
+              : MENTION_CHIP_CLASS
+          }`}
+          title={mention.userId}
+        >
+          {part}
+        </span>
+      );
+      return;
+    }
+
+    // Plain text
+    if (part) {
+      nodes.push(
+        <span key={`text-${i}`} className="whitespace-pre-wrap break-words">
+          {part}
+        </span>
+      );
+    }
+  });
+
+  return nodes;
+}
 
 interface MessageBubbleProps {
   message: ChatMsg;
@@ -182,55 +292,24 @@ export function MessageBubble({
             </div>
           ) : (
             <>
-              {/* Text */}
+              {/* Text with chips */}
               {message.text && (
-                <span className="whitespace-pre-wrap break-words">
-                  {message.text}
+                <span>
+                  {renderChippedText(
+                    message.text,
+                    message.refs,
+                    message.mentions,
+                    isMe
+                  )}
                 </span>
               )}
 
               {/* Attachments */}
               {message.attachments?.length > 0 && (
-                <div className="flex flex-col gap-1.5 mt-1.5">
-                  {message.attachments.map((att: any, i: number) => (
-                    <a
-                      key={i}
-                      href={att.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
-                        isMe
-                          ? "bg-primary-foreground/10 hover:bg-primary-foreground/20"
-                          : "bg-background hover:bg-muted border"
-                      }`}
-                    >
-                      {att.mime?.startsWith("image/") ? (
-                        <img
-                          src={att.url}
-                          alt={att.name || ""}
-                          className="max-h-48 max-w-full rounded-lg object-cover"
-                        />
-                      ) : (
-                        <>
-                          <div className="h-7 w-7 rounded bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary">
-                            {att.name?.split(".").pop()?.toUpperCase() ||
-                              "FILE"}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold">
-                              {att.name || "Attachment"}
-                            </p>
-                            {att.size && (
-                              <p className="text-[10px] opacity-60">
-                                {fmtSize(att.size)}
-                              </p>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </a>
-                  ))}
-                </div>
+                <AttachmentRenderer
+                  attachments={message.attachments}
+                  isMe={isMe}
+                />
               )}
 
               {/* Timestamp + ticks */}
@@ -337,3 +416,146 @@ function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+function fmtDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+/* ─── Attachment Renderer ─── */
+
+function AttachmentRenderer({
+  attachments,
+  isMe,
+}: {
+  attachments: any[];
+  isMe: boolean;
+}) {
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  const images = attachments.filter((a: any) => a.mime?.startsWith("image/"));
+  const audios = attachments.filter((a: any) => a.mime?.startsWith("audio/"));
+  const files = attachments.filter(
+    (a: any) =>
+      !a.mime?.startsWith("image/") && !a.mime?.startsWith("audio/")
+  );
+
+  return (
+    <>
+      {/* Images — grid */}
+      {images.length > 0 && (
+        <div
+          className={`flex flex-wrap gap-1.5 mt-1.5 ${
+            images.length === 1 ? "" : "grid grid-cols-2"
+          }`}
+        >
+          {images.map((att: any, i: number) => (
+            <button
+              key={i}
+              onClick={() => setLightboxIdx(i)}
+              className="relative overflow-hidden rounded-xl cursor-pointer group"
+              style={{
+                maxWidth: images.length === 1 ? 360 : "100%",
+                maxHeight: 360,
+              }}
+            >
+              <img
+                src={att.url}
+                alt={att.name || ""}
+                className="max-h-[360px] w-full object-cover rounded-xl transition-transform group-hover:scale-[1.02]"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Audio — custom player */}
+      {audios.map((att: any, i: number) => (
+        <div
+          key={`audio-${i}`}
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl mt-1.5 ${
+            isMe
+              ? "bg-primary-foreground/10"
+              : "bg-background border"
+          }`}
+        >
+          <Volume2
+            className={`h-4 w-4 shrink-0 ${
+              isMe ? "text-primary-foreground/70" : "text-primary"
+            }`}
+          />
+          <audio
+            src={att.url}
+            controls
+            preload="metadata"
+            className="h-8 flex-1 min-w-0"
+            style={{ maxWidth: 240 }}
+          />
+          {att.durationMs && (
+            <span
+              className={`text-[10px] tabular-nums shrink-0 ${
+                isMe
+                  ? "text-primary-foreground/50"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {fmtDuration(att.durationMs)}
+            </span>
+          )}
+        </div>
+      ))}
+
+      {/* Files — pill */}
+      {files.map((att: any, i: number) => (
+        <a
+          key={`file-${i}`}
+          href={att.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl mt-1.5 text-xs font-medium transition-colors ${
+            isMe
+              ? "bg-primary-foreground/10 hover:bg-primary-foreground/20"
+              : "bg-background hover:bg-muted border"
+          }`}
+        >
+          <div
+            className={`h-8 w-8 rounded-lg flex items-center justify-center text-[9px] font-bold shrink-0 ${
+              isMe
+                ? "bg-primary-foreground/15 text-primary-foreground"
+                : "bg-primary/10 text-primary"
+            }`}
+          >
+            {att.name?.split(".").pop()?.toUpperCase()?.slice(0, 4) || (
+              <FileText className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-[12px]">
+              {att.name || "Attachment"}
+            </p>
+            {att.size && (
+              <p className="text-[10px] opacity-60">{fmtSize(att.size)}</p>
+            )}
+          </div>
+        </a>
+      ))}
+
+      {/* Lightbox */}
+      {lightboxIdx !== null && (
+        <Lightbox
+          images={images.map((a: any) => ({
+            url: a.url,
+            name: a.name,
+          }))}
+          startIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
+    </>
+  );
+}
+

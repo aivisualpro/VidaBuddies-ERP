@@ -44,6 +44,7 @@ export interface IVidaMessage extends Document {
   deliveredTo: IStampedUser[];
   editedAt?: Date;
   deletedAt?: Date;
+  mirrorOf?: mongoose.Types.ObjectId;
   // Legacy compat — kept so old queries don't crash
   isRead?: boolean;
   createdAt?: Date;
@@ -139,6 +140,9 @@ const VidaMessageSchema: Schema = new Schema(
     // Edit & soft-delete
     editedAt: { type: Date },
     deletedAt: { type: Date },
+
+    // Shadow copy reference (ref fan-out)
+    mirrorOf: { type: Schema.Types.ObjectId, ref: 'VidaMessage' },
 
     // Legacy compat — old rows had this; new code uses readBy[]
     isRead: { type: Boolean },

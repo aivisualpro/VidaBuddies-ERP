@@ -183,6 +183,76 @@ export async function POST(
       });
     }
 
+    // ── Ref fan-out: shadow-copy message into dedicated ref conversations ──
+    if (refs.length > 0 && convo.kind !== "ref") {
+      for (const ref of refs) {
+        try {
+          // Find or create a dedicated ref conversation for this ref
+          let refConvo = await VidaConversation.findOne({
+            kind: "ref",
+            "refs.kind": ref.kind,
+            "refs.refId": ref.refId,
+          });
+
+          if (!refConvo) {
+            refConvo = await VidaConversation.create({
+              kind: "ref",
+              name: `${ref.kind}: ${ref.display}`,
+              participants: [session.id],
+              admins: [session.id],
+              createdBy: session.id,
+              refs: [ref],
+            });
+          }
+
+          // Ensure sender is a participant of the ref conversation
+          if (
+            !refConvo.participants
+              .map((p: any) => p.toString())
+              .includes(session.id)
+          ) {
+            refConvo.participants.push(session.id);
+            await refConvo.save();
+          }
+
+          // Insert shadow copy
+          await VidaMessage.create({
+            conversationId: refConvo._id,
+            senderId: session.id,
+            text: msg.text,
+            kind: msg.kind,
+            mentions: msg.mentions,
+            attachments: msg.attachments,
+            refs: msg.refs,
+            mirrorOf: msg._id,
+          });
+
+          // Update ref conversation metadata
+          await VidaConversation.findByIdAndUpdate(refConvo._id, {
+            lastMessage: preview.substring(0, 200),
+            lastMessageBy: session.id,
+            lastMessageAt: new Date(),
+          });
+        } catch (err) {
+          console.error("[Ref fan-out] Error for ref:", ref, err);
+        }
+      }
+    }
+
+    // ── Mention notifications to specific @mentioned users ──
+    if (mentions.length > 0) {
+      for (const m of mentions) {
+        if (m.userId && m.userId !== session.id) {
+          await triggerToUser(m.userId, MENTION, {
+            conversationId,
+            senderName: session.name,
+            preview: `mentioned you: ${preview.substring(0, 60)}`,
+            type: "mention",
+          });
+        }
+      }
+    }
+
     return NextResponse.json(responseMsg);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
