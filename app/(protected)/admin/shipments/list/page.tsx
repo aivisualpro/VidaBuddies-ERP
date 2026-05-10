@@ -84,7 +84,7 @@ export default function ShipmentsListPage() {
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
   const [chatOpen, setChatOpen] = useState<{ refKind: "VBShipmentNumber"; refId: string; display: string } | null>(null);
-  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
@@ -160,7 +160,7 @@ export default function ShipmentsListPage() {
     fetchData();
     fetch("/api/admin/chat/unread-by-refs?kind=VBShipmentNumber")
       .then((r) => r.json())
-      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+      .then((d) => { if (d && typeof d === "object") setChatInfo(d); })
       .catch(() => {});
     fetch("/api/admin/chat")
       .then((r) => r.json())
@@ -350,7 +350,9 @@ export default function ShipmentsListPage() {
       cell: ({ row }) => {
         const shipId = row.original._id;
         const display = row.original.VBShipmentNumber || row.original.svbid || shipId;
-        const count = chatCounts[shipId] || 0;
+        const info = chatInfo[shipId];
+        const count = info?.unread || 0;
+        const hasConv = info?.hasConversation || false;
         return (
           <button
             onClick={(e) => {
@@ -359,11 +361,14 @@ export default function ShipmentsListPage() {
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : hasConv
+              ? 'text-primary/60 hover:bg-primary/10 cursor-pointer'
               : 'text-muted-foreground hover:bg-muted cursor-pointer'
               }`}
+            aria-label={`Chat for ${display}`}
           >
-            <MessageCircle className="h-3 w-3" />
-            {count > 0 ? count : '—'}
+            <MessageCircle className={`h-3 w-3 ${hasConv ? 'fill-current' : ''}`} />
+            {count > 0 ? count : hasConv ? '' : '—'}
           </button>
         );
       },
@@ -530,7 +535,7 @@ export default function ShipmentsListPage() {
             setChatOpen(null);
             fetch("/api/admin/chat/unread-by-refs?kind=VBShipmentNumber")
               .then((r) => r.json())
-              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+              .then((d) => { if (d && typeof d === "object") setChatInfo(d); })
               .catch(() => {});
           }}
           refKind={chatOpen.refKind}

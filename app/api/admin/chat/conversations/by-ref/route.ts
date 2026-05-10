@@ -5,9 +5,13 @@ import { getSession } from "@/lib/auth";
 
 /**
  * GET /api/admin/chat/conversations/by-ref?kind=VBNumber&refId=xxx
+ * GET /api/admin/chat/conversations/by-ref?kind=VBSerialNumber&refId=xxx&parentRefId=yyy
  *
  * Finds or creates a dedicated "ref" conversation for the given record.
- * Returns the conversation document (populated participants).
+ * If `parentRefId` is provided and kind is VBSerialNumber/VBShipmentNumber,
+ * also searches for parent VBNumber conversations to return those too.
+ *
+ * Returns: { conversation, relatedConversations[] }
  */
 export async function GET(req: NextRequest) {
   try {
@@ -20,6 +24,8 @@ export async function GET(req: NextRequest) {
     const kind = url.searchParams.get("kind");
     const refId = url.searchParams.get("refId");
     const display = url.searchParams.get("display") || refId || "";
+    const parentRefId = url.searchParams.get("parentRefId");
+    const parentRefKind = url.searchParams.get("parentRefKind") || "VBNumber";
 
     if (!kind || !refId)
       return NextResponse.json(
@@ -27,13 +33,13 @@ export async function GET(req: NextRequest) {
         { status: 400 }
       );
 
-    // Find existing ref conversation
+    // ── 1. Find existing ref conversation for this exact record ──
     let convo = await VidaConversation.findOne({
       kind: "ref",
       "refs.kind": kind,
       "refs.refId": refId,
     })
-      .populate("participants", "name profilePicture email")
+      .populate("participants", "name profilePicture email lastSeen")
       .populate("lastMessageBy", "name");
 
     if (!convo) {
@@ -48,7 +54,7 @@ export async function GET(req: NextRequest) {
       });
       // Re-populate
       convo = await VidaConversation.findById(convo._id)
-        .populate("participants", "name profilePicture email")
+        .populate("participants", "name profilePicture email lastSeen")
         .populate("lastMessageBy", "name");
     } else {
       // Ensure current user is a participant
@@ -59,12 +65,36 @@ export async function GET(req: NextRequest) {
         convo.participants.push(session.id);
         await convo.save();
         convo = await VidaConversation.findById(convo._id)
-          .populate("participants", "name profilePicture email")
+          .populate("participants", "name profilePicture email lastSeen")
           .populate("lastMessageBy", "name");
       }
     }
 
-    return NextResponse.json(convo);
+    // ── 2. Find related parent conversations ──
+    const relatedConversations: any[] = [];
+
+    if (parentRefId) {
+      const parentConvos = await VidaConversation.find({
+        kind: "ref",
+        "refs.kind": parentRefKind,
+        "refs.refId": parentRefId,
+        _id: { $ne: convo?._id }, // exclude current
+      })
+        .populate("participants", "name profilePicture email lastSeen")
+        .populate("lastMessageBy", "name")
+        .lean();
+
+      relatedConversations.push(...parentConvos);
+    }
+
+    // For backward compatibility, return the conversation directly
+    // but also include relatedConversations if any
+    const result = convo?.toObject ? convo.toObject() : convo;
+    if (relatedConversations.length > 0) {
+      (result as any).relatedConversations = relatedConversations;
+    }
+
+    return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

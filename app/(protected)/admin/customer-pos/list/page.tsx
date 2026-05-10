@@ -43,8 +43,8 @@ export default function CustomerPOsListPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState<{ refKind: "VBSerialNumber"; refId: string; display: string } | null>(null);
-  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [chatOpen, setChatOpen] = useState<{ refKind: "VBSerialNumber" | "VBNumber" | "VBShipmentNumber"; refId: string; display: string; parentRefId?: string } | null>(null);
+  const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
@@ -63,12 +63,54 @@ export default function CustomerPOsListPage() {
     }
   };
 
+  const fetchChatInfo = async (items?: CustomerPO[]) => {
+    try {
+      // Fetch conversations for VBSerialNumber (own ID) AND VBNumber (parent)
+      const [serRes, vbRes] = await Promise.all([
+        fetch("/api/admin/chat/unread-by-refs?kind=VBSerialNumber"),
+        fetch("/api/admin/chat/unread-by-refs?kind=VBNumber"),
+      ]);
+      const serData = serRes.ok ? await serRes.json() : {};
+      const vbData = vbRes.ok ? await vbRes.json() : {};
+
+      console.log("[Chat] VBSerialNumber convs:", Object.keys(serData).length, serData);
+      console.log("[Chat] VBNumber convs:", Object.keys(vbData).length, vbData);
+
+      // Build a merged map keyed by CPO _id
+      const merged: Record<string, { unread: number; hasConversation: boolean }> = {};
+      const rows = items || data;
+
+      for (const cpo of rows) {
+        const cpoId = cpo._id;
+        let unread = 0;
+        let hasConv = false;
+
+        // Check by own _id as VBSerialNumber ref
+        if (serData[cpoId]) {
+          unread += serData[cpoId].unread || 0;
+          if (serData[cpoId].hasConversation) hasConv = true;
+        }
+
+        // Check by parent VBNumber — try vidaPOId first, then VBNumber field
+        const parentId = cpo.vidaPOId || cpo.VBNumber;
+        if (parentId && vbData[parentId]) {
+          unread += vbData[parentId].unread || 0;
+          if (vbData[parentId].hasConversation) hasConv = true;
+        }
+
+        if (unread > 0 || hasConv) {
+          merged[cpoId] = { unread, hasConversation: hasConv };
+        }
+      }
+      console.log("[Chat] Merged CPO chat info:", Object.keys(merged).length, "rows with conversations");
+      setChatInfo(merged);
+    } catch {}
+  };
+
   useEffect(() => {
-    fetchData();
-    fetch("/api/admin/chat/unread-by-refs?kind=VBSerialNumber")
-      .then((r) => r.json())
-      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
-      .catch(() => {});
+    fetchData().then(() => {
+      // Need data to be loaded first for vidaPOId mapping
+    });
     fetch("/api/admin/chat")
       .then((r) => r.json())
       .then((d) => {
@@ -77,6 +119,11 @@ export default function CustomerPOsListPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Fetch chat info once data is loaded
+  useEffect(() => {
+    if (data.length > 0) fetchChatInfo(data);
+  }, [data]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "-";
@@ -197,20 +244,26 @@ export default function CustomerPOsListPage() {
       cell: ({ row }) => {
         const cpoId = row.original._id;
         const display = row.original.VBSerialNumber || row.original.poNo || cpoId;
-        const count = chatCounts[cpoId] || 0;
+        const info = chatInfo[cpoId];
+        const count = info?.unread || 0;
+        const hasConv = info?.hasConversation || false;
         return (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setChatOpen({ refKind: "VBSerialNumber", refId: cpoId, display });
+              const parentId = row.original.vidaPOId || row.original.VBNumber;
+              setChatOpen({ refKind: "VBSerialNumber", refId: cpoId, display, parentRefId: parentId || undefined });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : hasConv
+              ? 'text-primary/60 hover:bg-primary/10 cursor-pointer'
               : 'text-muted-foreground hover:bg-muted cursor-pointer'
               }`}
+            aria-label={`Chat for ${display}`}
           >
-            <MessageCircle className="h-3 w-3" />
-            {count > 0 ? count : '—'}
+            <MessageCircle className={`h-3 w-3 ${hasConv ? 'fill-current' : ''}`} />
+            {count > 0 ? count : hasConv ? '' : '—'}
           </button>
         );
       },
@@ -306,16 +359,15 @@ export default function CustomerPOsListPage() {
           open={!!chatOpen}
           onClose={() => {
             setChatOpen(null);
-            fetch("/api/admin/chat/unread-by-refs?kind=VBSerialNumber")
-              .then((r) => r.json())
-              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
-              .catch(() => {});
+            fetchChatInfo();
           }}
           refKind={chatOpen.refKind}
           refId={chatOpen.refId}
           display={chatOpen.display}
           currentUserId={currentUserId}
           users={allUsers}
+          parentRefId={chatOpen.parentRefId}
+          parentRefKind="VBNumber"
         />
       )}
     </div>

@@ -96,7 +96,7 @@ export default function PurchaseOrdersPage() {
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
   const [chatOpen, setChatOpen] = useState<{ refKind: "VBNumber"; refId: string; display: string } | null>(null);
-  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
@@ -164,7 +164,7 @@ export default function PurchaseOrdersPage() {
     // Fetch chat unread counts
     fetch("/api/admin/chat/unread-by-refs?kind=VBNumber")
       .then((r) => r.json())
-      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+      .then((d) => { if (d && typeof d === "object") setChatInfo(d); })
       .catch(() => {});
     // Fetch current user for the drawer
     fetch("/api/admin/chat")
@@ -497,7 +497,9 @@ export default function PurchaseOrdersPage() {
       cell: ({ row }) => {
         const poId = row.original._id;
         const vbpoNo = row.original.vbpoNo;
-        const count = chatCounts[poId] || 0;
+        const info = chatInfo[poId];
+        const count = info?.unread || 0;
+        const hasConv = info?.hasConversation || false;
         return (
           <button
             onClick={(e) => {
@@ -506,11 +508,14 @@ export default function PurchaseOrdersPage() {
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : hasConv
+              ? 'text-primary/60 hover:bg-primary/10 cursor-pointer'
               : 'text-muted-foreground hover:bg-muted cursor-pointer'
               }`}
+            aria-label={`Chat for ${vbpoNo}`}
           >
-            <MessageCircle className="h-3 w-3" />
-            {count > 0 ? count : '—'}
+            <MessageCircle className={`h-3 w-3 ${hasConv ? 'fill-current' : ''}`} />
+            {count > 0 ? count : hasConv ? '' : '—'}
           </button>
         );
       },
@@ -869,7 +874,7 @@ export default function PurchaseOrdersPage() {
             // Refresh counts
             fetch("/api/admin/chat/unread-by-refs?kind=VBNumber")
               .then((r) => r.json())
-              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+              .then((d) => { if (d && typeof d === "object") setChatInfo(d); })
               .catch(() => {});
           }}
           refKind={chatOpen.refKind}
