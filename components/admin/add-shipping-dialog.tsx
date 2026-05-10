@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -10,13 +10,31 @@ import { ProductMultiSelect } from "@/components/admin/product-multi-select";
 import { toast } from "sonner";
 import { useUserDataStore } from "@/store/useUserDataStore";
 
-export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess?: () => void }) {
+interface AddShippingDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void;
+  /** "standalone" writes to /api/admin/vb-shipping; "embedded" pushes into PO nested array */
+  mode?: "standalone" | "embedded";
+  /** If provided, dialog is in edit mode */
+  editingData?: Record<string, any> | null;
+  /** Called after successful save */
+  onSaved?: () => void;
+}
+
+export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded", editingData, onSaved }: AddShippingDialogProps) {
   const { purchaseOrders, suppliers, products: pList } = useUserDataStore();
   const [actionLoading, setActionLoading] = useState(false);
 
   const [selectedVBPO, setSelectedVBPO] = useState("");
   const [selectedCPO, setSelectedCPO] = useState("");
   const [selectedSupplierForShipping, setSelectedSupplierForShipping] = useState("");
+  const [selectedSupplierLocation, setSelectedSupplierLocation] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("Ordered");
+  const [selectedCarrier, setSelectedCarrier] = useState("");
+
+  // For standalone mode: VB PO options from purchaseOrders & CPO options from API
+  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
 
   const SHIPPING_SECTIONS = [
     { id: 'core', label: 'Core Info', icon: '📦' },
@@ -34,18 +52,78 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
     return acc;
   }, {});
 
-  const getSupplierLocationOptions = () => {
+  const supplierLocationOptions = useMemo(() => {
     const selected = (suppliers || []).find((s: any) => s._id === selectedSupplierForShipping || s.vbId === selectedSupplierForShipping);
-    if (!selected || !selected.location) return [];
+    if (!selected?.location) return [];
     return selected.location.map((l: any) => ({
-      id: l.vbId,
-      name: l.locationName || l.vbId,
+      value: l.vbId,
+      label: l.locationName || l.vbId,
     }));
-  };
+  }, [suppliers, selectedSupplierForShipping]);
+
+  // VB PO options for standalone mode — value is _id (ObjectId) for VBNumber
+  const vbpoOptions = useMemo(() =>
+    (purchaseOrders || []).map((po: any) => ({ value: po._id || '', label: po.VBNumber || po.vbpoNo || '—' })),
+    [purchaseOrders]
+  );
+
+  // Filtered CPOs based on selected VB PO _id (standalone)
+  const filteredStandaloneCPOs = useMemo(() => {
+    if (!selectedVBPO) return standaloneCPOs;
+    return standaloneCPOs.filter((cpo: any) =>
+      (cpo.VBNumber || cpo.vidaPOId) === selectedVBPO
+    );
+  }, [standaloneCPOs, selectedVBPO]);
+
+  const supplierOptions = useMemo(() =>
+    (suppliers || []).map((s: any) => ({ value: s._id, label: `${s.name} (${s.vbId})` })),
+    [suppliers]
+  );
+
+  const carrierOptions = useMemo(() =>
+    CARRIER_OPTIONS.map(c => ({ value: c, label: c })),
+    []
+  );
+
+  const statusOptions = useMemo(() =>
+    ['Ordered', 'Pending', 'Planned', 'In Transit', 'Delivered', 'Cancelled'].map(s => ({ value: s, label: s })),
+    []
+  );
+
+  // Fetch standalone CPOs on mount
+  useEffect(() => {
+    if (mode === 'standalone' && open) {
+      fetch('/api/admin/vb-customer-po')
+        .then(r => r.json())
+        .then(items => { if (Array.isArray(items)) setStandaloneCPOs(items); })
+        .catch(() => {});
+    }
+  }, [mode, open]);
+
+  // Reset form when editing data changes
+  useEffect(() => {
+    if (!open) return;
+    if (editingData) {
+      setSelectedSupplierForShipping(editingData.supplier || "");
+      setSelectedSupplierLocation(editingData.supplierLocation || "");
+      setSelectedStatus(editingData.status || "Ordered");
+      setSelectedCarrier(editingData.carrier || "");
+      setSelectedVBPO(editingData.vbpoNo || editingData.poNo || "");
+      setSelectedCPO(editingData.customerPOId || "");
+    } else {
+      setSelectedVBPO("");
+      setSelectedCPO("");
+      setSelectedSupplierForShipping("");
+      setSelectedSupplierLocation("");
+      setSelectedStatus("Ordered");
+      setSelectedCarrier("");
+    }
+  }, [open, editingData]);
 
   const handleSaveShipping = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVBPO || !selectedCPO) {
+
+    if (mode === "embedded" && (!selectedVBPO || !selectedCPO)) {
       toast.error("Please select a VBPO and Customer PO first");
       return;
     }
@@ -54,23 +132,35 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
     const formData = new FormData(e.target as HTMLFormElement);
     const data = Object.fromEntries(formData.entries());
     const formattedData: any = { ...data };
-    formattedData.status = formattedData.status || 'Ordered'; 
 
-    // Find the PO and CPO indices
-    const po = purchaseOrders.find(p => p._id === selectedVBPO);
-    const cpoIdx = po?.customerPO?.findIndex((c: any) => c._id === selectedCPO || c.customerPONo === selectedCPO);
+    // Inject controlled state values
+    formattedData.supplier = selectedSupplierForShipping;
+    formattedData.supplierLocation = selectedSupplierLocation;
+    formattedData.status = selectedStatus || 'Ordered';
+    formattedData.carrier = selectedCarrier;
 
-    if (!po || cpoIdx === undefined || cpoIdx === -1) {
-      toast.error("Invalid state");
-      setActionLoading(false);
-      return;
-    }
-
-    const cpo = po.customerPO[cpoIdx];
-
-    if (!formattedData.svbid || formattedData.svbid.trim() === '') {
-      const existingShipCount = cpo?.shipping?.length || 0;
-      formattedData.svbid = `${cpo.poNo}-${existingShipCount + 1}`;
+    // For standalone, inject the new linking fields only
+    if (mode === 'standalone') {
+      if (selectedVBPO) {
+        formattedData.VBNumber = selectedVBPO;    // vidapos._id as string
+      }
+      if (selectedCPO) {
+        formattedData.VBSerialNumber = selectedCPO; // vbcustomerpos._id as string
+      }
+      // VBShipmentNumber: use manual input or auto-generate
+      const manualShipNum = formattedData.svbid?.trim();
+      if (manualShipNum) {
+        formattedData.VBShipmentNumber = manualShipNum;
+      } else {
+        // Auto-generate from VBSerialNumber display name
+        const matchedCpo = standaloneCPOs.find((c: any) => c._id === selectedCPO);
+        const serialName = matchedCpo?.VBSerialNumber || matchedCpo?.poNo || '';
+        formattedData.VBShipmentNumber = serialName
+          ? `${serialName}-${Date.now().toString(36).slice(-3)}`
+          : '';
+      }
+      // Clean up legacy form field
+      delete formattedData.svbid;
     }
 
     ['drums', 'pallets', 'gallons', 'netWeightKG', 'grossWeightKG', 'invValue', 'estTrumpDuties', 'feesAmount', 'estimatedDuties', 'qty'].forEach(k => {
@@ -82,25 +172,46 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
     }
 
     try {
-      const res = await fetch(`/api/admin/purchase-orders/${po._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          $push: {
-            [`customerPO.${cpoIdx}.shipping`]: formattedData
-          }
-        })
-      });
+      if (mode === "standalone") {
+        // Standalone: write directly to VBshipping collection
+        const url = editingData?._id
+          ? `/api/admin/vb-shipping/${editingData._id}`
+          : "/api/admin/vb-shipping";
+        const method = editingData?._id ? "PUT" : "POST";
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formattedData),
+        });
+        if (!res.ok) throw new Error("Failed");
+        toast.success(editingData ? "Shipment updated" : "Shipment created");
+      } else {
+        // Embedded: push into PO nested array
+        const po = purchaseOrders.find(p => p._id === selectedVBPO);
+        const cpoIdx = po?.customerPO?.findIndex((c: any) => c._id === selectedCPO || c.customerPONo === selectedCPO);
+        if (!po || cpoIdx === undefined || cpoIdx === -1) {
+          toast.error("Invalid state");
+          setActionLoading(false);
+          return;
+        }
+        const cpo = po.customerPO[cpoIdx];
+        if (!formattedData.svbid || formattedData.svbid.trim() === '') {
+          formattedData.svbid = `${cpo.poNo}-${(cpo?.shipping?.length || 0) + 1}`;
+        }
+        const res = await fetch(`/api/admin/purchase-orders/${po._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ $push: { [`customerPO.${cpoIdx}.shipping`]: formattedData } })
+        });
+        if (!res.ok) throw new Error("Failed to add shipping");
+        toast.success("Shipping added successfully");
+      }
 
-      if (!res.ok) throw new Error("Failed to add shipping");
-      
-      // Auto-create drive folder logic omitted for simplicity or could be restored
-
-      toast.success("Shipping added successfully");
       onClose();
-      if(onSuccess) onSuccess();
+      onSuccess?.();
+      onSaved?.();
     } catch(err) {
-      toast.error("Error creating shipping record");
+      toast.error("Error saving shipping record");
     } finally {
       setActionLoading(false);
     }
@@ -112,10 +223,10 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-[90vw] w-[1100px] h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
-        <form onSubmit={handleSaveShipping} className="flex flex-col flex-1 min-h-0">
+        <form key={editingData?._id || 'new'} onSubmit={handleSaveShipping} className="flex flex-col flex-1 min-h-0">
           <div className="px-6 py-4 border-b bg-gradient-to-r from-background to-muted/30 shrink-0">
             <DialogHeader>
-              <DialogTitle className="text-lg">Add Shipping Record</DialogTitle>
+              <DialogTitle className="text-lg">{editingData ? "Edit Shipping Record" : "Add Shipping Record"}</DialogTitle>
               <DialogDescription className="text-xs">
                 Create a new shipment and attach it to a VBPO / Customer PO context.
               </DialogDescription>
@@ -150,7 +261,8 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
             </div>
 
             <div id="shipping-form-scroll" className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
-              {/* Context Selector */}
+              {/* Context Selector — only shown in embedded mode */}
+              {mode === "embedded" && (
               <div id="ship-section-context" className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
                  <h4 className="text-xs font-black uppercase text-primary tracking-widest mb-4">Link to Order (Required)</h4>
                  <div className="grid grid-cols-2 gap-4">
@@ -170,11 +282,11 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
                         value={selectedCPO}
                         onChange={(v) => setSelectedCPO(v)}
                         placeholder={selectedVBPO ? "Select Customer PO..." : "Select VBPO first"}
-                        // To bypass lack of `disabled` prop in SearchableSelect, we use an empty option list if not selected.
                       />
                     </div>
                  </div>
               </div>
+              )}
 
               {/* === CORE INFO === */}
               <div id="ship-section-core">
@@ -182,27 +294,60 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
                   <span className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center text-[10px]">📦</span>
                   Core Information
                 </h4>
+
+                {/* VB PO + Customer PO linking (standalone mode) */}
+                {mode === "standalone" && (
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">VB Number</Label>
+                      <SearchableSelect
+                        options={vbpoOptions}
+                        value={selectedVBPO}
+                        onChange={(v) => { setSelectedVBPO(v); setSelectedCPO(""); }}
+                        placeholder="Select VB PO..."
+                        searchPlaceholder="Search PO numbers..."
+                        allowClear
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">VB Number Serial</Label>
+                      <SearchableSelect
+                        options={filteredStandaloneCPOs.map((cpo: any) => ({
+                          value: cpo._id,
+                          label: `${cpo.VBSerialNumber || cpo.poNo || '—'}${cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}`
+                        }))}
+                        value={selectedCPO}
+                        onChange={(v) => setSelectedCPO(v)}
+                        placeholder={selectedVBPO ? "Select Customer PO..." : "Select VB PO first"}
+                        searchPlaceholder="Search customer POs..."
+                        allowClear
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-xs">VBID</Label>
-                    <Input name="svbid" className="text-sm" placeholder="Auto-generated if left blank" />
+                    <Label className="text-xs">VB Shipment Number</Label>
+                    <Input name="svbid" className="text-sm" placeholder="Auto-generated if left blank" defaultValue={editingData?.VBShipmentNumber || editingData?.svbid || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Status</Label>
-                    <select name="status" className="w-full border rounded-md h-9 px-3 text-sm bg-background">
-                      <option value="Pending">Pending</option>
-                      <option value="Planned">Planned</option>
-                      <option value="In Transit">In Transit</option>
-                      <option value="Delivered">Delivered</option>
-                    </select>
+                    <SearchableSelect
+                      options={statusOptions}
+                      value={selectedStatus}
+                      onChange={(v) => setSelectedStatus(v || "Ordered")}
+                      placeholder="Select Status"
+                      searchPlaceholder="Search status..."
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Container No</Label>
-                    <Input name="containerNo" placeholder="ABCD1234567" className="text-sm" />
+                    <Input name="containerNo" placeholder="ABCD1234567" className="text-sm" defaultValue={editingData?.containerNo || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">BOL Number</Label>
-                    <Input name="BOLNumber" placeholder="Bill of Lading No" className="text-sm" />
+                    <Input name="BOLNumber" placeholder="Bill of Lading No" className="text-sm" defaultValue={editingData?.BOLNumber || ""} />
                   </div>
                 </div>
                 <div className="mt-4">
@@ -220,40 +365,35 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Supplier</Label>
-                    <select
-                      name="supplier"
-                      className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                    <SearchableSelect
+                      options={supplierOptions}
                       value={selectedSupplierForShipping}
-                      onChange={(e) => setSelectedSupplierForShipping(e.target.value)}
-                    >
-                      <option value="">Select Supplier</option>
-                      {suppliers.map((sup: any) => (
-                        <option key={sup._id} value={sup._id}>{sup.name} ({sup.vbId})</option>
-                      ))}
-                    </select>
+                      onChange={(v) => { setSelectedSupplierForShipping(v); setSelectedSupplierLocation(""); }}
+                      placeholder="Select Supplier"
+                      searchPlaceholder="Search suppliers..."
+                      emptyMessage="No suppliers found."
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Supplier Location</Label>
-                    <select
-                      name="supplierLocation"
-                      className="w-full border rounded-md h-9 px-3 text-sm bg-background"
-                      disabled={!selectedSupplierForShipping}
-                    >
-                      <option value="">{selectedSupplierForShipping ? 'Select Location' : 'Select Supplier First'}</option>
-                      {getSupplierLocationOptions().map((loc: any) => (
-                        <option key={loc.id} value={loc.id}>{loc.name}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      options={supplierLocationOptions}
+                      value={selectedSupplierLocation}
+                      onChange={setSelectedSupplierLocation}
+                      placeholder={selectedSupplierForShipping ? "Select Location" : "Select Supplier First"}
+                      searchPlaceholder="Search locations..."
+                      emptyMessage="No locations found."
+                    />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Supplier PO</Label>
-                    <Input name="supplierPO" placeholder="Supplier Ref" className="text-sm" />
+                    <Input name="supplierPO" placeholder="Supplier Ref" className="text-sm" defaultValue={editingData?.supplierPO || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Supplier PO Date</Label>
-                    <Input name="supplierPoDate" type="date" className="text-sm" />
+                    <Input name="supplierPoDate" type="date" className="text-sm" defaultValue={editingData?.supplierPoDate ? new Date(editingData.supplierPoDate).toISOString().split('T')[0] : ""} />
                   </div>
                 </div>
               </div>
@@ -267,60 +407,46 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Carrier</Label>
-                    <select
-                      name="carrier"
-                      className="w-full border rounded-md h-9 px-3 text-sm bg-background"
-                      onChange={(e) => {
-                        if (e.target.value === '__add_new__') {
-                          const newCarrier = prompt('Enter new carrier name:');
-                          if (newCarrier && newCarrier.trim()) {
-                            const opt = document.createElement('option');
-                            opt.value = newCarrier.trim();
-                            opt.textContent = newCarrier.trim();
-                            e.target.insertBefore(opt, e.target.lastElementChild);
-                            e.target.value = newCarrier.trim();
-                          } else {
-                            e.target.value = '';
-                          }
-                        }
-                      }}
-                    >
-                      <option value="">Select Carrier</option>
-                      {CARRIER_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                      <option value="__add_new__">＋ Add New Carrier...</option>
-                    </select>
+                    <SearchableSelect
+                      options={carrierOptions}
+                      value={selectedCarrier}
+                      onChange={setSelectedCarrier}
+                      placeholder="Select Carrier"
+                      searchPlaceholder="Search carriers..."
+                      emptyMessage="No carriers found."
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Booking Ref</Label>
-                    <Input name="carrierBookingRef" placeholder="Booking Ref" className="text-sm" />
+                    <Input name="carrierBookingRef" placeholder="Booking Ref" className="text-sm" defaultValue={editingData?.carrierBookingRef || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Vessel / Trip</Label>
-                    <Input name="vessellTrip" placeholder="Vessel Name / Trip No" className="text-sm" />
+                    <Input name="vessellTrip" placeholder="Vessel Name / Trip No" className="text-sm" defaultValue={editingData?.vessellTrip || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Port of Lading</Label>
-                    <Input name="portOfLading" placeholder="Port Name" className="text-sm" />
+                    <Input name="portOfLading" placeholder="Port Name" className="text-sm" defaultValue={editingData?.portOfLading || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Port of Entry</Label>
-                    <Input name="portOfEntryShipTo" placeholder="Port Name" className="text-sm" />
+                    <Input name="portOfEntryShipTo" placeholder="Port Name" className="text-sm" defaultValue={editingData?.portOfEntryShipTo || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Landing Date</Label>
-                    <Input name="dateOfLanding" type="date" className="text-sm" />
+                    <Input name="dateOfLanding" type="date" className="text-sm" defaultValue={editingData?.dateOfLanding ? new Date(editingData.dateOfLanding).toISOString().split('T')[0] : ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">ETA</Label>
-                    <Input name="ETA" type="date" className="text-sm" />
+                    <Input name="ETA" type="date" className="text-sm" defaultValue={editingData?.ETA ? new Date(editingData.ETA).toISOString().split('T')[0] : ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Updated ETA</Label>
-                    <Input name="updatedETA" type="date" className="text-sm" />
+                    <Input name="updatedETA" type="date" className="text-sm" defaultValue={editingData?.updatedETA ? new Date(editingData.updatedETA).toISOString().split('T')[0] : ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Trucker Notified</Label>
-                    <Input name="truckerNotifiedDate" type="date" className="text-sm" />
+                    <Input name="truckerNotifiedDate" type="date" className="text-sm" defaultValue={editingData?.truckerNotifiedDate ? new Date(editingData.truckerNotifiedDate).toISOString().split('T')[0] : ""} />
                   </div>
                 </div>
               </div>
@@ -424,7 +550,7 @@ export function AddShippingDialog({ open, onClose, onSuccess }: { open: boolean;
 
           <div className="px-6 py-3 border-t bg-muted/20 flex items-center justify-end gap-2 shrink-0">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={actionLoading}>{actionLoading ? "Saving..." : "Add Shipping"}</Button>
+            <Button type="submit" size="sm" disabled={actionLoading}>{actionLoading ? "Saving..." : editingData ? "Save Changes" : "Add Shipping"}</Button>
           </div>
         </form>
       </DialogContent>

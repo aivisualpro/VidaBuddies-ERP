@@ -1,5 +1,14 @@
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,196 +16,439 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { useUserDataStore } from "@/store/useUserDataStore";
 
-export function AddCustomerPODialog({ open, onClose, defaultVbpoId }: { open: boolean; onClose: () => void; defaultVbpoId?: string }) {
-  const { purchaseOrders, customers, warehouses, refetchPurchaseOrders } = useUserDataStore();
+/* ──────────────────────────────────────────────────────────────
+ * Shared UOM options — single source of truth
+ * ────────────────────────────────────────────────────────────── */
+export const UOM_OPTIONS = [
+  { value: "EA", label: "EA (Each)" },
+  { value: "CS", label: "CS (Case)" },
+  { value: "PL", label: "PL (Pallet)" },
+  { value: "DR", label: "DR (Drum)" },
+  { value: "GL", label: "GL (Gallon)" },
+  { value: "LB", label: "LB (Pound)" },
+  { value: "KG", label: "KG (Kilogram)" },
+  { value: "LT", label: "LT (Liter)" },
+  { value: "BX", label: "BX (Box)" },
+  { value: "BG", label: "BG (Bag)" },
+  { value: "RL", label: "RL (Roll)" },
+  { value: "FT", label: "FT (Foot)" },
+  { value: "MT", label: "MT (Meter)" },
+  { value: "PC", label: "PC (Piece)" },
+  { value: "SET", label: "SET" },
+  { value: "TON", label: "TON" },
+];
+
+/* ──────────────────────────────────────────────────────────────
+ * Props
+ * ────────────────────────────────────────────────────────────── */
+export interface AddCustomerPODialogProps {
+  open: boolean;
+  onClose: () => void;
+  /** Pre-selected VB PO ID (for PO-detail context) */
+  defaultVbpoId?: string;
+  /** Editing existing record — if supplied, dialog is in EDIT mode */
+  editingData?: Record<string, any> | null;
+  /**
+   * "standalone" → writes to /api/admin/vb-customer-po
+   * "embedded"   → pushes into the parent PO's nested customerPO array
+   * Default: "standalone"
+   */
+  mode?: "standalone" | "embedded";
+  /** Called after successful save so parent can refetch data */
+  onSaved?: () => void;
+  /** For auto PO # generation — all existing CPOs for counting */
+  existingCPOs?: { vbpoNo?: string }[];
+}
+
+export function AddCustomerPODialog({
+  open,
+  onClose,
+  defaultVbpoId,
+  editingData,
+  mode = "standalone",
+  onSaved,
+  existingCPOs = [],
+}: AddCustomerPODialogProps) {
+  const { purchaseOrders, customers, warehouses, refetchPurchaseOrders } =
+    useUserDataStore();
+
   const [actionLoading, setActionLoading] = useState(false);
-  const [selectedVBPO, setSelectedVBPO] = useState(defaultVbpoId || "");
+  const [selectedVBPO, setSelectedVBPO] = useState("");
+  const [poNo, setPoNo] = useState("");
+  const [customerPONo, setCustomerPONo] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedLocation, setSelectedLocation] = useState("");
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
+  const [selectedUOM, setSelectedUOM] = useState("");
+  const [customerPODate, setCustomerPODate] = useState("");
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
+  const [qtyOrdered, setQtyOrdered] = useState("");
+  const [qtyReceived, setQtyReceived] = useState(0);
 
+  /* ──── Options ──── */
+  const vbpoOptions = useMemo(
+    () =>
+      (purchaseOrders || []).map((po: any) => ({
+        value: po.vbpoNo || "",
+        label: po.vbpoNo || "—",
+      })),
+    [purchaseOrders]
+  );
+
+  const customerOptions = useMemo(
+    () =>
+      (customers || []).map((c: any) => ({
+        value: c.vbId,
+        label: c.name || c.companyName || c.email || c.vbId,
+      })),
+    [customers]
+  );
+
+  const locationOptions = useMemo(() => {
+    const selected = (customers || []).find(
+      (c: any) => c.vbId === selectedCustomer
+    );
+    if (selected?.location?.length) {
+      return selected.location.map((l: any) => ({
+        value: l.vbId,
+        label: l.locationName || l.vbId,
+      }));
+    }
+    // Fallback — show all locations
+    const all: { value: string; label: string }[] = [];
+    (customers || []).forEach((c: any) => {
+      (c.location || []).forEach((l: any) => {
+        if (l.vbId)
+          all.push({ value: l.vbId, label: l.locationName || l.vbId });
+      });
+    });
+    return all;
+  }, [customers, selectedCustomer]);
+
+  const warehouseOptions = useMemo(
+    () =>
+      (warehouses || []).map((w: any) => ({
+        value: w.name,
+        label: w.name,
+      })),
+    [warehouses]
+  );
+
+  /* ──── Reset form on open / edit change ──── */
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (editingData) {
+      setSelectedVBPO(editingData.vbpoNo || "");
+      setPoNo(editingData.poNo || "");
+      setCustomerPONo(editingData.customerPONo || "");
+      setSelectedCustomer(editingData.customer || "");
+      setSelectedLocation(editingData.customerLocation || "");
+      setSelectedWarehouse(editingData.warehouse || "");
+      setSelectedUOM(editingData.UOM || "");
+      setCustomerPODate(
+        editingData.customerPODate
+          ? new Date(editingData.customerPODate).toISOString().split("T")[0]
+          : ""
+      );
+      setRequestedDeliveryDate(
+        editingData.requestedDeliveryDate
+          ? new Date(editingData.requestedDeliveryDate)
+              .toISOString()
+              .split("T")[0]
+          : ""
+      );
+      setQtyOrdered(editingData.qtyOrdered?.toString() || "");
+      setQtyReceived(editingData.qtyReceived || 0);
+    } else {
       setSelectedVBPO(defaultVbpoId || "");
+      setPoNo("");
+      setCustomerPONo("");
       setSelectedCustomer("");
       setSelectedLocation("");
       setSelectedWarehouse("");
+      setSelectedUOM("");
+      setCustomerPODate("");
+      setRequestedDeliveryDate("");
+      setQtyOrdered("");
+      setQtyReceived(0);
     }
-  }, [open, defaultVbpoId]);
+  }, [open, editingData, defaultVbpoId]);
 
-  const vbpoOptions = (purchaseOrders || []).map((po: any) => ({
-    value: po._id,
-    label: po.vbpoNo || "Unknown VBPO"
-  }));
+  /* ──── Auto-select single location when customer changes ──── */
+  useEffect(() => {
+    if (selectedCustomer) {
+      const cust = (customers || []).find(
+        (c: any) => c.vbId === selectedCustomer
+      );
+      if (cust?.location?.length === 1 && !editingData) {
+        setSelectedLocation(cust.location[0].vbId);
+      } else if (!editingData) {
+        setSelectedLocation("");
+      }
+    } else if (!editingData) {
+      setSelectedLocation("");
+    }
+  }, [selectedCustomer, customers]);
 
-  const customerOptions = (customers || []).map((c: any) => ({
-    value: c._id,
-    label: c.companyName || c.email || "Unknown Customer"
-  }));
+  /* ──── Auto PO # when VB PO changes (new records only) ──── */
+  const handleVBPOChange = (val: string) => {
+    setSelectedVBPO(val);
+    if (!editingData && val) {
+      const count = existingCPOs.filter((cpo) => cpo.vbpoNo === val).length;
+      setPoNo(`${val}-${count + 1}`);
+    } else if (!val) {
+      setPoNo("");
+    }
+  };
 
-  const locationOptions = (() => {
-    const selected = (customers || []).find((c: any) => c._id === selectedCustomer);
-    if (!selected || !selected.location) return [];
-    return selected.location.map((l: any) => ({
-      value: l.vbId,
-      label: l.locationName || l.vbId
-    }));
-  })();
-
-  const warehouseOptions = (warehouses || []).map((w: any) => ({
-    value: w._id || w.name,
-    label: w.name
-  }));
-
+  /* ──── Save ──── */
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVBPO) {
-      toast.error("Please select an internal PO #");
-      return;
-    }
-
     setActionLoading(true);
-    const formData = new FormData(e.target as HTMLFormElement);
-    const data = Object.fromEntries(formData.entries());
-    
-    const newCPO = {
-       _id: Math.random().toString(36).substr(2, 9),
-       customerPONo: data.customerPONo || `CPO-${Math.floor(Math.random() * 10000)}`,
-       date: data.poDate,
-       requestedDelivery: data.requestedDelivery,
-       customer: selectedCustomer,
-       location: selectedLocation,
-       warehouse: selectedWarehouse,
-       qtyOrdered: Number(data.qtyOrdered) || 0,
-       qtyReceived: 0,
-       uom: data.uom,
-       shipping: []
+
+    // Resolve the PO _id from the selected vbpoNo for the ObjectId reference
+    const matchedPO = (purchaseOrders || []).find(
+      (p: any) => p.vbpoNo === selectedVBPO
+    );
+
+    const payload: Record<string, any> = {
+      vidaPOId: matchedPO?._id || null,
+      vbpoNo: selectedVBPO,
+      VBNumber: matchedPO?._id?.toString() || "",   // vidapos._id as string
+      poNo,
+      VBSerialNumber: poNo,                          // same value as poNo
+      customerPONo,
+      customer: selectedCustomer,
+      customerLocation: selectedLocation,
+      warehouse: selectedWarehouse,
+      UOM: selectedUOM,
+      customerPODate: customerPODate || undefined,
+      requestedDeliveryDate: requestedDeliveryDate || undefined,
+      qtyOrdered: Number(qtyOrdered) || 0,
+      qtyReceived,
     };
 
-    const targetPO = purchaseOrders.find((p: any) => p._id === selectedVBPO);
-    if (!targetPO) {
-        setActionLoading(false);
-        return;
-    }
-    
-    const updatedPO = JSON.parse(JSON.stringify(targetPO));
-    if (!updatedPO.customerPO) updatedPO.customerPO = [];
-    updatedPO.customerPO.unshift(newCPO);
-    
     try {
-      const res = await fetch(`/api/admin/purchase-orders/${targetPO._id}`, {
-          method: "PUT",
+      if (mode === "standalone") {
+        const url = editingData?._id
+          ? `/api/admin/vb-customer-po/${editingData._id}`
+          : "/api/admin/vb-customer-po";
+        const method = editingData?._id ? "PUT" : "POST";
+
+        const res = await fetch(url, {
+          method,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updatedPO)
-      });
-      if (res.ok) {
-          toast.success("Customer PO added successfully");
-          refetchPurchaseOrders();
-          onClose();
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Failed");
+        toast.success(
+          editingData ? "Customer PO updated" : "Customer PO created"
+        );
       } else {
-          toast.error("Failed to add Customer PO");
+        // Embedded mode — push into parent PO
+        const targetPO = (purchaseOrders || []).find(
+          (p: any) => p.vbpoNo === selectedVBPO
+        );
+        if (!targetPO) {
+          toast.error("Parent PO not found");
+          setActionLoading(false);
+          return;
+        }
+        const updatedPO = JSON.parse(JSON.stringify(targetPO));
+        if (!updatedPO.customerPO) updatedPO.customerPO = [];
+        updatedPO.customerPO.unshift({
+          _id: Math.random().toString(36).substr(2, 9),
+          ...payload,
+          shipping: [],
+        });
+        const res = await fetch(
+          `/api/admin/purchase-orders/${targetPO._id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedPO),
+          }
+        );
+        if (!res.ok) throw new Error("Failed");
+        toast.success("Customer PO added");
+        refetchPurchaseOrders();
       }
-    } catch(e) {
-      toast.error("Error adding Customer PO");
+
+      onSaved?.();
+      onClose();
+    } catch {
+      toast.error("An error occurred");
     } finally {
       setActionLoading(false);
     }
   };
 
+  const isEditing = !!editingData;
+
   return (
-    <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="max-w-2xl bg-[#09090b] text-white border-zinc-800">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Add Customer PO</DialogTitle>
-          <DialogDescription className="sr-only">Add a new Customer PO</DialogDescription>
+          <DialogTitle>
+            {isEditing ? "Edit Customer PO" : "Add Customer PO"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {isEditing
+              ? "Update customer PO details"
+              : "Create a new customer PO"}
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSave} className="grid gap-4 py-4">
+
+        <form onSubmit={handleSave} className="grid gap-5 py-4">
+          {/* Row 1: VB PO # + PO # */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>PO # (Internal)</Label>
+            <div className="grid gap-1.5">
+              <Label>VB PO # (from Purchase Orders)</Label>
               <SearchableSelect
                 options={vbpoOptions}
                 value={selectedVBPO}
-                onChange={setSelectedVBPO}
-                placeholder="Select Internal PO"
+                onChange={handleVBPOChange}
+                placeholder="Select VB PO..."
+                searchPlaceholder="Search PO numbers..."
               />
             </div>
-            <div className="space-y-2">
-              <Label>Customer PO #</Label>
-              <Input name="customerPONo" placeholder="e.g. CPO-2024-001" className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-500" />
+            <div className="grid gap-1.5">
+              <Label>PO #</Label>
+              <Input
+                value={poNo}
+                onChange={(e) => setPoNo(e.target.value)}
+                placeholder="Auto-generated"
+              />
             </div>
           </div>
 
+          {/* Row 2: Customer + Location */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Customer Ref</Label>
+            <div className="grid gap-1.5">
+              <Label>Customer</Label>
               <SearchableSelect
                 options={customerOptions}
                 value={selectedCustomer}
-                onChange={setSelectedCustomer}
+                onChange={(val) => {
+                  setSelectedCustomer(val);
+                  if (!editingData) setSelectedLocation("");
+                }}
                 placeholder="Select Customer"
+                searchPlaceholder="Search customers..."
+                emptyMessage="No customers found."
               />
             </div>
-            <div className="space-y-2">
+            <div className="grid gap-1.5">
               <Label>Customer Location</Label>
               <SearchableSelect
                 options={locationOptions}
                 value={selectedLocation}
                 onChange={setSelectedLocation}
                 placeholder="Select Location"
+                searchPlaceholder="Search locations..."
+                emptyMessage="No locations found."
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-2">
-              <Label>Dispatch Warehouse</Label>
+          {/* Row 3: Customer PO # + Customer PO Date */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label>Customer PO #</Label>
+              <Input
+                value={customerPONo}
+                onChange={(e) => setCustomerPONo(e.target.value)}
+                placeholder="e.g. CPO-2024-001"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Customer PO Date</Label>
+              <Input
+                type="date"
+                value={customerPODate}
+                onChange={(e) => setCustomerPODate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Row 4: Delivery Date + UOM */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label>Requested Delivery Date</Label>
+              <Input
+                type="date"
+                value={requestedDeliveryDate}
+                onChange={(e) => setRequestedDeliveryDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>UOM</Label>
+              <SearchableSelect
+                options={UOM_OPTIONS}
+                value={selectedUOM}
+                onChange={setSelectedUOM}
+                placeholder="Select UOM"
+                searchPlaceholder="Search units..."
+                emptyMessage="No units found."
+              />
+            </div>
+          </div>
+
+          {/* Row 5: Qty Ordered + Received (auto) + Warehouse */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-1.5">
+              <Label>Qty Ordered</Label>
+              <Input
+                type="number"
+                min="0"
+                value={qtyOrdered}
+                onChange={(e) => setQtyOrdered(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Received (Auto-computed)</Label>
+              <Input
+                type="number"
+                readOnly
+                className="bg-muted cursor-not-allowed"
+                value={qtyReceived}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Warehouse</Label>
               <SearchableSelect
                 options={warehouseOptions}
                 value={selectedWarehouse}
                 onChange={setSelectedWarehouse}
                 placeholder="Select Warehouse"
+                searchPlaceholder="Search warehouses..."
+                emptyMessage="No warehouses found."
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>PO Date</Label>
-              <Input name="poDate" type="date" className="bg-zinc-900 border-zinc-800 text-white dark:[color-scheme:dark]" />
-            </div>
-            <div className="space-y-2">
-              <Label>Requested Delivery</Label>
-              <Input name="requestedDelivery" type="date" className="bg-zinc-900 border-zinc-800 text-white dark:[color-scheme:dark]" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Qty Ordered</Label>
-              <Input name="qtyOrdered" type="number" min="0" className="bg-zinc-900 border-zinc-800 text-white" />
-            </div>
-            <div className="space-y-2">
-              <Label>Received (Auto-computed)</Label>
-              <Input value="0" readOnly disabled className="bg-zinc-900/50 border-zinc-800 text-muted-foreground" />
-            </div>
-            <div className="space-y-2">
-              <Label>UOM</Label>
-              <select name="uom" className="w-full h-9 rounded-md bg-zinc-900 border border-zinc-800 px-3 text-sm text-white">
-                <option value="">Select UOM</option>
-                <option value="Boxes">Boxes</option>
-                <option value="Pieces">Pieces</option>
-                <option value="Pallets">Pallets</option>
-                <option value="Kgs">Kgs</option>
-                <option value="Lbs">Lbs</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={actionLoading} className="text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-800">Cancel</Button>
-            <Button type="submit" disabled={actionLoading} className="bg-blue-600 hover:bg-blue-700 text-white">Save Changes</Button>
-          </div>
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={onClose}
+              disabled={actionLoading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={actionLoading}>
+              {actionLoading
+                ? "Saving..."
+                : isEditing
+                ? "Save Changes"
+                : "Create"}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

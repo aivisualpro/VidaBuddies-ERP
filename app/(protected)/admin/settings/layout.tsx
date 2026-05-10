@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { Settings, Upload, Shield, FileText } from "lucide-react";
+import { Settings, Upload, Shield, FileText, Download } from "lucide-react";
 
 interface SettingsLayoutProps {
   children: React.ReactNode;
@@ -30,6 +30,11 @@ const sidebarNavItems = [
     title: "Imports",
     href: "/admin/settings/imports",
     icon: Upload,
+  },
+  {
+    title: "Exports",
+    href: "/admin/settings/exports",
+    icon: Download,
   },
 ];
 

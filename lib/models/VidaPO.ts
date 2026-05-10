@@ -112,7 +112,8 @@ export interface IVidaPOCustomerPO {
 }
 
 export interface IVidaPO extends Document {
-  vbpoNo: string;
+  vbpoNo: string;                     // legacy — same as VBNumber
+  VBNumber?: string;                  // new name for vbpoNo (e.g. "VB1")
   orderType: string;
   date: Date;
   category: string;
@@ -232,6 +233,7 @@ const VidaPOCustomerPOSchema: Schema = new Schema({
 
 const VidaPOSchema: Schema = new Schema({
   vbpoNo: { type: String, required: true, unique: true },
+  VBNumber: { type: String, default: '' },
   orderType: { type: String },
   date: { type: Date, default: Date.now },
   category: { type: String },

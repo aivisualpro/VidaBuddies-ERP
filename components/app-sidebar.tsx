@@ -108,6 +108,16 @@ const data = {
       icon: IconShoppingCart,
     },
     {
+      name: "Customer POs",
+      url: "/admin/customer-pos",
+      icon: IconClipboardList,
+    },
+    {
+      name: "Shipments",
+      url: "/admin/shipments",
+      icon: IconTruck,
+    },
+    {
       name: "Quality Control",
       url: "/quality-control",
       icon: IconCheckbox,
@@ -269,6 +279,9 @@ export function AppSidebar({
         {filteredSecondary.length > 0 && <NavSecondary items={filteredSecondary} className="mt-auto" />}
       </SidebarContent>
       <SidebarFooter>
+        <p className="text-[10px] text-gray-600 dark:text-gray-400 text-center pt-1 group-data-[collapsible=icon]:hidden">
+          V.1.21
+        </p>
         <NavUser user={data.user} isSupplier={isSupplier} />
       </SidebarFooter>
     </Sidebar>

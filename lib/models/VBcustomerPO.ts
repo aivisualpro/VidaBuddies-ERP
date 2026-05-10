@@ -3,7 +3,9 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IVBcustomerPO extends Document {
   vidaPOId?: mongoose.Types.ObjectId; // ref to VidaPO
   vbpoNo?: string;                    // display field — same as parent VidaPO.vbpoNo
-  poNo?: string;
+  VBNumber?: string;                  // vidapos._id as string (ref)
+  poNo?: string;                      // legacy — same as VBSerialNumber
+  VBSerialNumber?: string;            // new name for poNo (e.g. "VB1-1")
   customer?: string;
   customerLocation?: string;
   customerPONo?: string;
@@ -22,7 +24,9 @@ const VBcustomerPOSchema: Schema = new Schema(
   {
     vidaPOId: { type: Schema.Types.ObjectId, ref: 'VidaPO', default: null },
     vbpoNo: { type: String, default: '' },
+    VBNumber: { type: String, default: '' },
     poNo: { type: String },
+    VBSerialNumber: { type: String, default: '' },
     customer: { type: String },
     customerLocation: { type: String },
     customerPONo: { type: String },
@@ -41,6 +45,8 @@ const VBcustomerPOSchema: Schema = new Schema(
 VBcustomerPOSchema.index({ vidaPOId: 1 });
 VBcustomerPOSchema.index({ vbpoNo: 1 });
 VBcustomerPOSchema.index({ poNo: 1 });
+VBcustomerPOSchema.index({ VBNumber: 1 });
+VBcustomerPOSchema.index({ VBSerialNumber: 1 });
 
 const VBcustomerPO: Model<IVBcustomerPO> =
   mongoose.models.VBcustomerPO || mongoose.model<IVBcustomerPO>('VBcustomerPO', VBcustomerPOSchema);

@@ -37,10 +37,13 @@ export interface IShippingTrackingRecord {
 }
 
 export interface IVBshipping extends Document {
-  customerPOId?: mongoose.Types.ObjectId; // ref to VBcustomerPO
-  poNo?: string;                          // display field — same as parent VBcustomerPO.poNo
+  customerPOId?: mongoose.Types.ObjectId; // ref to VBcustomerPO (legacy)
+  poNo?: string;                          // legacy — same as VBNumber
   spoNo?: string;
-  svbid?: string;
+  svbid?: string;                         // legacy — same as VBShipmentNumber
+  VBNumber?: string;                      // vbpoNo e.g. "VB1"  (resolved from vidapos._id)
+  VBSerialNumber?: string;                // CPO poNo e.g. "VB1-1" (resolved from vbcustomerpos._id)
+  VBShipmentNumber?: string;              // auto e.g. "VB1-1-1"
   supplier?: string;
   supplierLocation?: string;
   supplierPO?: string;
@@ -106,6 +109,9 @@ const VBshippingSchema: Schema = new Schema(
     poNo: { type: String, default: '' },
     spoNo: { type: String },
     svbid: { type: String },
+    VBNumber: { type: String, default: '' },
+    VBSerialNumber: { type: String, default: '' },
+    VBShipmentNumber: { type: String, default: '' },
     supplier: { type: String },
     supplierLocation: { type: String },
     supplierPO: { type: String },

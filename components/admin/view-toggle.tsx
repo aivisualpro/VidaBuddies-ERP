@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { LayoutGrid, List } from "lucide-react";
 
-export function ViewToggle({ currentView }: { currentView: "list" | "card" }) {
+export function ViewToggle({ currentView, basePath = "/admin/purchase-orders" }: { currentView: "list" | "card"; basePath?: string }) {
   return (
     <div className="flex items-center bg-muted/50 p-0.5 rounded-lg border border-border">
       <Link
-        href="/admin/purchase-orders/list"
+        href={`${basePath}/list`}
         className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all ${
           currentView === "list"
             ? "bg-background shadow-sm text-foreground"
@@ -18,7 +18,7 @@ export function ViewToggle({ currentView }: { currentView: "list" | "card" }) {
         Table
       </Link>
       <Link
-        href="/admin/purchase-orders/card"
+        href={`${basePath}/card`}
         className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all ${
           currentView === "card"
             ? "bg-background shadow-sm text-foreground"
