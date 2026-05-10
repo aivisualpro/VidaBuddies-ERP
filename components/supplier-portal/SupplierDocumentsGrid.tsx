@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf, Trash, Download } from "lucide-react";
+import { Upload, X, Save, FileType, Calendar, Clock, CheckCircle, AlertTriangle, ExternalLink, Loader2, Paperclip, MessageSquare, Search, FolderOpen, Ban, Info, Undo2, Leaf, Trash, Download, Plus, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
@@ -33,6 +33,7 @@ interface FileEntry {
   fileId: string;
   fileLink: string;
   isVerified?: boolean;
+  expiryDate?: string;
   createdBy: string;
   createdAt: string;
   products?: string[];
@@ -126,6 +127,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   const { setLeftContent, setActions } = useHeaderActions();
   const [supplierName, setSupplierName] = useState<string>("");
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; percent: number }>({ current: 0, total: 0, percent: 0 });
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const [activeFiles, setActiveFiles] = useState<FileEntry[]>([]);
@@ -139,6 +141,9 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
   const [searchQuery, setSearchQuery] = useState("");
   const [isOrganic, setIsOrganic] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<string[]>([]);
+  const [customDocNames, setCustomDocNames] = useState<string[]>([]);
+  const [newCustomDocName, setNewCustomDocName] = useState("");
+  const [addingCustomDoc, setAddingCustomDoc] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -147,6 +152,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         const data = await response.json();
         setSupplierName(data.name || "");
         setIsOrganic(!!data.isOrganic);
+        setCustomDocNames(data.customDocNames || []);
         
         // Also fetch system products so we have a full global list
         const prodRes = await fetch('/api/admin/products').catch(() => null);
@@ -230,12 +236,15 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const total = files.length;
     setUploadingDoc(docName);
+    setUploadProgress({ current: 0, total, percent: 0 });
 
     try {
       let finalDocs = null;
-      for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < total; i++) {
         const file = files[i];
+        setUploadProgress({ current: i + 1, total, percent: 0 });
 
         // 1. Initialize Upload
         const initRes = await fetch(`/api/admin/suppliers/${supplierId}/documents/upload-init`, {
@@ -254,19 +263,29 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         }
         const { uploadUrl } = await initRes.json();
 
-        // 2. Upload directly to Google Drive
-        const uploadRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file
+        // 2. Upload with XHR for progress tracking
+        const uploadData: any = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', uploadUrl, true);
+          xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+          xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              const pct = Math.round((ev.loaded / ev.total) * 100);
+              setUploadProgress({ current: i + 1, total, percent: pct });
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve(JSON.parse(xhr.responseText)); }
+              catch { reject(new Error('Invalid response')); }
+            } else { reject(new Error('Upload failed')); }
+          };
+          xhr.onerror = () => reject(new Error('Upload network error'));
+          xhr.send(file);
         });
 
-        if (!uploadRes.ok) {
-          throw new Error("Direct upload failed");
-        }
-        
-        const uploadData = await uploadRes.json();
         const fileId = uploadData.id;
+        setUploadProgress({ current: i + 1, total, percent: 100 });
 
         // 3. Finalize upload
         const finalizeRes = await fetch(`/api/admin/suppliers/${supplierId}/documents/upload-finalize`, {
@@ -291,18 +310,27 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           statesMap[d.name] = d;
         });
         setDocStates(statesMap);
-        toast.success(`Successfully uploaded ${files.length} document(s)!`);
+        // Also refresh active files if modal is open
+        const updatedDoc = finalDocs.find((d: any) => d.name === docName);
+        if (updatedDoc?.files && isLogsOpen && activeDocName === docName) {
+          setActiveFiles([...updatedDoc.files].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        }
+        toast.success(`Successfully uploaded ${total} document(s)!`);
       }
     } catch (error) {
       console.error(error);
       toast.error("File upload failed.");
     } finally {
       setUploadingDoc(null);
+      setUploadProgress({ current: 0, total: 0, percent: 0 });
       if (fileInputRefs.current[docName]) {
         fileInputRefs.current[docName]!.value = '';
       }
       if (fileInputRefs.current[`m_${docName}`]) {
         fileInputRefs.current[`m_${docName}`]!.value = '';
+      }
+      if (fileInputRefs.current[`empty_${docName}`]) {
+        fileInputRefs.current[`empty_${docName}`]!.value = '';
       }
     }
   };
@@ -334,7 +362,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     }
   };
 
-  const updateFileEntry = async (docName: string, fileId: string, isVerified: boolean, newProducts?: string[]) => {
+  const updateFileEntry = async (docName: string, fileId: string, isVerified: boolean, newProducts?: string[], newExpiryDate?: string) => {
     try {
       const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
         method: "POST",
@@ -343,7 +371,8 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
           docName, 
           fileId: fileId,
           fileIsVerified: isVerified,
-          ...(newProducts ? { fileProducts: newProducts } : {})
+          ...(newProducts ? { fileProducts: newProducts } : {}),
+          ...(newExpiryDate !== undefined ? { fileExpiryDate: newExpiryDate } : {})
         }),
       });
 
@@ -357,10 +386,33 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       });
       setDocStates(statesMap);
       
-      setActiveFiles(prev => prev.map(f => f._id === fileId ? { ...f, isVerified, ...(newProducts ? { products: newProducts } : {}) } : f));
-      toast.success(newProducts ? "Products updated" : (isVerified ? "File marked as verified." : "File verification removed."));
+      setActiveFiles(prev => prev.map(f => f._id === fileId ? { ...f, isVerified, ...(newProducts ? { products: newProducts } : {}), ...(newExpiryDate !== undefined ? { expiryDate: newExpiryDate } : {}) } : f));
+      if (newExpiryDate !== undefined) toast.success("Expiry date updated.");
+      else if (newProducts) toast.success("Products updated");
+      else toast.success(isVerified ? "File marked as verified." : "File verification removed.");
     } catch (error) {
       toast.error("Failed to update file.");
+    }
+  };
+
+  const verifyAllDocs = async (docName: string) => {
+    try {
+      const response = await fetch(`/api/admin/suppliers/${supplierId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docName, verifyAll: true }),
+      });
+      if (!response.ok) throw new Error("Update failed");
+      const updatedDocs = await response.json();
+      const statesMap: Record<string, DocumentData> = {};
+      updatedDocs.forEach((d: any) => {
+        if (d.expiryDate) d.expiryDate = new Date(d.expiryDate).toISOString().split('T')[0];
+        statesMap[d.name] = d;
+      });
+      setDocStates(statesMap);
+      toast.success("All documents verified!");
+    } catch {
+      toast.error("Failed to verify documents.");
     }
   };
 
@@ -415,14 +467,19 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
     setIsLogsOpen(true);
   };
 
-  // Effective docs list: filter out Organic Certificate if supplier is not organic
+  // Effective docs list: filter out Organic Certificate if supplier is not organic + add custom "Others"
   const effectiveDocs = useMemo(() => {
-    if (isOrganic) return REQUIRED_DOCS;
-    return REQUIRED_DOCS.filter(d => d.category !== 'Organic Certificate');
-  }, [isOrganic]);
+    let base = isOrganic ? [...REQUIRED_DOCS] : REQUIRED_DOCS.filter(d => d.category !== 'Organic Certificate');
+    // Append custom doc names under "Others"
+    const otherDocs = customDocNames.map(name => ({ category: "Others", name }));
+    return [...base, ...otherDocs];
+  }, [isOrganic, customDocNames]);
 
   const effectiveCategories = useMemo(() => {
-    return [...new Set(effectiveDocs.map(d => d.category))];
+    const cats = [...new Set(effectiveDocs.map(d => d.category))];
+    // Ensure "Others" is always last
+    if (!cats.includes("Others")) cats.push("Others");
+    return cats;
   }, [effectiveDocs]);
 
   // Filtered docs
@@ -445,11 +502,59 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       const catDocs = effectiveDocs.filter(d => d.category === cat);
       counts[cat] = {
         total: catDocs.length,
-        completed: catDocs.filter(d => docStates[d.name]?.fileId).length
+        completed: catDocs.filter(d => docStates[d.name]?.fileId || (docStates[d.name]?.files && docStates[d.name]?.files!.length > 0)).length
       };
     });
     return counts;
   }, [docStates, effectiveDocs, effectiveCategories]);
+
+  // Add custom doc name
+  const addCustomDocName = async () => {
+    const name = newCustomDocName.trim();
+    if (!name) return;
+    if (customDocNames.includes(name) || REQUIRED_DOCS.some(d => d.name === name)) {
+      toast.error("Document name already exists.");
+      return;
+    }
+    setAddingCustomDoc(true);
+    try {
+      const res = await fetch(`/api/admin/suppliers/${supplierId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customDocNames: [...customDocNames, name] }),
+      });
+      if (!res.ok) throw new Error();
+      setCustomDocNames(prev => [...prev, name]);
+      setNewCustomDocName("");
+      toast.success(`Added "${name}" to Others.`);
+    } catch {
+      toast.error("Failed to add document name.");
+    } finally {
+      setAddingCustomDoc(false);
+    }
+  };
+
+  // Remove custom doc name
+  const removeCustomDocName = async (name: string) => {
+    const state = docStates[name];
+    if (state?.files && state.files.length > 0) {
+      toast.error("Cannot remove — files are attached. Delete files first.");
+      return;
+    }
+    try {
+      const updated = customDocNames.filter(n => n !== name);
+      const res = await fetch(`/api/admin/suppliers/${supplierId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customDocNames: updated }),
+      });
+      if (!res.ok) throw new Error();
+      setCustomDocNames(updated);
+      toast.success(`Removed "${name}" from Others.`);
+    } catch {
+      toast.error("Failed to remove document name.");
+    }
+  };
 
   // Group filtered docs by category, N/A docs pushed to end within each group
   const groupedDocs = useMemo(() => {
@@ -466,39 +571,55 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
         return aNA - bNA;
       });
     });
+    // Ensure "Others" group always exists when selected or on "All"
+    if (!groups["Others"] && (!selectedCategory || selectedCategory === "Others")) {
+      groups["Others"] = [];
+    }
     return groups;
-  }, [filteredDocs, docStates]);
+  }, [filteredDocs, docStates, selectedCategory]);
 
   const renderDocRow = (doc: typeof REQUIRED_DOCS[0], i: number) => {
     const state = docStates[doc.name] || { name: doc.name };
     const isNA = !!state.isNA;
+    const isCustom = doc.category === "Others";
+    const fileCount = state.files?.length || 0;
+    const allVerified = fileCount > 0 && state.files?.every(f => f.isVerified);
     
     return (
       <tr key={i} className={`hover:bg-muted/10 transition-colors ${isNA ? 'opacity-40' : ''}`}>
-        <td className="px-4 py-2 font-medium text-foreground flex items-center gap-2 mt-2">
-          {doc.name}
+        <td className="px-4 py-2 font-medium text-foreground">
+          <div className="flex items-center gap-2">
+            {doc.name}
+            {isCustom && !isSupplierView && (
+              <button
+                onClick={() => removeCustomDocName(doc.name)}
+                className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="Remove this document"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+            {/* Inline verify-all toggle */}
+            {fileCount > 0 && !isSupplierView && (
+              <button
+                onClick={() => {
+                  if (!allVerified) verifyAllDocs(doc.name);
+                }}
+                className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border transition-colors ${
+                  allVerified
+                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-300 dark:border-emerald-700'
+                    : 'bg-amber-500/10 text-amber-600 border-amber-300 dark:border-amber-700 hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-400 cursor-pointer'
+                }`}
+                title={allVerified ? 'All files verified' : 'Verify all files'}
+              >
+                <CheckCircle className={`h-3 w-3 ${allVerified ? 'fill-emerald-500 text-emerald-500' : ''}`} />
+                {allVerified ? 'Verified' : 'Verify All'}
+              </button>
+            )}
+          </div>
         </td>
         <td className="px-4 py-2">
           {renderStatus(state)}
-        </td>
-        <td className="px-4 py-2">
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              type="date"
-              className="h-9 pl-8 text-xs bg-foreground/5 border-transparent focus-visible:ring-1"
-              value={state.expiryDate || ""}
-              onChange={(e) => setDocStates(p => ({ ...p, [doc.name]: { ...state, expiryDate: e.target.value } }))}
-              onBlur={() => {
-                const saved = savedStates.current[doc.name];
-                if ((state.expiryDate || "") !== (saved?.expiryDate || "")) {
-                  savedStates.current[doc.name] = { ...savedStates.current[doc.name], expiryDate: state.expiryDate };
-                  updateDocumentData(doc.name, { expiryDate: state.expiryDate }, `Updated Expiry Date: ${state.expiryDate || 'Cleared'}`);
-                }
-              }}
-              disabled={!isSupplierView && !!state.isVerified}
-            />
-          </div>
         </td>
         <td className="px-4 py-2">
           <div className="space-y-1">
@@ -528,23 +649,6 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Notes History" onClick={() => openLogs(doc.name, 'notes')}>
                <MessageSquare className="h-3.5 w-3.5" />
-            </Button>
-
-            <input 
-              type="file" 
-              multiple
-              className="hidden" 
-              ref={el => { fileInputRefs.current[doc.name] = el; }}
-              onChange={(e) => handleFileUpload(e, doc.name)}
-            />
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="h-8 w-8 hover:bg-primary hover:text-primary-foreground border-primary/20"
-              onClick={() => fileInputRefs.current[doc.name]?.click()}
-              disabled={uploadingDoc === doc.name}
-            >
-              {uploadingDoc === doc.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             </Button>
           </div>
         </td>
@@ -669,32 +773,63 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
             </button>
             {effectiveCategories.map(cat => {
               const counts = categoryCounts[cat];
-              const isOrganic = cat === 'Organic Certificate';
+              const isOrganicCat = cat === 'Organic Certificate';
+              const isOthersCat = cat === 'Others';
               return (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
                   className={`w-full text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b border-border/50 flex items-center justify-between gap-2 ${
                     selectedCategory === cat 
-                      ? isOrganic 
+                      ? isOrganicCat 
                         ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-l-2 border-l-emerald-500'
+                        : isOthersCat
+                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-l-2 border-l-amber-500'
                         : 'bg-primary/10 text-primary border-l-2 border-l-primary' 
-                      : isOrganic
+                      : isOrganicCat
                         ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                        : isOthersCat
+                        ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
                         : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                   }`}
                 >
                   <span className="leading-tight flex items-center gap-1.5">
-                    {isOrganic && <Image src="/organic certified.png" alt="" width={14} height={14} className="rounded-full" />}
+                    {isOrganicCat && <Image src="/organic certified.png" alt="" width={14} height={14} className="rounded-full" />}
+                    {isOthersCat && <MoreHorizontal className="h-3.5 w-3.5" />}
                     {cat}
                   </span>
-                  <span className={`text-[9px] font-black shrink-0 ${counts.completed === counts.total ? 'text-green-500' : ''}`}>
-                    {counts.completed}/{counts.total}
+                  <span className={`text-[9px] font-black shrink-0 ${counts.completed === counts.total && counts.total > 0 ? 'text-green-500' : ''}`}>
+                    {counts.total > 0 ? `${counts.completed}/${counts.total}` : '—'}
                   </span>
                 </button>
               );
             })}
           </div>
+
+          {/* Add Custom Doc Name — shown when Others selected */}
+          {selectedCategory === "Others" && !isSupplierView && (
+            <div className="p-3 border-t border-border space-y-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Add Document</span>
+              <div className="flex gap-1.5">
+                <Input
+                  placeholder="Document name..."
+                  value={newCustomDocName}
+                  onChange={e => setNewCustomDocName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addCustomDocName(); }}
+                  className="h-8 text-xs flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 border-amber-400/40 hover:bg-amber-500 hover:text-white"
+                  onClick={addCustomDocName}
+                  disabled={addingCustomDoc || !newCustomDocName.trim()}
+                >
+                  {addingCustomDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Mobile: Search + Category Pills */}
@@ -745,46 +880,97 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                   <tr>
                     <th className="px-4 py-3 min-w-[300px]">Document Name</th>
                     <th className="px-4 py-3 min-w-[100px]">Status</th>
-                    <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
                     <th className="px-4 py-3 min-w-[320px]">Notes</th>
                     <th className="px-4 py-3 text-right min-w-[140px]">Action</th>
                   </tr>
                 </thead>
               <tbody className="divide-y divide-border/50">
                 {Object.entries(groupedDocs).map(([category, docs]) => {
-                  const isOrganic = category === 'Organic Certificate';
+                  const isOrganicCat = category === 'Organic Certificate';
+                  const isOthersCat = category === 'Others';
                   return (
                   <React.Fragment key={category}>
                     <tr>
-                      <td colSpan={5} className={`px-4 py-2 border-y border-border ${
-                        isOrganic 
+                      <td colSpan={4} className={`px-4 py-2 border-y border-border ${
+                        isOrganicCat 
                           ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50' 
+                          : isOthersCat
+                          ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50'
                           : 'bg-muted/30'
                       }`}>
                         <div className="flex items-center justify-between">
                           <span className={`text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-2 ${
-                            isOrganic ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'
+                            isOrganicCat ? 'text-emerald-700 dark:text-emerald-400' 
+                            : isOthersCat ? 'text-amber-700 dark:text-amber-400'
+                            : 'text-muted-foreground'
                           }`}>
-                            {isOrganic ? (
+                            {isOrganicCat ? (
                               <Image src="/organic certified.png" alt="Organic" width={16} height={16} className="rounded-full" />
+                            ) : isOthersCat ? (
+                              <MoreHorizontal className="h-3.5 w-3.5" />
                             ) : (
                               <FolderOpen className="h-3.5 w-3.5 text-primary" />
                             )}
                             {category}
+                            {isOthersCat && <span className="text-[8px] font-medium normal-case tracking-normal text-muted-foreground">(optional)</span>}
                           </span>
-                          <span className="text-[9px] font-black text-muted-foreground/50">
-                            {categoryCounts[category]?.completed}/{categoryCounts[category]?.total}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-muted-foreground/50">
+                              {categoryCounts[category]?.completed}/{categoryCounts[category]?.total}
+                            </span>
+                            {isOthersCat && !isSupplierView && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30">
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-72 p-3" align="end">
+                                  <div className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Add Document Name</span>
+                                    <div className="flex gap-1.5">
+                                      <Input
+                                        placeholder="e.g. Insurance Policy"
+                                        value={newCustomDocName}
+                                        onChange={e => setNewCustomDocName(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') addCustomDocName(); }}
+                                        className="h-8 text-xs flex-1"
+                                        autoFocus
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 border-amber-400/40 hover:bg-amber-500 hover:text-white"
+                                        onClick={addCustomDocName}
+                                        disabled={addingCustomDoc || !newCustomDocName.trim()}
+                                      >
+                                        {addingCustomDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
                     {docs.map((doc, i) => renderDocRow(doc, i))}
+                    {isOthersCat && docs.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center">
+                          <div className="text-muted-foreground/40 text-[10px] font-black uppercase tracking-widest">
+                            No custom documents added yet
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </React.Fragment>
                   );
                 })}
                 {filteredDocs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center">
+                    <td colSpan={4} className="px-4 py-12 text-center">
                       <div className="text-muted-foreground/50 font-black uppercase text-[10px] tracking-widest">
                         No documents match your search
                       </div>
@@ -824,8 +1010,38 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
         <DialogContent className="w-[95vw] max-w-7xl rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-lg font-black uppercase tracking-tight">
-              {activeLogType === 'attachments' ? activeDocName : `Notes: ${activeDocName}`}
+            <DialogTitle className="text-lg font-black uppercase tracking-tight flex items-center justify-between pr-8">
+              <span>{activeLogType === 'attachments' ? activeDocName : `Notes: ${activeDocName}`}</span>
+              {activeLogType === 'attachments' && !isSupplierView && (
+                <>
+                  <input 
+                    type="file" 
+                    multiple
+                    className="hidden" 
+                    ref={el => { fileInputRefs.current[activeDocName] = el; }}
+                    onChange={(e) => handleFileUpload(e, activeDocName)}
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="h-8 text-xs font-bold uppercase tracking-widest hover:bg-primary hover:text-primary-foreground border-primary/30 gap-1.5"
+                    onClick={() => fileInputRefs.current[activeDocName]?.click()}
+                    disabled={uploadingDoc === activeDocName}
+                  >
+                    {uploadingDoc === activeDocName ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        {uploadProgress.current}/{uploadProgress.total} · {uploadProgress.percent}%
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </DialogTitle>
             <DialogDescription className="sr-only">
               {activeDocName}
@@ -841,6 +1057,7 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                         <th className="px-4 py-3 min-w-[200px]">File Name</th>
                         <th className="px-4 py-3">Created By</th>
                         <th className="px-4 py-3">Created At</th>
+                        <th className="px-4 py-3 min-w-[140px]">Expiry Date</th>
                         <th className="px-4 py-3 min-w-[280px]">Products</th>
                         <th className="px-4 py-3 text-center">Verified</th>
                         <th className="px-4 py-3 text-right">Actions</th>
@@ -854,6 +1071,23 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                           </td>
                           <td className="px-4 py-3 font-semibold text-primary">{file.createdBy}</td>
                           <td className="px-4 py-3 text-xs">{new Date(file.createdAt).toLocaleString()}</td>
+                          <td className="px-4 py-3 align-middle">
+                            <div className="relative">
+                              <Calendar className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                              <Input
+                                type="date"
+                                className="h-8 pl-7 text-xs bg-foreground/5 border-transparent focus-visible:ring-1 w-[130px]"
+                                value={file.expiryDate ? new Date(file.expiryDate).toISOString().split('T')[0] : ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setActiveFiles(prev => prev.map(f => f._id === file._id ? { ...f, expiryDate: val } : f));
+                                }}
+                                onBlur={(e) => {
+                                  if (file._id) updateFileEntry(activeDocName, file._id, file.isVerified || false, undefined, e.target.value || "");
+                                }}
+                              />
+                            </div>
+                          </td>
                           <td className="px-4 py-3 align-middle">
                             <LogsProductMultiSelect 
                               availableProducts={availableProducts}
@@ -897,8 +1131,40 @@ export function SupplierDocumentsGrid({ supplierId, isSupplierView = false }: { 
                   </table>
                 </div>
               ) : (
-                <div className="text-center py-6 border border-dashed rounded-xl bg-accent/5 font-black uppercase text-[10px] tracking-widest text-muted-foreground/50">
-                  No files uploaded yet
+                <div className="text-center py-6 border border-dashed rounded-xl bg-accent/5">
+                  <div className="font-black uppercase text-[10px] tracking-widest text-muted-foreground/50 mb-3">
+                    No files uploaded yet
+                  </div>
+                  {!isSupplierView && (
+                    <>
+                      <input 
+                        type="file" 
+                        multiple
+                        className="hidden" 
+                        ref={el => { fileInputRefs.current[`empty_${activeDocName}`] = el; }}
+                        onChange={(e) => handleFileUpload(e, activeDocName)}
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="h-8 text-xs font-bold uppercase tracking-widest hover:bg-primary hover:text-primary-foreground border-primary/30 gap-1.5"
+                        onClick={() => (fileInputRefs.current[`empty_${activeDocName}`] || fileInputRefs.current[activeDocName])?.click()}
+                        disabled={uploadingDoc === activeDocName}
+                      >
+                        {uploadingDoc === activeDocName ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            {uploadProgress.current}/{uploadProgress.total} · {uploadProgress.percent}%
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-3.5 w-3.5" />
+                            Upload First Document
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
                 </div>
               )
             ) : (

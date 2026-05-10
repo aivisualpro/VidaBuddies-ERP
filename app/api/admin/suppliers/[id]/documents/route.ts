@@ -9,7 +9,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const { docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, fileId: targetFileId, fileIsVerified, fileProducts } = await req.json();
+    const { 
+      docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, 
+      fileId: targetFileId, fileIsVerified, fileProducts, fileExpiryDate,
+      verifyAll  // new: set all files' isVerified to true
+    } = await req.json();
 
     await connectToDatabase();
     const supplier = await VidaSupplier.findById(id);
@@ -46,13 +50,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
       }
 
-      // Update a specific file entry (verification toggle, products update)
+      // Bulk verify all files
+      if (verifyAll && doc.files) {
+        doc.files.forEach((f: any) => { f.isVerified = true; });
+        doc.isVerified = true;
+        doc.logs.push({
+          action: 'Verified all documents',
+          by: session.name || session.email || 'System',
+          date: new Date()
+        });
+      }
+
+      // Update a specific file entry (verification toggle, products update, expiry date)
       if (targetFileId) {
         if (!doc.files) doc.files = [];
         const fileIndex = doc.files.findIndex((f: any) => f._id?.toString() === targetFileId);
         if (fileIndex !== -1) {
           if (fileIsVerified !== undefined) doc.files[fileIndex].isVerified = fileIsVerified;
           if (fileProducts !== undefined) doc.files[fileIndex].products = fileProducts;
+          if (fileExpiryDate !== undefined) doc.files[fileIndex].expiryDate = fileExpiryDate || null;
         }
       }
     }

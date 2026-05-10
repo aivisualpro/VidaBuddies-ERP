@@ -18,6 +18,7 @@ export interface IVidaSupplierDocumentFile {
   fileId: string;
   fileLink: string;
   isVerified?: boolean;
+  expiryDate?: Date;
   createdBy: string;
   createdAt: Date;
   products?: string[];
@@ -77,6 +78,7 @@ export interface IVidaSupplier extends Document {
   isOrganic?: boolean;
   location: IVidaSupplierLocation[];
   documents?: IVidaSupplierDocument[];
+  customDocNames?: string[];  // admin-defined "Others" doc names
   surveyResponses?: IVidaSurveyResponse[];
   contacts?: IVidaSupplierContact[];
 }
@@ -99,6 +101,7 @@ const VidaSupplierDocumentFileSchema: Schema = new Schema({
   fileId: { type: String, required: true },
   fileLink: { type: String, required: true },
   isVerified: { type: Boolean, default: false },
+  expiryDate: { type: Date },
   createdBy: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   products: [{ type: String }]
@@ -163,6 +166,7 @@ const VidaSupplierSchema: Schema = new Schema({
   isOrganic: { type: Boolean, default: false },
   location: [VidaSupplierLocationSchema],
   documents: { type: [VidaSupplierDocumentSchema], default: [] },
+  customDocNames: { type: [String], default: [] },
   surveyResponses: { type: [VidaSurveyResponseSchema], default: [] },
   contacts: { type: [VidaSupplierContactSchema], default: [] }
 });
