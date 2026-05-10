@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import VidaConversation from "@/lib/models/VidaConversation";
@@ -157,6 +157,44 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error("[Chat Conversations API]", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/admin/chat/conversations
+ * Create a new DM or group conversation.
+ * Body: { kind: "dm"|"group", name?, participants: string[], refs?: [] }
+ */
+export async function POST(req: NextRequest) {
+  try {
+    await connectToDatabase();
+    const session = await getSession();
+    if (!session?.id)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await req.json();
+    const {
+      kind = "dm",
+      name,
+      participants = [],
+      refs = [],
+    } = body;
+
+    // Ensure the creator is always a participant
+    const uniqueParticipants = [...new Set([session.id, ...participants])];
+
+    const convo = await VidaConversation.create({
+      kind,
+      name: name || undefined,
+      participants: uniqueParticipants,
+      createdBy: session.id,
+      admins: [session.id],
+      refs,
+    });
+
+    return NextResponse.json(convo);
+  } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

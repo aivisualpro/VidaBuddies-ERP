@@ -15,6 +15,12 @@ export interface IVidaUser extends Document {
   serialNo?: string;
   signature?: string;
   isTwoFactorRequired?: boolean;
+  lastSeen?: Date;
+  chatSettings?: {
+    notifyOn: 'all' | 'mentions' | 'none';
+    soundOn: boolean;
+    emailOn: boolean;
+  };
 }
 
 const VidaUserSchema: Schema = new Schema({
@@ -26,6 +32,12 @@ const VidaUserSchema: Schema = new Schema({
   serialNo: { type: String },
   signature: { type: String },
   isTwoFactorRequired: { type: Boolean, default: false },
+  lastSeen: { type: Date },
+  chatSettings: {
+    notifyOn: { type: String, enum: ['all', 'mentions', 'none'], default: 'all' },
+    soundOn: { type: Boolean, default: true },
+    emailOn: { type: Boolean, default: true },
+  },
   AppRole: { 
     type: String, 
     required: true,

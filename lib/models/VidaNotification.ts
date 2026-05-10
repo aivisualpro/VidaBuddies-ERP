@@ -9,7 +9,7 @@ export interface IVidaNotification extends Document {
   relatedId?: string; // e.g. Container Number
   link?: string; // e.g. /admin/live-shipments
   // — New fields for bell notification system —
-  kind?: 'reminder' | 'shipment' | 'system';
+  kind?: 'reminder' | 'shipment' | 'system' | 'chat' | 'mention';
   userEmail?: string;       // target user (enables per-user notifications)
   sourceId?: string;        // related VidaTimeline._id for traceability
   dedupKey?: string;        // e.g. "reminder:<timelineId>:<YYYY-MM-DD>" — prevents duplicates
@@ -24,7 +24,7 @@ const VidaNotificationSchema: Schema = new Schema({
   relatedId: { type: String },
   link: { type: String },
   // — New fields (all optional for backwards compat) —
-  kind: { type: String, enum: ['reminder', 'shipment', 'system'] },
+  kind: { type: String, enum: ['reminder', 'shipment', 'system', 'chat', 'mention'] },
   userEmail: { type: String },
   sourceId: { type: String },
   dedupKey: { type: String },
@@ -34,6 +34,8 @@ const VidaNotificationSchema: Schema = new Schema({
 VidaNotificationSchema.index({ userEmail: 1, createdAt: -1 });
 // Unique sparse index — only enforced when dedupKey is present, prevents same-day duplicate reminders
 VidaNotificationSchema.index({ dedupKey: 1 }, { unique: true, sparse: true });
+// Chat notification tab: filter by kind, sort by date
+VidaNotificationSchema.index({ kind: 1, createdAt: -1 });
 
 const VidaNotification: Model<IVidaNotification> = mongoose.models.VidaNotification || mongoose.model<IVidaNotification>('VidaNotification', VidaNotificationSchema);
 

@@ -95,6 +95,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(authResponse);
     }
 
+    // ── 4. Global online presence: presence-online ──
+    if (channelName === "presence-online") {
+      // Update lastSeen
+      await connectToDatabase();
+      const VidaUser = (await import("@/lib/models/VidaUser")).default;
+      await VidaUser.findByIdAndUpdate(session.id, { lastSeen: new Date() });
+
+      const presenceData = {
+        user_id: session.id,
+        user_info: {
+          id: session.id,
+          name: session.name || "",
+        },
+      };
+
+      const authResponse = pusher.authorizeChannel(
+        socketId,
+        channelName,
+        presenceData
+      );
+      return NextResponse.json(authResponse);
+    }
+
     // ── Unknown channel pattern — deny ──
     return NextResponse.json(
       { error: "Channel not authorized for this user" },

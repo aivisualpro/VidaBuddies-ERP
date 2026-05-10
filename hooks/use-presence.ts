@@ -35,6 +35,8 @@ export function usePresence(conversationId: string | null) {
       const list: PresenceUser[] = [];
       members.each((m: any) => list.push({ id: m.id, ...m.info }));
       setOnlineUsers(list);
+      // Update lastSeen on server
+      fetch("/api/admin/chat/presence", { method: "POST" }).catch(() => {});
     });
 
     channel.bind("pusher:member_added", (m: any) => {

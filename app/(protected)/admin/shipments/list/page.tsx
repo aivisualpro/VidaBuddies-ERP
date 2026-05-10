@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, Ship, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Pencil, Trash2, Ship, CheckCircle2, Clock, AlertCircle, MessageCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
@@ -16,6 +16,7 @@ import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { useUserDataStore } from "@/store/useUserDataStore";
+import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 
 interface ShipmentRecord {
   _id: string;
@@ -82,6 +83,10 @@ export default function ShipmentsListPage() {
   const [detailShipment, setDetailShipment] = useState<ShipmentRecord | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
+  const [chatOpen, setChatOpen] = useState<{ refKind: "VBShipmentNumber"; refId: string; display: string } | null>(null);
+  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const openTracking = (item: ShipmentRecord) => {
     const cn = item.containerNo;
@@ -153,6 +158,17 @@ export default function ShipmentsListPage() {
 
   useEffect(() => {
     fetchData();
+    fetch("/api/admin/chat/unread-by-refs?kind=VBShipmentNumber")
+      .then((r) => r.json())
+      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+      .catch(() => {});
+    fetch("/api/admin/chat")
+      .then((r) => r.json())
+      .then((d) => {
+        setCurrentUserId(d.currentUser?.id || "");
+        setAllUsers(d.users || []);
+      })
+      .catch(() => {});
   }, []);
 
   const formatDate = (dateStr?: string) => {
@@ -329,6 +345,30 @@ export default function ShipmentsListPage() {
       cell: ({ row }) => row.original.gallons?.toLocaleString() || "-",
     },
     {
+      id: "chat",
+      header: "Chat",
+      cell: ({ row }) => {
+        const shipId = row.original._id;
+        const display = row.original.VBShipmentNumber || row.original.svbid || shipId;
+        const count = chatCounts[shipId] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setChatOpen({ refKind: "VBShipmentNumber", refId: shipId, display });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <MessageCircle className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       id: "actions",
       header: "",
       cell: ({ row }) => (
@@ -481,6 +521,25 @@ export default function ShipmentsListPage() {
         VBShipmentNumber={timelineOpen?.VBShipmentNumber}
         title={timelineOpen?.title}
       />
+
+      {/* Record Chat Drawer */}
+      {chatOpen && (
+        <RecordChatDrawer
+          open={!!chatOpen}
+          onClose={() => {
+            setChatOpen(null);
+            fetch("/api/admin/chat/unread-by-refs?kind=VBShipmentNumber")
+              .then((r) => r.json())
+              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+              .catch(() => {});
+          }}
+          refKind={chatOpen.refKind}
+          refId={chatOpen.refId}
+          display={chatOpen.display}
+          currentUserId={currentUserId}
+          users={allUsers}
+        />
+      )}
     </div>
   );
 }

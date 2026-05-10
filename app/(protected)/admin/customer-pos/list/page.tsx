@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, MessageCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
+import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
 import { useUserDataStore } from "@/store/useUserDataStore";
@@ -42,6 +43,10 @@ export default function CustomerPOsListPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState<{ refKind: "VBSerialNumber"; refId: string; display: string } | null>(null);
+  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const { customers: storeCustomers } = useUserDataStore();
   const customers = storeCustomers || [];
@@ -60,6 +65,17 @@ export default function CustomerPOsListPage() {
 
   useEffect(() => {
     fetchData();
+    fetch("/api/admin/chat/unread-by-refs?kind=VBSerialNumber")
+      .then((r) => r.json())
+      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+      .catch(() => {});
+    fetch("/api/admin/chat")
+      .then((r) => r.json())
+      .then((d) => {
+        setCurrentUserId(d.currentUser?.id || "");
+        setAllUsers(d.users || []);
+      })
+      .catch(() => {});
   }, []);
 
   const formatDate = (dateStr?: string) => {
@@ -176,6 +192,30 @@ export default function CustomerPOsListPage() {
       },
     },
     {
+      id: "chat",
+      header: "Chat",
+      cell: ({ row }) => {
+        const cpoId = row.original._id;
+        const display = row.original.VBSerialNumber || row.original.poNo || cpoId;
+        const count = chatCounts[cpoId] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setChatOpen({ refKind: "VBSerialNumber", refId: cpoId, display });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <MessageCircle className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       id: "actions",
       header: "",
       cell: ({ row }) => (
@@ -259,6 +299,25 @@ export default function CustomerPOsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Record Chat Drawer */}
+      {chatOpen && (
+        <RecordChatDrawer
+          open={!!chatOpen}
+          onClose={() => {
+            setChatOpen(null);
+            fetch("/api/admin/chat/unread-by-refs?kind=VBSerialNumber")
+              .then((r) => r.json())
+              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+              .catch(() => {});
+          }}
+          refKind={chatOpen.refKind}
+          refId={chatOpen.refId}
+          display={chatOpen.display}
+          currentUserId={currentUserId}
+          users={allUsers}
+        />
+      )}
     </div>
   );
 }

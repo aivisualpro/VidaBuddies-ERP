@@ -155,6 +155,10 @@ const VidaMessageSchema: Schema = new Schema(
 VidaMessageSchema.index({ conversationId: 1, createdAt: -1 });
 VidaMessageSchema.index({ 'mentions.userId': 1, createdAt: -1 });
 VidaMessageSchema.index({ 'refs.kind': 1, 'refs.refId': 1, createdAt: -1 });
+// In-conversation text search
+VidaMessageSchema.index({ conversationId: 1, text: 'text' });
+// mirrorOf for fan-out queries
+VidaMessageSchema.index({ mirrorOf: 1 }, { sparse: true });
 
 /* ─── Model ─── */
 

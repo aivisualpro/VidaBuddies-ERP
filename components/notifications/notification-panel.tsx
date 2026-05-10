@@ -30,6 +30,8 @@ import {
   Tag,
   BellOff,
   Search,
+  MessageCircle,
+  AtSign,
 } from "lucide-react";
 import { useNotificationStore } from "@/lib/stores/notification-store";
 import type { BellNotification } from "@/lib/notifications/types";
@@ -576,6 +578,174 @@ function PushPermissionPill() {
   );
 }
 
+/* ── Chat notification card ──────────────────────────────── */
+function ChatNotifCard({
+  item,
+  onNavigate,
+}: {
+  item: BellNotification;
+  onNavigate: (link: string, id: string) => void;
+}) {
+  const isMention = item.kind === "mention";
+  const senderName = (item.meta?.senderName as string) || "";
+  const timeAgo = relativeTime(item.createdAt);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onNavigate(item.link || "/admin/chat", item.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onNavigate(item.link || "/admin/chat", item.id);
+        }
+      }}
+      className={cn(
+        "group relative flex gap-3 rounded-xl p-3",
+        item.read
+          ? "bg-transparent hover:bg-muted/20"
+          : "bg-muted/30 hover:bg-muted/50",
+        "border border-transparent hover:border-border/50",
+        "transition-all duration-200 cursor-pointer",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1"
+      )}
+    >
+      {/* Icon */}
+      <div
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+          isMention ? "bg-amber-500/10" : "bg-blue-500/10"
+        )}
+      >
+        {isMention ? (
+          <AtSign className={cn("h-4 w-4 text-amber-500")} />
+        ) : (
+          <MessageCircle className={cn("h-4 w-4 text-blue-500")} />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <p
+          className={cn(
+            "text-sm font-semibold text-foreground line-clamp-1",
+            item.read && "font-medium text-foreground/70"
+          )}
+        >
+          {item.title}
+        </p>
+        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+          {item.message}
+        </p>
+
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          <span
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md",
+              isMention
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+            )}
+          >
+            {isMention ? "Mention" : "Message"}
+          </span>
+          {senderName && (
+            <span className="text-[10px] text-muted-foreground/70 bg-muted/40 px-1.5 py-0.5 rounded-md">
+              {senderName}
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground/60 ml-auto">
+            {timeAgo}
+          </span>
+        </div>
+      </div>
+
+      {/* Unread dot */}
+      <div className="flex flex-col items-end justify-between shrink-0">
+        {!item.read && (
+          <span className="block h-2 w-2 rounded-full bg-primary/60" />
+        )}
+        <ExternalLink className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </div>
+  );
+}
+
+/* ── Chat Empty State ────────────────────────────────────── */
+function ChatEmptyIllustration() {
+  return (
+    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="40" cy="40" r="36" fill="currentColor" opacity="0.04" />
+      <circle cx="40" cy="40" r="24" fill="currentColor" opacity="0.06" />
+      <path d="M24 30C24 27.79 25.79 26 28 26H52C54.21 26 56 27.79 56 30V46C56 48.21 54.21 50 52 50H36L28 56V50C25.79 50 24 48.21 24 46V30Z" stroke="currentColor" opacity="0.25" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="32" y1="35" x2="48" y2="35" stroke="currentColor" opacity="0.2" strokeWidth="2" strokeLinecap="round" />
+      <line x1="32" y1="41" x2="42" y2="41" stroke="currentColor" opacity="0.15" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* ── Chat Tab ────────────────────────────────────────────── */
+function ChatTab() {
+  const [items, setItems] = useState<BellNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const markRead = useNotificationStore((s) => s.markRead);
+  const router = useRouter();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/chat");
+        if (!res.ok) throw new Error("Failed");
+        const data: BellNotification[] = await res.json();
+        setItems(data);
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleNavigate = useCallback(
+    (link: string, id: string) => {
+      markRead(id);
+      router.push(link);
+      useNotificationStore.getState().setOpen(false);
+    },
+    [markRead, router]
+  );
+
+  if (loading) return <ReminderSkeleton />;
+
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        illustration={ChatEmptyIllustration}
+        title="No chat notifications"
+        description="When someone DMs you or @mentions you in a conversation, you'll see it here."
+      />
+    );
+  }
+
+  return (
+    <div className="p-3 space-y-2">
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          {items.filter((i) => !i.read).length} unread
+        </span>
+      </div>
+      {items.map((item) => (
+        <ChatNotifCard
+          key={item.id}
+          item={item}
+          onNavigate={handleNavigate}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* ── Main Panel ───────────────────────────────────────────── */
 export function NotificationPanel() {
   const open = useNotificationStore((s) => s.open);
@@ -631,7 +801,7 @@ export function NotificationPanel() {
         <Tabs
           value={activeTab}
           onValueChange={(v) =>
-            setActiveTab(v as "reminders" | "shipments" | "all")
+            setActiveTab(v as "reminders" | "shipments" | "all" | "chat")
           }
           className="flex-1 flex flex-col min-h-0"
         >
@@ -647,7 +817,11 @@ export function NotificationPanel() {
               </TabsTrigger>
               <TabsTrigger value="all" className="text-xs gap-1.5">
                 <Bell className="h-3.5 w-3.5" />
-                Notifications
+                All
+              </TabsTrigger>
+              <TabsTrigger value="chat" className="text-xs gap-1.5">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Chat
               </TabsTrigger>
             </TabsList>
           </div>
@@ -685,6 +859,15 @@ export function NotificationPanel() {
                 title="Inbox zero. Nice."
                 description="Coming soon — all system notifications will appear here."
               />
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent
+            value="chat"
+            className="flex-1 min-h-0 mt-0"
+          >
+            <ScrollArea className="h-full">
+              <ChatTab />
             </ScrollArea>
           </TabsContent>
         </Tabs>

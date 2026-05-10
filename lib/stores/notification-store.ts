@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { BellNotification } from "@/lib/notifications/types";
 
-type TabValue = "reminders" | "shipments" | "all";
+type TabValue = "reminders" | "shipments" | "all" | "chat";
 
 /** Cache TTL in milliseconds (30 seconds) */
 const CACHE_TTL_MS = 30_000;

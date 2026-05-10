@@ -3,7 +3,7 @@
  * and client-side stores/components.
  */
 
-export type NotificationKind = "reminder" | "shipment" | "system";
+export type NotificationKind = "reminder" | "shipment" | "system" | "chat" | "mention";
 
 export interface BellNotification {
   id: string;

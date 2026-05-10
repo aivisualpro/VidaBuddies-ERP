@@ -54,7 +54,7 @@ export function ChatThread({
           el.scrollHeight - el.scrollTop - el.clientHeight < 200;
         if (isNearBottom || prevMsgCount.current === 0) {
           setTimeout(
-            () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
+            () => bottomRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }),
             50
           );
         }
@@ -158,6 +158,9 @@ export function ChatThread({
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto scrollbar-thin"
+        role="log"
+        aria-live="polite"
+        aria-label="Chat messages"
       >
         {/* Load-more spinner */}
         {loading && hasMore && (

@@ -18,10 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck, MessageCircle } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
+import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { ViewToggle } from "@/components/admin/view-toggle";
 
 interface PurchaseOrder {
@@ -94,6 +95,10 @@ export default function PurchaseOrdersPage() {
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
+  const [chatOpen, setChatOpen] = useState<{ refKind: "VBNumber"; refId: string; display: string } | null>(null);
+  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   // Prefetch cache — must be declared before any conditional returns (Rules of Hooks)
   const prefetchedIds = useRef(new Set<string>());
@@ -156,6 +161,19 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     fetchTimelineCounts();
+    // Fetch chat unread counts
+    fetch("/api/admin/chat/unread-by-refs?kind=VBNumber")
+      .then((r) => r.json())
+      .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+      .catch(() => {});
+    // Fetch current user for the drawer
+    fetch("/api/admin/chat")
+      .then((r) => r.json())
+      .then((d) => {
+        setCurrentUserId(d.currentUser?.id || "");
+        setAllUsers(d.users || []);
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -468,6 +486,30 @@ export default function PurchaseOrdersPage() {
               }`}
           >
             <Clock className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
+      id: "chat",
+      header: "Chat",
+      cell: ({ row }) => {
+        const poId = row.original._id;
+        const vbpoNo = row.original.vbpoNo;
+        const count = chatCounts[poId] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setChatOpen({ refKind: "VBNumber", refId: poId, display: vbpoNo });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <MessageCircle className="h-3 w-3" />
             {count > 0 ? count : '—'}
           </button>
         );
@@ -817,6 +859,26 @@ export default function PurchaseOrdersPage() {
         poNumber={attachmentsOpen?.poNumber || ''}
         defaultTab="emails"
       />
+
+      {/* Record Chat Drawer */}
+      {chatOpen && (
+        <RecordChatDrawer
+          open={!!chatOpen}
+          onClose={() => {
+            setChatOpen(null);
+            // Refresh counts
+            fetch("/api/admin/chat/unread-by-refs?kind=VBNumber")
+              .then((r) => r.json())
+              .then((d) => { if (d && typeof d === "object") setChatCounts(d); })
+              .catch(() => {});
+          }}
+          refKind={chatOpen.refKind}
+          refId={chatOpen.refId}
+          display={chatOpen.display}
+          currentUserId={currentUserId}
+          users={allUsers}
+        />
+      )}
     </div>
   );
 }

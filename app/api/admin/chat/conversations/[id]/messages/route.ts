@@ -5,6 +5,7 @@ import VidaMessage from "@/lib/models/VidaMessage";
 import { getSession } from "@/lib/auth";
 import { triggerToConversation, triggerToUser } from "@/lib/pusher/server";
 import { MESSAGE_NEW, MENTION } from "@/lib/pusher/events";
+import { notifyChatRecipients } from "@/lib/notifications/chat-notify";
 
 /**
  * GET /api/admin/chat/conversations/[id]/messages?cursor=...&limit=...
@@ -174,20 +175,10 @@ export async function POST(
     // Realtime: broadcast to conversation
     await triggerToConversation(conversationId, MESSAGE_NEW, responseMsg);
 
-    // Notify each participant on personal channel
-    for (const uid of others) {
-      await triggerToUser(uid, MENTION, {
-        conversationId,
-        senderName: session.name,
-        preview: preview.substring(0, 80),
-      });
-    }
-
     // ── Ref fan-out: shadow-copy message into dedicated ref conversations ──
     if (refs.length > 0 && convo.kind !== "ref") {
       for (const ref of refs) {
         try {
-          // Find or create a dedicated ref conversation for this ref
           let refConvo = await VidaConversation.findOne({
             kind: "ref",
             "refs.kind": ref.kind,
@@ -205,7 +196,6 @@ export async function POST(
             });
           }
 
-          // Ensure sender is a participant of the ref conversation
           if (
             !refConvo.participants
               .map((p: any) => p.toString())
@@ -215,7 +205,6 @@ export async function POST(
             await refConvo.save();
           }
 
-          // Insert shadow copy
           await VidaMessage.create({
             conversationId: refConvo._id,
             senderId: session.id,
@@ -227,7 +216,6 @@ export async function POST(
             mirrorOf: msg._id,
           });
 
-          // Update ref conversation metadata
           await VidaConversation.findByIdAndUpdate(refConvo._id, {
             lastMessage: preview.substring(0, 200),
             lastMessageBy: session.id,
@@ -239,19 +227,24 @@ export async function POST(
       }
     }
 
-    // ── Mention notifications to specific @mentioned users ──
-    if (mentions.length > 0) {
-      for (const m of mentions) {
-        if (m.userId && m.userId !== session.id) {
-          await triggerToUser(m.userId, MENTION, {
-            conversationId,
-            senderName: session.name,
-            preview: `mentioned you: ${preview.substring(0, 60)}`,
-            type: "mention",
-          });
-        }
-      }
-    }
+    // ── Bell + Email + Push notifications ──
+    const mentionedUserIds = mentions
+      .filter((m: any) => m.userId && m.userId !== session.id)
+      .map((m: any) => m.userId);
+
+    notifyChatRecipients({
+      conversationId,
+      conversationName: convo.name || "",
+      messageId: msg._id.toString(),
+      senderId: session.id,
+      senderName: session.name || "Someone",
+      messageText: text || "",
+      refs: refs.map((r: any) => ({ kind: r.kind, display: r.display })),
+      recipientIds: others,
+      mentionedIds: mentionedUserIds,
+    }).catch((err: any) => {
+      console.error("[ChatNotify] Background error:", err);
+    });
 
     return NextResponse.json(responseMsg);
   } catch (error: any) {
