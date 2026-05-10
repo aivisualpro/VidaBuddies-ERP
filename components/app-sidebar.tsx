@@ -185,6 +185,7 @@ export function AppSidebar({
   initialIsAdmin?: boolean
 }) {
   const [reports, setReports] = React.useState(data.reports);
+  const [adminItems, setAdminItems] = React.useState(data.admin);
   const [permissions, setPermissions] = React.useState<any[]>(initialPermissions);
   const [isAdmin, setIsAdmin] = React.useState(initialIsAdmin);
   const [isSupplier, setIsSupplier] = React.useState(isSupplierProp);
@@ -213,6 +214,27 @@ export function AppSidebar({
     };
 
     fetchShipmentCount();
+
+    // Fetch active actions count (Open + In Progress)
+    const fetchActiveActionsCount = async () => {
+      try {
+        const res = await fetch('/api/admin/timeline/count');
+        if (res.ok) {
+          const { count } = await res.json();
+          if (count > 0) {
+            setAdminItems(prev => prev.map(item =>
+              item.name === "Active Actions"
+                ? { ...item, badge: count }
+                : item
+            ));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch active actions count", error);
+      }
+    };
+
+    fetchActiveActionsCount();
   }, [isSupplierProp]);
 
   const filterItems = (items: any[]) => {
@@ -235,7 +257,7 @@ export function AppSidebar({
     });
   };
 
-  const filteredAdmin = filterItems(data.admin);
+  const filteredAdmin = filterItems(adminItems);
   const filteredInventory = filterItems(data.inventory);
   const filteredManagement = filterItems(data.management);
   const filteredSales = filterItems(data.sales);

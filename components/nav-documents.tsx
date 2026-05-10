@@ -63,10 +63,10 @@ export function NavDocuments({
             {item.badge !== undefined && (
               <SidebarMenuBadge 
                 className={cn(
-                  "rounded-full px-1.5 min-w-5 h-5 flex items-center justify-center",
+                  "rounded-full px-1.5 min-w-5 h-5 flex items-center justify-center text-[10px] font-bold",
                   pathname.startsWith(item.url) 
-                    ? "bg-white text-primary font-bold" 
-                    : "bg-muted text-muted-foreground"
+                    ? "!bg-white/90 !text-blue-600" 
+                    : "!bg-primary/15 !text-primary"
                 )}
               >
                 {item.badge}

@@ -6,6 +6,8 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ThemeSelector } from "./theme-selector";
 import { ModeSwitcher } from "./mode-switcher";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import { NotificationPanel } from "@/components/notifications/notification-panel";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -70,10 +72,12 @@ export function SiteHeader() {
         )}
         <div className="ml-auto flex items-center gap-2">
           {headerCtx.rightContent || headerCtx.actions}
+          <NotificationBell />
           <ThemeSelector />
           <ModeSwitcher />
         </div>
       </div>
+      <NotificationPanel />
     </header>
   );
 }

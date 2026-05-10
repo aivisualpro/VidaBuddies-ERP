@@ -7,7 +7,8 @@
     "dev:safe": "next dev --no-turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cron:reminders": "curl -s -H 'x-cron-secret: vida-refresh-secret-123' http://localhost:3000/api/cron/reminders | jq ."
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -54,6 +55,8 @@
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
+    "pusher": "^5.3.3",
+    "pusher-js": "^8.4.0-rc2",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.4.3",
     "react": "^19.2.3",
