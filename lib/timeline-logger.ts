@@ -2,9 +2,9 @@ import connectToDatabase from "@/lib/db";
 import VidaTimeline from "@/lib/models/VidaTimeline";
 
 interface TimelineLogOptions {
-    vbpoNo?: string;
-    poNo?: string;
-    svbid?: string;
+    VBNumber?: string;
+    VBSerialNumber?: string;
+    VBShipmentNumber?: string;
     type?: "Notes" | "Shipping Status" | "Action Required";
     category?: string;
     comments: string;
@@ -20,9 +20,9 @@ export async function createTimelineLog(opts: TimelineLogOptions) {
     try {
         await connectToDatabase();
         await VidaTimeline.create({
-            vbpoNo: opts.vbpoNo,
-            poNo: opts.poNo,
-            svbid: opts.svbid,
+            VBNumber: opts.VBNumber,
+            VBSerialNumber: opts.VBSerialNumber,
+            VBShipmentNumber: opts.VBShipmentNumber,
             type: opts.type || "Notes",
             category: opts.category,
             comments: opts.comments,

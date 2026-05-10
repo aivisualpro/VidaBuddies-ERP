@@ -45,7 +45,7 @@ interface TimelineEntry {
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: typeof AlertCircle }> = {
   Open: { label: "Open", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30", icon: AlertCircle },
   "In Progress": { label: "In Progress", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: Clock },
-  Done: { label: "Done", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: CheckCircle2 },
+  Closed: { label: "Closed", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: CheckCircle2 },
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -61,6 +61,7 @@ export default function ActiveActionsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Sidebar filter state
+  const [filterType, setFilterType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [filterVBNumber, setFilterVBNumber] = useState<string | null>(null);
   const [filterVBSerial, setFilterVBSerial] = useState<string | null>(null);
@@ -94,19 +95,18 @@ export default function ActiveActionsPage() {
     }
   };
 
-  const handleStatusToggle = async (entry: TimelineEntry) => {
-    const nextStatus = entry.status === "Done" ? "Open" : "Done";
+  const handleStatusChange = async (entryId: string, newStatus: string) => {
     try {
-      const res = await fetch(`/api/admin/timeline/${entry._id}`, {
+      const res = await fetch(`/api/admin/timeline/${entryId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast.success(`Marked as ${nextStatus}`);
+      toast.success(`Status → ${newStatus}`);
       fetchData();
     } catch {
-      toast.error("Failed to update");
+      toast.error("Failed to update status");
     }
   };
 
@@ -114,6 +114,9 @@ export default function ActiveActionsPage() {
   const filteredData = useMemo(() => {
     let result = data;
 
+    if (filterType) {
+      result = result.filter((e) => e.type === filterType);
+    }
     if (filterStatus) {
       result = result.filter((e) => (e.status || "Open") === filterStatus);
     }
@@ -139,7 +142,7 @@ export default function ActiveActionsPage() {
     }
 
     return result;
-  }, [data, filterStatus, filterVBNumber, filterVBSerial, filterVBShipment, searchQuery]);
+  }, [data, filterType, filterStatus, filterVBNumber, filterVBSerial, filterVBShipment, searchQuery]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -178,9 +181,10 @@ export default function ActiveActionsPage() {
   }, [setActions, setLeftContent, searchQuery]);
 
   // Status summary counts — must be before any early returns (React hooks rule)
-  const statusCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    data.forEach((e) => { const s = e.status || "Open"; c[s] = (c[s] || 0) + 1; });
+  // Type counts for tabs
+  const typeCounts = useMemo(() => {
+    const c: Record<string, number> = { all: data.length };
+    data.forEach((e) => { c[e.type] = (c[e.type] || 0) + 1; });
     return c;
   }, [data]);
 
@@ -202,47 +206,67 @@ export default function ActiveActionsPage() {
         }}
       />
       <div className="flex-1 min-w-0 overflow-auto">
-        {/* Summary pills */}
+        {/* Type tabs */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-2.5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
-              {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
-                const count = statusCounts[key] || 0;
-                const isActive = filterStatus === key;
+              {/* All tab */}
+              <button
+                onClick={() => {
+                  setFilterType(null);
+                  setFilterStatus(null);
+                  setFilterVBNumber(null);
+                  setFilterVBSerial(null);
+                  setFilterVBShipment(null);
+                }}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all duration-200 flex items-center gap-1.5",
+                  !filterType
+                    ? "bg-primary/10 text-primary border-primary/30 shadow-sm"
+                    : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                )}
+              >
+                <FileText className="h-3 w-3" />
+                All ({typeCounts.all || 0})
+              </button>
+
+              {/* Type tabs */}
+              {(["Notes", "Shipping Status", "Action Required"] as const).map((type) => {
+                const isActive = filterType === type;
+                const typeStyle = TYPE_COLORS[type] || "bg-muted text-muted-foreground border-border";
+                const Icon = type === "Notes" ? MessageSquare : type === "Shipping Status" ? Ship : AlertCircle;
                 return (
                   <button
-                    key={key}
+                    key={type}
                     onClick={() => {
                       if (isActive) {
-                        setFilterStatus(null);
-                        setFilterVBNumber(null);
-                        setFilterVBSerial(null);
-                        setFilterVBShipment(null);
+                        setFilterType(null);
                       } else {
-                        setFilterStatus(key);
-                        setFilterVBNumber(null);
-                        setFilterVBSerial(null);
-                        setFilterVBShipment(null);
+                        setFilterType(type);
                       }
+                      setFilterStatus(null);
+                      setFilterVBNumber(null);
+                      setFilterVBSerial(null);
+                      setFilterVBShipment(null);
                     }}
                     className={cn(
                       "rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all duration-200 flex items-center gap-1.5",
                       isActive
-                        ? `${cfg.bg} ${cfg.color} ${cfg.border} shadow-sm`
+                        ? `${typeStyle} shadow-sm`
                         : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
                     )}
                   >
-                    <cfg.icon className="h-3 w-3" />
-                    {cfg.label} ({count})
+                    <Icon className="h-3 w-3" />
+                    {type} ({typeCounts[type] || 0})
                   </button>
                 );
               })}
             </div>
 
             {/* Active filter breadcrumb */}
-            {filterStatus && (
+            {(filterType || filterVBNumber) && (
               <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <span className="font-bold text-foreground/60">{filterStatus}</span>
+                {filterType && <span className="font-bold text-foreground/60">{filterType}</span>}
                 {filterVBNumber && (
                   <>
                     <span className="text-muted-foreground/40">/</span>
@@ -282,76 +306,72 @@ export default function ActiveActionsPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="text-left py-2 px-2 w-8"></th>
-                  <th className="text-left py-2 px-2">Status</th>
-                  <th className="text-left py-2 px-2">Type</th>
-                  <th className="text-left py-2 px-2">VB #</th>
-                  <th className="text-left py-2 px-2">Serial #</th>
-                  <th className="text-left py-2 px-2">Shipment #</th>
+                  <th className="text-left py-2 px-2 whitespace-nowrap">Status</th>
+                  <th className="text-left py-2 px-2 whitespace-nowrap">Type</th>
+                  <th className="text-left py-2 px-2 whitespace-nowrap">VB #</th>
+                  <th className="text-left py-2 px-2 whitespace-nowrap">Serial #</th>
+                  <th className="text-left py-2 px-2 whitespace-nowrap">Shipment #</th>
                   <th className="text-left py-2 px-2">Category</th>
                   <th className="text-left py-2 px-2 min-w-[250px]">Comments</th>
                   <th className="text-left py-2 px-2">Date</th>
                   <th className="text-left py-2 px-2">Reminder</th>
                   <th className="text-left py-2 px-2">By</th>
-                  <th className="text-right py-2 px-2 w-16"></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredData.map((entry) => {
                   const cfg = STATUS_CONFIG[entry.status || "Open"] || STATUS_CONFIG.Open;
                   const StatusIcon = cfg.icon;
-                  const isDone = entry.status === "Done";
+                  const isClosed = entry.status === "Closed";
 
                   return (
                     <tr
                       key={entry._id}
                       className={cn(
                         "border-b border-border/40 transition-colors hover:bg-muted/20 group",
-                        isDone && "opacity-50"
+                        isClosed && "opacity-50"
                       )}
                     >
-                      {/* Toggle */}
-                      <td className="py-2 px-2">
-                        <button
-                          onClick={() => handleStatusToggle(entry)}
-                          className={cn(
-                            "h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all",
-                            isDone
-                              ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-500"
-                              : "border-border hover:border-primary/50 text-transparent hover:text-primary/30"
-                          )}
-                        >
-                          <CheckCircle2 className="h-3 w-3" />
-                        </button>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-2 px-2">
-                        <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border", cfg.bg, cfg.color, cfg.border)}>
-                          <StatusIcon className="h-2.5 w-2.5" />
-                          {entry.status || "Open"}
-                        </span>
+                      {/* Status — clickable dropdown */}
+                      <td className="py-2 px-2 whitespace-nowrap">
+                        <div className="relative inline-flex">
+                          <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all", cfg.bg, cfg.color, cfg.border)}>
+                            <StatusIcon className="h-2.5 w-2.5" />
+                            {entry.status || "Open"}
+                            <ChevronDown className="h-2.5 w-2.5 opacity-50" />
+                          </span>
+                          <select
+                            value={entry.status || "Open"}
+                            onChange={(e) => handleStatusChange(entry._id, e.target.value)}
+                            className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                            aria-label="Change status"
+                          >
+                            <option value="Open">Open</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Closed">Closed</option>
+                          </select>
+                        </div>
                       </td>
 
                       {/* Type */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md border", TYPE_COLORS[entry.type] || "bg-muted text-muted-foreground border-border")}>
                           {entry.type}
                         </span>
                       </td>
 
                       {/* VBNumber */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <span className="font-semibold text-foreground">{entry._VBNumberDisplay || entry.VBNumber || "—"}</span>
                       </td>
 
                       {/* VBSerialNumber */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <span className="text-muted-foreground">{entry._VBSerialNumberDisplay || entry.VBSerialNumber || "—"}</span>
                       </td>
 
                       {/* VBShipmentNumber */}
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         {(entry._VBShipmentNumberDisplay || entry.VBShipmentNumber) ? (
                           <span className="text-violet-600 dark:text-violet-400 font-medium">{entry._VBShipmentNumberDisplay || entry.VBShipmentNumber}</span>
                         ) : (
@@ -373,7 +393,7 @@ export default function ActiveActionsPage() {
 
                       {/* Comments */}
                       <td className="py-2 px-2">
-                        <p className={cn("text-foreground/80 line-clamp-2", isDone && "line-through")}>{entry.comments || "—"}</p>
+                        <p className={cn("text-foreground/80 line-clamp-2", isClosed && "line-through")}>{entry.comments || "—"}</p>
                       </td>
 
                       {/* Date */}
@@ -399,16 +419,6 @@ export default function ActiveActionsPage() {
                           <User className="h-3 w-3" />
                           {resolveUser(entry.createdBy)}
                         </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-2 px-2 text-right">
-                        <button
-                          onClick={() => handleDelete(entry._id)}
-                          className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
                       </td>
                     </tr>
                   );

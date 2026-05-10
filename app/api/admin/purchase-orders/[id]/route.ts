@@ -152,9 +152,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
         const { createTimelineLog } = await import("@/lib/timeline-logger");
         for (const log of logs) {
           await createTimelineLog({
-            vbpoNo,
-            poNo: log.poNo,
-            svbid: log.svbid,
+            VBNumber: vbpoNo,
+            VBSerialNumber: log.poNo,
+            VBShipmentNumber: log.svbid,
             type: log.type as any,
             category: log.category,
             comments: log.comments,
