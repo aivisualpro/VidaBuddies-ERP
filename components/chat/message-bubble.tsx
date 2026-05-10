@@ -191,7 +191,7 @@ export function MessageBubble({
 
   return (
     <div
-      className={`flex w-full gap-2 px-4 group relative py-0.5 ${
+      className={`flex w-full gap-2 px-4 group relative pt-4 pb-0.5 -mt-3.5 ${
         isMe ? "justify-end" : "justify-start"
       }`}
       onMouseEnter={() => setHovered(true)}
@@ -235,15 +235,19 @@ export function MessageBubble({
         {/* Reply preview */}
         {message.replyTo && (
           <div
-            className={`text-[11px] px-3 py-1.5 mb-0.5 rounded-xl border-l-2 border-primary/40 ${
+            className={`text-[11px] px-3 py-1.5 mb-0.5 rounded-xl border-l-2 border-primary/40 max-w-full overflow-hidden ${
               isMe
                 ? "bg-primary/10 text-primary-foreground/70"
                 : "bg-muted/40 text-muted-foreground"
             }`}
           >
             <span className="font-semibold">Reply</span>
-            <span className="opacity-70 ml-1 truncate block">
-              {message.replyTo.text || ""}
+            <span className="opacity-70 ml-1 line-clamp-2 block">
+              {(message.replyTo.text || "")
+                .replace(/#[A-Z0-9_-]+/gi, "")
+                .replace(/@[A-Za-z\s]+/g, (m: string) => m)
+                .trim()
+                .substring(0, 120) || "Attachment"}
             </span>
           </div>
         )}
@@ -261,12 +265,25 @@ export function MessageBubble({
           {isDeleted ? (
             <span className="text-[13px]">🚫 This message was deleted</span>
           ) : editing ? (
-            <div className="flex flex-col gap-1 min-w-[200px]">
+            <div className="flex flex-col gap-1.5 min-w-[280px] w-full">
               <textarea
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                className="bg-transparent text-sm resize-none outline-none min-h-[40px]"
+                onChange={(e) => {
+                  setEditText(e.target.value);
+                  // Auto-resize
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = el.scrollHeight + 'px';
+                }}
+                className="bg-transparent text-sm resize-none outline-none w-full"
+                style={{ minHeight: Math.max(60, Math.min(300, editText.split('\n').length * 22 + 20)) }}
                 autoFocus
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -275,16 +292,18 @@ export function MessageBubble({
                   if (e.key === "Escape") setEditing(false);
                 }}
               />
-              <div className="flex gap-1 justify-end">
+              <div className="flex gap-1.5 justify-end">
                 <button
                   onClick={() => setEditing(false)}
-                  className="text-[10px] px-2 py-0.5 rounded bg-background/20 hover:bg-background/30"
+                  className="text-[10px] px-2.5 py-1 rounded-md bg-background/20 hover:bg-background/30 transition-colors"
+                  aria-label="Cancel editing"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEditSubmit}
-                  className="text-[10px] px-2 py-0.5 rounded bg-background/30 hover:bg-background/40 font-semibold"
+                  className="text-[10px] px-2.5 py-1 rounded-md bg-background/30 hover:bg-background/40 font-semibold transition-colors"
+                  aria-label="Save edit"
                 >
                   Save
                 </button>
@@ -366,11 +385,11 @@ export function MessageBubble({
         )}
       </div>
 
-      {/* Hover actions toolbar */}
+      {/* Hover actions toolbar — overlaps bubble top edge */}
       {hovered && !isDeleted && !editing && (
         <div
-          className={`absolute top-0 ${
-            isMe ? "right-[calc(68%+24px)] xl:right-[calc(55%+24px)]" : "left-[calc(68%+44px)] xl:left-[calc(55%+44px)]"
+          className={`absolute top-0 z-30 ${
+            isMe ? "right-4" : "left-12"
           }`}
         >
           <MessageActions
@@ -389,22 +408,26 @@ export function MessageBubble({
       {/* Quick reactions popup */}
       {showReactions && (
         <div
-          className={`absolute ${
+          className={`absolute top-0 z-40 ${
             isMe ? "right-4" : "left-12"
-          } -top-9 flex items-center gap-0.5 bg-background shadow-xl rounded-full border p-1.5 z-40`}
+          }`}
+          style={{ marginTop: -36 }}
         >
-          {QUICK_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => {
-                onReact(emoji);
-                setShowReactions(false);
-              }}
-              className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-muted text-base transition-transform hover:scale-125"
-            >
-              {emoji}
-            </button>
-          ))}
+          <div className="flex items-center gap-1 bg-background shadow-xl rounded-full border px-2 py-1.5">
+            {QUICK_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => {
+                  onReact(emoji);
+                  setShowReactions(false);
+                }}
+                className="h-9 w-9 flex items-center justify-center rounded-full hover:bg-muted text-xl transition-transform hover:scale-125"
+                aria-label={`React with ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
