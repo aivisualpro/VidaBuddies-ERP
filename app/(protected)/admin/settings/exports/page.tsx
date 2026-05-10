@@ -10,6 +10,7 @@ import {
   Package,
   ClipboardList,
   Loader2,
+  CheckSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -42,6 +43,13 @@ const COLLECTIONS: ExportCollection[] = [
     description: "Main VidaBuddies Purchase Orders with nested Customer POs and Shipments",
     icon: ClipboardList,
     color: "from-emerald-500/20 to-emerald-600/5 border-emerald-500/30",
+  },
+  {
+    key: "vidatimelines",
+    label: "Timelines / Active Actions",
+    description: "All timeline entries with status, comments, categories, and linked PO/CPO/Shipment references",
+    icon: CheckSquare,
+    color: "from-amber-500/20 to-amber-600/5 border-amber-500/30",
   },
 ];
 

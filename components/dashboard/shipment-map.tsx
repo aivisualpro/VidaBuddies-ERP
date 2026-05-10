@@ -7,7 +7,7 @@ import { IconShip, IconMapPin } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { Dialog } from "@/components/ui/dialog";
-import { ContainerTimelineModal } from "./container-timeline-modal";
+import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
 
 // Fix for default marker icons
 const DefaultIcon = L.icon({
@@ -228,12 +228,12 @@ export default function ShipmentMap({ locations }: { locations: MapLocation[] })
                 </div>
             )}
 
-            {/* Native Clone Tracking Modal */}
-            <ContainerTimelineModal 
-                isOpen={!!selectedContainer}
+            {/* Tracking Panel — same component as shipments list/card */}
+            <ShipmentTrackingPanel
+                open={!!selectedContainer}
                 onClose={() => setSelectedContainer(null)}
                 containerNo={selectedContainer?.containerNo || ""}
-                rawJson={selectedContainer?.rawJson || null}
+                cachedRawJson={selectedContainer?.rawJson ? (() => { try { return JSON.parse(selectedContainer.rawJson!); } catch { return null; } })() : null}
             />
         </div>
     );

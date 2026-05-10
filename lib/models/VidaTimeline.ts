@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IVidaTimeline extends Document {
-    vbpoNo?: string;
-    poNo?: string;
-    svbid?: string;
+    VBNumber?: string;
+    VBSerialNumber?: string;
+    VBShipmentNumber?: string;
     date?: Date;
     reminder?: Date;
     type: string; // Notes, Shipping Status, Action Required
@@ -15,9 +15,9 @@ export interface IVidaTimeline extends Document {
 }
 
 const VidaTimelineSchema: Schema = new Schema({
-    vbpoNo: { type: String },
-    poNo: { type: String },
-    svbid: { type: String },
+    VBNumber: { type: String },
+    VBSerialNumber: { type: String },
+    VBShipmentNumber: { type: String },
     date: { type: Date },
     reminder: { type: Date },
     type: {
@@ -34,9 +34,9 @@ const VidaTimelineSchema: Schema = new Schema({
 });
 
 // Index for fast lookups
-VidaTimelineSchema.index({ vbpoNo: 1, timestamp: -1 });
-VidaTimelineSchema.index({ poNo: 1, timestamp: -1 });
-VidaTimelineSchema.index({ svbid: 1, timestamp: -1 });
+VidaTimelineSchema.index({ VBNumber: 1, timestamp: -1 });
+VidaTimelineSchema.index({ VBSerialNumber: 1, timestamp: -1 });
+VidaTimelineSchema.index({ VBShipmentNumber: 1, timestamp: -1 });
 
 const VidaTimeline: Model<IVidaTimeline> = mongoose.models.VidaTimeline || mongoose.model<IVidaTimeline>('VidaTimeline', VidaTimelineSchema);
 

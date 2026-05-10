@@ -11,6 +11,10 @@ import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 import { ShipmentGroupSidebar } from "@/components/admin/shipment-group-sidebar";
+import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
+import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
+import { AttachmentsModal } from "@/components/attachments-modal";
+import TimelineModal from "@/components/admin/timeline-modal";
 import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface ShipmentRecord {
@@ -40,6 +44,7 @@ interface ShipmentRecord {
   gallons?: number;
   invValue?: number;
   quickNote?: string;
+  shippingTrackingRecords?: any[];
   createdAt?: string;
 }
 
@@ -72,9 +77,67 @@ export default function ShipmentsListPage() {
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
+  const [trackingRawJson, setTrackingRawJson] = useState<any>(null);
+  const [detailShipment, setDetailShipment] = useState<ShipmentRecord | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
 
-  const { suppliers: storeSuppliers } = useUserDataStore();
+  const openTracking = (item: ShipmentRecord) => {
+    const cn = item.containerNo;
+    if (!cn) { toast.error('No container number on this shipment'); return; }
+    // Use the latest stored raw_json if available
+    const records = item.shippingTrackingRecords || [];
+    const latest = records[records.length - 1];
+    const rawStr = latest?.raw_json;
+    if (rawStr) {
+      try { setTrackingRawJson(JSON.parse(rawStr)); } catch { setTrackingRawJson(null); }
+    } else {
+      setTrackingRawJson(null); // will trigger live fetch
+    }
+    setTrackingContainer(cn);
+  };
+
+  const { suppliers: storeSuppliers, purchaseOrders } = useUserDataStore();
   const suppliers = storeSuppliers || [];
+
+  // Build lookup maps to resolve ObjectIDs → display names (VBNumber, VBSerialNumber)
+  const poLookup = useMemo(() => {
+    const map: Record<string, string> = {};
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id) map[po._id] = po.vbpoNo || po.VBNumber || po._id;
+    });
+    return map;
+  }, [purchaseOrders]);
+
+  // CPO lookup — must come from the standalone VBcustomerPO collection
+  // (the embedded sub-doc _ids in VidaPO don't match VBcustomerPO _ids)
+  const [cpoLookup, setCpoLookup] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch('/api/admin/vb-customer-po?fields=_id,VBSerialNumber,poNo')
+      .then(r => r.json())
+      .then((items: any[]) => {
+        if (!Array.isArray(items)) return;
+        const map: Record<string, string> = {};
+        items.forEach((c) => {
+          map[c._id] = c.VBSerialNumber || c.poNo || c._id;
+        });
+        setCpoLookup(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  /** Resolve VBNumber/VBSerialNumber — they might be ObjectIDs or display names */
+  const resolveShipNames = (ship: any) => {
+    const vbNum = ship.VBNumber || '';
+    const vbSer = ship.VBSerialNumber || ship.poNo || '';
+    const vbShip = ship.VBShipmentNumber || ship.svbid || '';
+    return {
+      poNumber: poLookup[vbNum] || vbNum,
+      spoNumber: cpoLookup[vbSer] || vbSer || undefined,
+      shipNumber: vbShip || undefined,
+    };
+  };
 
   const fetchData = async () => {
     try {
@@ -173,7 +236,18 @@ export default function ShipmentsListPage() {
     {
       id: "VBShipmentNumber",
       header: "VB Shipment Number",
-      cell: ({ row }) => row.original.VBShipmentNumber || row.original.svbid || "-",
+      cell: ({ row }) => {
+        const label = row.original.VBShipmentNumber || row.original.svbid || "-";
+        if (label === "-") return "-";
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); setDetailShipment(row.original); }}
+            className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
+          >
+            {label}
+          </button>
+        );
+      },
     },
     {
       accessorKey: "status",
@@ -208,7 +282,22 @@ export default function ShipmentsListPage() {
       },
     },
     { accessorKey: "carrier", header: "Carrier" },
-    { accessorKey: "containerNo", header: "Container #" },
+    {
+      accessorKey: "containerNo",
+      header: "Container #",
+      cell: ({ row }) => {
+        const cn = row.original.containerNo;
+        if (!cn) return "-";
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); openTracking(row.original); }}
+            className="text-blue-500 hover:text-blue-400 font-mono text-xs font-bold underline underline-offset-2 decoration-blue-500/30 hover:decoration-blue-400 transition-colors"
+          >
+            {cn}
+          </button>
+        );
+      },
+    },
     { accessorKey: "BOLNumber", header: "BOL #" },
     {
       accessorKey: "ETA",
@@ -345,6 +434,53 @@ export default function ShipmentsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ShipmentTrackingPanel
+        open={!!trackingContainer}
+        onClose={() => { setTrackingContainer(null); setTrackingRawJson(null); }}
+        containerNo={trackingContainer || ''}
+        cachedRawJson={trackingRawJson}
+      />
+
+      <ShipmentDetailPanel
+        open={!!detailShipment}
+        onClose={() => setDetailShipment(null)}
+        shipmentId={detailShipment?._id || null}
+        shipmentData={detailShipment}
+        onEdit={(ship) => { setEditingItem(ship); setIsDialogOpen(true); }}
+        onDelete={(id) => { setDeleteId(id); }}
+        onTrack={(cn) => { openTracking({ containerNo: cn } as ShipmentRecord); }}
+        onAttachments={(ship) => {
+          const names = resolveShipNames(ship);
+          setAttachmentsOpen(names);
+        }}
+        onTimeline={(ship) => {
+          const names = resolveShipNames(ship);
+          setTimelineOpen({
+            VBNumber: ship.VBNumber || undefined,
+            VBSerialNumber: ship.VBSerialNumber || ship.poNo || undefined,
+            VBShipmentNumber: ship._id || undefined,
+            title: `Timeline — ${names.shipNumber || 'Shipping'}`,
+          });
+        }}
+      />
+
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
+      />
+
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        VBNumber={timelineOpen?.VBNumber}
+        VBSerialNumber={timelineOpen?.VBSerialNumber}
+        VBShipmentNumber={timelineOpen?.VBShipmentNumber}
+        title={timelineOpen?.title}
+      />
     </div>
   );
 }

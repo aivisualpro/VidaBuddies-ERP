@@ -25,6 +25,11 @@ import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 import { ShipmentGroupSidebar } from "@/components/admin/shipment-group-sidebar";
+import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
+import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
+import { AttachmentsModal } from "@/components/attachments-modal";
+import TimelineModal from "@/components/admin/timeline-modal";
+import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface ShipmentRecord {
   _id: string;
@@ -50,6 +55,7 @@ interface ShipmentRecord {
   pallets?: number;
   gallons?: number;
   quickNote?: string;
+  shippingTrackingRecords?: any[];
   createdAt?: string;
 }
 
@@ -82,6 +88,65 @@ export default function ShipmentsCardPage() {
   const [editingItem, setEditingItem] = useState<ShipmentRecord | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
+  const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
+  const [trackingRawJson, setTrackingRawJson] = useState<any>(null);
+
+  const openTracking = (item: ShipmentRecord) => {
+    const cn = item.containerNo;
+    if (!cn) { toast.error('No container number on this shipment'); return; }
+    const records = item.shippingTrackingRecords || [];
+    const latest = records[records.length - 1];
+    const rawStr = latest?.raw_json;
+    if (rawStr) {
+      try { setTrackingRawJson(JSON.parse(rawStr)); } catch { setTrackingRawJson(null); }
+    } else {
+      setTrackingRawJson(null);
+    }
+    setTrackingContainer(cn);
+  };
+
+  const [detailShipment, setDetailShipment] = useState<ShipmentRecord | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
+
+  const { purchaseOrders } = useUserDataStore();
+
+  // Build lookup maps to resolve ObjectIDs → display names
+  const poLookup = useMemo(() => {
+    const map: Record<string, string> = {};
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id) map[po._id] = po.vbpoNo || po.VBNumber || po._id;
+    });
+    return map;
+  }, [purchaseOrders]);
+
+  // CPO lookup — must come from the standalone VBcustomerPO collection
+  // (the embedded sub-doc _ids in VidaPO don't match VBcustomerPO _ids)
+  const [cpoLookup, setCpoLookup] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch('/api/admin/vb-customer-po?fields=_id,VBSerialNumber,poNo')
+      .then(r => r.json())
+      .then((items: any[]) => {
+        if (!Array.isArray(items)) return;
+        const map: Record<string, string> = {};
+        items.forEach((c) => {
+          map[c._id] = c.VBSerialNumber || c.poNo || c._id;
+        });
+        setCpoLookup(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  const resolveShipNames = (ship: any) => {
+    const vbNum = ship.VBNumber || '';
+    const vbSer = ship.VBSerialNumber || ship.poNo || '';
+    const vbShip = ship.VBShipmentNumber || ship.svbid || '';
+    return {
+      poNumber: poLookup[vbNum] || vbNum,
+      spoNumber: cpoLookup[vbSer] || vbSer || undefined,
+      shipNumber: vbShip || undefined,
+    };
+  };
 
   const fetchData = async () => {
     try {
@@ -244,7 +309,14 @@ export default function ShipmentsCardPage() {
                       <StatusIcon className={`h-4.5 w-4.5 ${cfg.color}`} />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold tracking-tight leading-none">{item.VBShipmentNumber || item.svbid || item.spoNo || "—"}</h3>
+                      <h3 className="text-sm font-bold tracking-tight leading-none">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDetailShipment(item); }}
+                          className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
+                        >
+                          {item.VBShipmentNumber || item.svbid || item.spoNo || "—"}
+                        </button>
+                      </h3>
                       <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.poNo || "—"}</p>
                     </div>
                   </div>
@@ -273,10 +345,13 @@ export default function ShipmentsCardPage() {
                   </div>
                 )}
                 {item.containerNo && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openTracking(item); }}
+                    className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                  >
                     <Box className="h-3 w-3" />
-                    <span className="font-mono text-foreground/80">{item.containerNo}</span>
-                  </div>
+                    <span className="font-mono font-bold underline underline-offset-2 decoration-blue-500/30">{item.containerNo}</span>
+                  </button>
                 )}
                 {(item.portOfLading || item.portOfEntryShipTo) && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -346,6 +421,53 @@ export default function ShipmentsCardPage() {
         onSaved={fetchData}
         presetVBNumber={sidebarVBNumber}
         presetVBSerial={sidebarVBSerial}
+      />
+
+      <ShipmentTrackingPanel
+        open={!!trackingContainer}
+        onClose={() => { setTrackingContainer(null); setTrackingRawJson(null); }}
+        containerNo={trackingContainer || ''}
+        cachedRawJson={trackingRawJson}
+      />
+
+      <ShipmentDetailPanel
+        open={!!detailShipment}
+        onClose={() => setDetailShipment(null)}
+        shipmentId={detailShipment?._id || null}
+        shipmentData={detailShipment}
+        onEdit={(ship) => { setEditingItem(ship); setIsDialogOpen(true); }}
+        onDelete={(id) => { handleDelete(id); }}
+        onTrack={(cn) => { openTracking({ containerNo: cn } as ShipmentRecord); }}
+        onAttachments={(ship) => {
+          const names = resolveShipNames(ship);
+          setAttachmentsOpen(names);
+        }}
+        onTimeline={(ship) => {
+          const names = resolveShipNames(ship);
+          setTimelineOpen({
+            VBNumber: ship.VBNumber || undefined,
+            VBSerialNumber: ship.VBSerialNumber || ship.poNo || undefined,
+            VBShipmentNumber: ship._id || undefined,
+            title: `Timeline — ${names.shipNumber || 'Shipping'}`,
+          });
+        }}
+      />
+
+      <AttachmentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
+      />
+
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        VBNumber={timelineOpen?.VBNumber}
+        VBSerialNumber={timelineOpen?.VBSerialNumber}
+        VBShipmentNumber={timelineOpen?.VBShipmentNumber}
+        title={timelineOpen?.title}
       />
       </div>
     </div>

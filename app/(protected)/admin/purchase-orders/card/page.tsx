@@ -509,7 +509,7 @@ function ShippingCard({
   onDelete: (id: string) => void;
   onEdit: (po: PurchaseOrder) => void;
   onViewDetails: () => void;
-  onOpenTimeline: (vbpoNo: string) => void;
+  onOpenTimeline: (poId: string, vbpoNo: string) => void;
   onOpenAttachments: (vbpoNo: string) => void;
   onOpenEmails: (vbpoNo: string) => void;
   userRole: string;
@@ -695,7 +695,7 @@ function ShippingCard({
                 <Pencil className="h-3 w-3" />
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); onOpenTimeline(po.vbpoNo); }}
+                onClick={(e) => { e.stopPropagation(); onOpenTimeline(po._id, po.vbpoNo); }}
                 title="Timeline"
                 className="p-1 rounded-md text-muted-foreground hover:text-violet-500 hover:bg-violet-500/10 transition-colors"
               >
@@ -940,7 +940,7 @@ export default function ShippingsPage() {
   }, [editingPO, editFormData, refetchPurchaseOrders]);
 
   // ── Timeline & Attachments modal state ──
-  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; title?: string } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; defaultTab?: "internal" | "external" | "emails" } | null>(null);
 
   // ── Mutation handlers ──
@@ -1114,7 +1114,7 @@ export default function ShippingsPage() {
               onDelete={handleDelete}
               onEdit={openEditDialog}
               onViewDetails={() => router.push(`/admin/purchase-orders/${po._id}`)}
-              onOpenTimeline={(vbpoNo) => setTimelineOpen({ vbpoNo, title: `Timeline — ${vbpoNo}` })}
+              onOpenTimeline={(poId, vbpoNo) => setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbpoNo}` })}
               onOpenAttachments={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo })}
               onOpenEmails={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo, defaultTab: "emails" })}
               userRole={userRole}
@@ -1211,7 +1211,7 @@ export default function ShippingsPage() {
       <TimelineModal
         open={!!timelineOpen}
         onClose={() => setTimelineOpen(null)}
-        vbpoNo={timelineOpen?.vbpoNo}
+        VBNumber={timelineOpen?.VBNumber}
         title={timelineOpen?.title}
         users={users}
       />

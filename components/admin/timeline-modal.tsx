@@ -31,9 +31,12 @@ import {
 
 interface TimelineEntry {
     _id: string;
-    vbpoNo?: string;
-    poNo?: string;
-    svbid?: string;
+    VBNumber?: string;
+    VBSerialNumber?: string;
+    VBShipmentNumber?: string;
+    _VBNumberDisplay?: string;
+    _VBSerialNumberDisplay?: string;
+    _VBShipmentNumberDisplay?: string;
     date?: string;
     reminder?: string;
     type: string;
@@ -47,9 +50,9 @@ interface TimelineEntry {
 interface TimelineModalProps {
     open: boolean;
     onClose: () => void;
-    vbpoNo?: string;
-    poNo?: string;
-    svbid?: string;
+    VBNumber?: string;
+    VBSerialNumber?: string;
+    VBShipmentNumber?: string;
     title?: string;
     users?: Record<string, string>;
 }
@@ -353,9 +356,9 @@ function AccordionSection({
 export default function TimelineModal({
     open,
     onClose,
-    vbpoNo,
-    poNo,
-    svbid,
+    VBNumber,
+    VBSerialNumber,
+    VBShipmentNumber,
     title,
     users = {},
 }: TimelineModalProps) {
@@ -380,9 +383,9 @@ export default function TimelineModal({
         setLoading(true);
         try {
             const params = new URLSearchParams();
-            if (vbpoNo) params.set("vbpoNo", vbpoNo);
-            if (poNo) params.set("poNo", poNo);
-            if (svbid) params.set("svbid", svbid);
+            if (VBNumber) params.set("VBNumber", VBNumber);
+            if (VBSerialNumber) params.set("VBSerialNumber", VBSerialNumber);
+            if (VBShipmentNumber) params.set("VBShipmentNumber", VBShipmentNumber);
             const res = await fetch(`/api/admin/timeline?${params.toString()}`);
             if (res.ok) setEntries(await res.json());
         } catch {
@@ -395,7 +398,7 @@ export default function TimelineModal({
     useEffect(() => {
         if (open) { fetchEntries(); setShowAddForm(false); setSearch(""); }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, vbpoNo, poNo, svbid]);
+    }, [open, VBNumber, VBSerialNumber, VBShipmentNumber]);
 
     const handleAdd = async () => {
         setSaving(true);
@@ -408,9 +411,9 @@ export default function TimelineModal({
                 reminder: formReminder || undefined,
                 status: formStatus,
             };
-            if (vbpoNo) body.vbpoNo = vbpoNo;
-            if (poNo) body.poNo = poNo;
-            if (svbid) body.svbid = svbid;
+            if (VBNumber) body.VBNumber = VBNumber;
+            if (VBSerialNumber) body.VBSerialNumber = VBSerialNumber;
+            if (VBShipmentNumber) body.VBShipmentNumber = VBShipmentNumber;
             const res = await fetch("/api/admin/timeline", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -456,8 +459,8 @@ export default function TimelineModal({
                 e.comments?.toLowerCase().includes(q) ||
                 e.type?.toLowerCase().includes(q) ||
                 e.category?.toLowerCase().includes(q) ||
-                e.poNo?.toLowerCase().includes(q) ||
-                e.svbid?.toLowerCase().includes(q) ||
+                e.VBSerialNumber?.toLowerCase().includes(q) ||
+                e.VBShipmentNumber?.toLowerCase().includes(q) ||
                 e.createdBy?.toLowerCase().includes(q)
             );
         }
@@ -469,19 +472,20 @@ export default function TimelineModal({
         });
     }, [entries, search]);
 
-    // Group: poNo → svbid → entries
+    // Group: VBSerialNumber → VBShipmentNumber → entries
     const grouped = useMemo(() => {
         const result: {
-            poNo: string;
+            VBSerialNumber: string;
+            displayName: string;
             entries: TimelineEntry[];
-            shippings: { svbid: string; entries: TimelineEntry[] }[];
+            shippings: { VBShipmentNumber: string; displayName: string; entries: TimelineEntry[] }[];
         }[] = [];
 
         const poMap = new Map<string, TimelineEntry[]>();
         const generalEntries: TimelineEntry[] = [];
 
         filtered.forEach((entry) => {
-            const key = entry.poNo || "";
+            const key = entry.VBSerialNumber || "";
             if (!key) {
                 generalEntries.push(entry);
             } else {
@@ -496,25 +500,27 @@ export default function TimelineModal({
             const poLevelEntries: TimelineEntry[] = [];
 
             poEntries.forEach((entry) => {
-                if (entry.svbid) {
-                    if (!shipMap.has(entry.svbid)) shipMap.set(entry.svbid, []);
-                    shipMap.get(entry.svbid)!.push(entry);
+                if (entry.VBShipmentNumber) {
+                    if (!shipMap.has(entry.VBShipmentNumber)) shipMap.set(entry.VBShipmentNumber, []);
+                    shipMap.get(entry.VBShipmentNumber)!.push(entry);
                 } else {
                     poLevelEntries.push(entry);
                 }
             });
 
-            const shippings: { svbid: string; entries: TimelineEntry[] }[] = [];
+            const shippings: { VBShipmentNumber: string; displayName: string; entries: TimelineEntry[] }[] = [];
             shipMap.forEach((shipEntries, shipKey) => {
-                shippings.push({ svbid: shipKey, entries: shipEntries });
+                const shipDisplay = shipEntries[0]?._VBShipmentNumberDisplay || shipKey;
+                shippings.push({ VBShipmentNumber: shipKey, displayName: shipDisplay, entries: shipEntries });
             });
 
-            result.push({ poNo: poKey, entries: poLevelEntries, shippings });
+            const poDisplay = poEntries[0]?._VBSerialNumberDisplay || poKey;
+            result.push({ VBSerialNumber: poKey, displayName: poDisplay, entries: poLevelEntries, shippings });
         });
 
-        // Add general entries (no poNo) as a special group
+        // Add general entries (no VBSerialNumber) as a special group
         if (generalEntries.length > 0) {
-            result.unshift({ poNo: "", entries: generalEntries, shippings: [] });
+            result.unshift({ VBSerialNumber: "", displayName: "General", entries: generalEntries, shippings: [] });
         }
 
         return result;
@@ -526,10 +532,10 @@ export default function TimelineModal({
         return users[email.toLowerCase()] || email.split("@")[0];
     };
 
-    const displayTitle = title || (svbid ? `Timeline — ${svbid}` : poNo ? `Timeline — ${poNo}` : vbpoNo ? `Timeline — ${vbpoNo}` : "Timeline");
+    const displayTitle = title || (VBShipmentNumber ? `Timeline — ${VBShipmentNumber}` : VBSerialNumber ? `Timeline — ${VBSerialNumber}` : VBNumber ? `Timeline — ${VBNumber}` : "Timeline");
 
     // Check if we should show accordion grouping (only when viewing at VB PO level with multiple groups)
-    const showAccordion = !svbid && grouped.length > 0 && (grouped.length > 1 || grouped[0]?.shippings.length > 0);
+    const showAccordion = !VBShipmentNumber && grouped.length > 0 && (grouped.length > 1 || grouped[0]?.shippings.length > 0);
 
     return (
         <>
@@ -633,17 +639,17 @@ export default function TimelineModal({
                             <div>
                                 {grouped.map((group) => {
                                     const totalCount = group.entries.length + group.shippings.reduce((acc, s) => acc + s.entries.length, 0);
-                                    const groupLabel = group.poNo ? `Customer PO: ${group.poNo}` : "General";
+                                    const groupLabel = group.VBSerialNumber ? `Customer PO: ${group.displayName}` : "General";
 
                                     return (
                                         <AccordionSection
-                                            key={group.poNo || "__general__"}
+                                            key={group.VBSerialNumber || "__general__"}
                                             label={groupLabel}
                                             icon={<Package className="h-3.5 w-3.5 text-primary" />}
                                             count={totalCount}
                                             defaultOpen={true}
                                         >
-                                            {/* PO-level entries (no svbid) */}
+                                            {/* PO-level entries (no VBShipmentNumber) */}
                                             {group.entries.length > 0 && (
                                                 <TimelineTable entries={group.entries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
                                             )}
@@ -651,8 +657,8 @@ export default function TimelineModal({
                                             {/* Shipping sub-groups */}
                                             {group.shippings.map((ship) => (
                                                 <AccordionSection
-                                                    key={ship.svbid}
-                                                    label={`Shipping: ${ship.svbid}`}
+                                                    key={ship.VBShipmentNumber}
+                                                    label={`Shipping: ${ship.displayName}`}
                                                     icon={<Anchor className="h-3 w-3 text-violet-500" />}
                                                     count={ship.entries.length}
                                                     defaultOpen={true}

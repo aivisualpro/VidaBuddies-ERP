@@ -6,6 +6,8 @@ import VBshipping from "@/lib/models/VBshipping";
  * GET /api/admin/vb-shipping
  * Query params:
  *   - customerPOId: filter by parent customerPO
+ *   - VBNumber: filter by VBNumber (vidapos._id)
+ *   - VBSerialNumber: filter by VBSerialNumber (vbcustomerpos._id)
  *   - poNo: filter by poNo display string
  *   - containerNo: filter by container number
  *   - all (no params): return all
@@ -15,11 +17,15 @@ export async function GET(req: Request) {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
     const customerPOId = searchParams.get("customerPOId");
+    const VBNumber = searchParams.get("VBNumber");
+    const VBSerialNumber = searchParams.get("VBSerialNumber");
     const poNo = searchParams.get("poNo");
     const containerNo = searchParams.get("containerNo");
 
     const filter: any = {};
     if (customerPOId) filter.customerPOId = customerPOId;
+    if (VBNumber) filter.VBNumber = VBNumber;
+    if (VBSerialNumber) filter.VBSerialNumber = VBSerialNumber;
     if (poNo) filter.poNo = poNo;
     if (containerNo) filter.containerNo = containerNo;
 

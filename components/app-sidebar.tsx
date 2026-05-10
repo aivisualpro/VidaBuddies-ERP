@@ -78,6 +78,11 @@ const data = {
       url: "/admin/customers",
       icon: IconBuildingStore,
     },
+    {
+      name: "Active Actions",
+      url: "/admin/active-actions",
+      icon: IconCheckbox,
+    },
   ],
   inventory: [
     {

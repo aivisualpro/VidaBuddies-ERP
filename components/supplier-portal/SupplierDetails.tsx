@@ -103,7 +103,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [tempName, setTempName] = useState("");
-  const [timelineModal, setTimelineModal] = useState<{ open: boolean; vbpoNo?: string; poNo?: string; svbid?: string } | null>(null);
+  const [timelineModal, setTimelineModal] = useState<{ open: boolean; VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string } | null>(null);
   const [attachmentsModal, setAttachmentsModal] = useState<{ open: boolean; poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const { setLeftContent, setRightContent, setActions } = useHeaderActions();
 
@@ -798,7 +798,7 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
                                <Button variant="outline" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm hover:border-primary/40 hover:bg-primary/5" onClick={() => router.push(`/admin/purchase-orders/${po._id}`)}>
                                  <ExternalLink className="h-3 w-3" /> View PO
                                </Button>
-                               <Button variant="secondary" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm" onClick={() => setTimelineModal({ open: true, vbpoNo: po.vbpoNo, poNo: ship.customerPONo, svbid: ship.svbid })}>
+                               <Button variant="secondary" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm" onClick={() => setTimelineModal({ open: true, VBNumber: po.vbpoNo, VBSerialNumber: ship.customerPONo, VBShipmentNumber: ship.svbid })}>
                                  <Activity className="h-3 w-3" /> Timeline
                                </Button>
                                <Button variant="secondary" size="sm" className="h-8 text-[10px] uppercase font-bold tracking-widest gap-1.5 shadow-sm" onClick={() => setAttachmentsModal({ open: true, poNumber: po.vbpoNo, spoNumber: ship.customerPONo, shipNumber: ship.svbid })}>
@@ -899,9 +899,9 @@ export function SupplierDetails({ supplierId, isSupplierView = false }: { suppli
         <TimelineModal
           open={timelineModal.open}
           onClose={() => setTimelineModal(null)}
-          vbpoNo={timelineModal.vbpoNo}
-          poNo={timelineModal.poNo}
-          svbid={timelineModal.svbid}
+          VBNumber={timelineModal.VBNumber}
+          VBSerialNumber={timelineModal.VBSerialNumber}
+          VBShipmentNumber={timelineModal.VBShipmentNumber}
         />
       )}
 

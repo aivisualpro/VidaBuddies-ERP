@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import VBshipping from "@/lib/models/VBshipping";
 import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import VidaPO from "@/lib/models/VidaPO";
+import VidaTimeline from "@/lib/models/VidaTimeline";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
         break;
       case "vidapos":
         data = await VidaPO.find({}).lean();
+        break;
+      case "vidatimelines":
+        data = await VidaTimeline.find({}).sort({ timestamp: -1 }).lean();
         break;
       default:
         return NextResponse.json({ error: "Invalid collection" }, { status: 400 });

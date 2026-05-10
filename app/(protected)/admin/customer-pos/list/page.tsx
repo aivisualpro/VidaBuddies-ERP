@@ -6,15 +6,19 @@ import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
+import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
 import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface CustomerPO {
   _id: string;
   vbpoNo?: string;
+  VBNumber?: string;
   poNo?: string;
+  VBSerialNumber?: string;
   customer?: string;
   customerLocation?: string;
   customerPONo?: string;
@@ -24,6 +28,7 @@ interface CustomerPO {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: string;
+  vidaPOId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,6 +40,8 @@ export default function CustomerPOsListPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CustomerPO | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
 
   const { customers: storeCustomers } = useUserDataStore();
   const customers = storeCustomers || [];
@@ -62,7 +69,6 @@ export default function CustomerPOsListPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this Customer PO?")) return;
     try {
       const response = await fetch(`/api/admin/vb-customer-po/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete");
@@ -70,6 +76,8 @@ export default function CustomerPOsListPage() {
       fetchData();
     } catch {
       toast.error("Failed to delete");
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -84,17 +92,34 @@ export default function CustomerPOsListPage() {
   };
 
   const filteredData = useMemo(() => {
-    if (!searchQuery) return data;
-    const q = searchQuery.toLowerCase();
-    return data.filter(item => {
-      const searchable = [item.vbpoNo, item.poNo, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
-      return searchable.includes(q);
-    });
-  }, [data, searchQuery]);
+    let result = data;
+    // Sidebar filter
+    if (sidebarVBNumber) {
+      result = result.filter(item =>
+        (item.VBNumber || item.vidaPOId || item.vbpoNo || 'Unlinked') === sidebarVBNumber
+      );
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(item => {
+        const searchable = [item.VBNumber, item.VBSerialNumber, item.vbpoNo, item.poNo, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
+        return searchable.includes(q);
+      });
+    }
+    return result;
+  }, [data, searchQuery, sidebarVBNumber]);
 
   const columns: ColumnDef<CustomerPO>[] = [
-    { accessorKey: "vbpoNo", header: "VB PO #" },
-    { accessorKey: "poNo", header: "PO #" },
+    {
+      accessorKey: "vbpoNo",
+      header: "VB Number",
+      cell: ({ row }) => row.original.vbpoNo || "-",
+    },
+    {
+      accessorKey: "poNo",
+      header: "VB Number Serial",
+      cell: ({ row }) => row.original.VBSerialNumber || row.original.poNo || "-",
+    },
     {
       accessorKey: "customer",
       header: "Customer",
@@ -162,7 +187,7 @@ export default function CustomerPOsListPage() {
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); handleDelete(row.original._id); }}
+            onClick={(e) => { e.stopPropagation(); setDeleteId(row.original._id); }}
             className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -190,14 +215,21 @@ export default function CustomerPOsListPage() {
   );
 
   return (
-    <div className="w-full h-full">
-      <SimpleDataTable
-        columns={columns}
-        data={filteredData}
-        onAdd={openAdd}
-        showColumnToggle={false}
-        headerExtra={headerFilters}
+    <div className="w-full h-full flex">
+      <CPOGroupSidebar
+        data={data}
+        activeVBNumber={sidebarVBNumber}
+        onSelect={(vb) => setSidebarVBNumber(vb)}
       />
+      <div className="flex-1 min-w-0">
+        <SimpleDataTable
+          columns={columns}
+          data={filteredData}
+          onAdd={openAdd}
+          showColumnToggle={false}
+          headerExtra={headerFilters}
+        />
+      </div>
 
       <AddCustomerPODialog
         open={isDialogOpen}
@@ -207,6 +239,26 @@ export default function CustomerPOsListPage() {
         existingCPOs={data}
         onSaved={fetchData}
       />
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Customer PO</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this Customer PO? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteId && handleDelete(deleteId)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

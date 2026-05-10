@@ -275,7 +275,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
-  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; poNo?: string; svbid?: string; title?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
   const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; title?: string } | null>(null);
 
   const [isEditPOOpen, setIsEditPOOpen] = useState(false);
@@ -289,7 +289,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       const [poRes, cpoRes, shipRes] = await Promise.all([
         fetch(`/api/admin/purchase-orders/${id}`),
         fetch(`/api/admin/vb-customer-po?vidaPOId=${id}`),
-        fetch(`/api/admin/vb-shipping`),
+        fetch(`/api/admin/vb-shipping?VBNumber=${id}`),
       ]);
 
       if (!poRes.ok) throw new Error("Failed to fetch purchase order");
@@ -301,8 +301,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
       // Assemble into the legacy shape: po.customerPO[].shipping[]
       const assembledCPOs = (cpoList as any[]).map((cpo: any) => {
+        const cpoId = cpo._id?.toString();
         const cpoShippings = (shipList as any[]).filter(
-          (s: any) => s.customerPOId === cpo._id || s.customerPOId?.toString() === cpo._id?.toString()
+          (s: any) => s.VBSerialNumber === cpoId || s.customerPOId === cpoId || s.customerPOId?.toString() === cpoId
         );
         return { ...cpo, shipping: cpoShippings };
       });
@@ -713,7 +714,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           <Pencil className="h-3.5 w-3.5 mr-2" />
           Edit
         </Button>
-        <Button variant="outline" size="sm" className="h-8" onClick={() => setTimelineOpen({ vbpoNo: po?.vbpoNo, title: `Timeline — ${po?.vbpoNo}` })}>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setTimelineOpen({ VBNumber: po?._id, title: `Timeline — ${po?.vbpoNo}` })}>
           <Clock className="h-3.5 w-3.5 mr-2" />
           Timeline
         </Button>
@@ -922,7 +923,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setTimelineOpen({ vbpoNo: po?.vbpoNo, poNo: cpo.poNo, title: `Timeline — ${cpo.poNo}` });
+                              setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: cpo._id, title: `Timeline — ${cpo.poNo}` });
                             }}
                           >
                             <Clock className="h-3.5 w-3.5" />
@@ -1046,7 +1047,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const cpo = po?.customerPO?.[ship._cpoIdx]; setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo?.poNo || '', shipNumber: ship.svbid || undefined }); }}>
                               <Paperclip className="h-3.5 w-3.5" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setTimelineOpen({ vbpoNo: po?.vbpoNo, poNo: po?.customerPO?.[ship._cpoIdx]?.poNo, svbid: ship.svbid, title: `Timeline — ${ship.svbid || 'Shipping'}` }); }}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: po?.customerPO?.[ship._cpoIdx]?._id, VBShipmentNumber: ship._id, title: `Timeline — ${ship.svbid || 'Shipping'}` }); }}>
                               <Clock className="h-3.5 w-3.5" />
                             </Button>
                             {ship.containerNo && !ship.containerNo.toUpperCase().startsWith("TBD") && ship.status !== 'Delivered' && (
@@ -1783,9 +1784,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       <TimelineModal
         open={!!timelineOpen}
         onClose={() => setTimelineOpen(null)}
-        vbpoNo={timelineOpen?.vbpoNo}
-        poNo={timelineOpen?.poNo}
-        svbid={timelineOpen?.svbid}
+        VBNumber={timelineOpen?.VBNumber}
+        VBSerialNumber={timelineOpen?.VBSerialNumber}
+        VBShipmentNumber={timelineOpen?.VBShipmentNumber}
         title={timelineOpen?.title}
         users={users}
       />

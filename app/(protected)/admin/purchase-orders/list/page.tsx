@@ -90,7 +90,7 @@ export default function PurchaseOrdersPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showArchived, setShowArchived] = useState(false);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
-  const [timelineOpen, setTimelineOpen] = useState<{ vbpoNo?: string; title?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; title?: string } | null>(null);
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
@@ -123,8 +123,9 @@ export default function PurchaseOrdersPage() {
       if (Array.isArray(items)) {
         const counts: Record<string, number> = {};
         items.forEach((t: any) => {
-          if (t.vbpoNo) {
-            counts[t.vbpoNo] = (counts[t.vbpoNo] || 0) + 1;
+          const key = t._VBNumberDisplay || t.VBNumber;
+          if (key) {
+            counts[key] = (counts[key] || 0) + 1;
           }
         });
         setTimelineCounts(counts);
@@ -453,12 +454,13 @@ export default function PurchaseOrdersPage() {
       header: "Timeline",
       cell: ({ row }) => {
         const vbpoNo = row.original.vbpoNo;
+        const poId = row.original._id;
         const count = timelineCounts[vbpoNo] || 0;
         return (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setTimelineOpen({ vbpoNo, title: `Timeline — ${vbpoNo}` });
+              setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbpoNo}` });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
@@ -803,7 +805,7 @@ export default function PurchaseOrdersPage() {
       <TimelineModal
         open={!!timelineOpen}
         onClose={() => { setTimelineOpen(null); fetchTimelineCounts(); }}
-        vbpoNo={timelineOpen?.vbpoNo}
+        VBNumber={timelineOpen?.VBNumber}
         title={timelineOpen?.title}
         users={users}
       />
