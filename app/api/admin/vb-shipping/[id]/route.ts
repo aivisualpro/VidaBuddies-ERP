@@ -33,6 +33,15 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const { id } = await params;
     const data = await req.json();
 
+    // Sanitize ObjectId fields — empty strings → null
+    const oidFields = ['VBNumber', 'VBSerialNumber', 'supplier', 'supplierLocation'];
+    for (const f of oidFields) {
+      if (f in data && (data[f] === '' || data[f] === undefined)) data[f] = null;
+    }
+    if (Array.isArray(data.products)) {
+      data.products = data.products.filter((p: any) => p && typeof p === 'string' && /^[a-fA-F0-9]{24}$/.test(p));
+    }
+
     const updated = await VBshipping.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,

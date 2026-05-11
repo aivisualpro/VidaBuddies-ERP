@@ -259,8 +259,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     const mapping: Record<string, string> = {};
     if (Array.isArray(storeProducts)) {
       storeProducts.forEach((p: any) => {
-        mapping[p._id] = p.name;
-        if (p.vbId) mapping[p.vbId] = p.name;
+        if (p._id) mapping[p._id] = p.name;
       });
     }
     return mapping;
@@ -355,7 +354,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       const assembledCPOs = (cpoList as any[]).map((cpo: any) => {
         const cpoId = cpo._id?.toString();
         const cpoShippings = (shipList as any[]).filter(
-          (s: any) => s.VBSerialNumber === cpoId || s.customerPOId === cpoId || s.customerPOId?.toString() === cpoId
+          (s: any) => s.VBSerialNumber?.toString() === cpoId
         );
         return { ...cpo, shipping: cpoShippings };
       });
@@ -659,10 +658,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         });
         if (!response.ok) throw new Error("Failed to update shipping");
       } else if (addingShippingToCPO) {
-        // Create new standalone VBshipping linked to the parent CPO
-        const parentCpo = po?.customerPO?.[addingShippingToCPO.idx];
-        formattedData.customerPOId = parentCpo?._id;
-        formattedData.poNo = parentCpo?.poNo || '';
+        // Create new standalone VBshipping linked via VBSerialNumber
         const response = await fetch('/api/admin/vb-shipping', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

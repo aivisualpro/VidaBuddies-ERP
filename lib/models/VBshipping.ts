@@ -37,10 +37,7 @@ export interface IShippingTrackingRecord {
 }
 
 export interface IVBshipping extends Document {
-  customerPOId?: mongoose.Types.ObjectId; // ref to VBcustomerPO (legacy)
-  poNo?: string;                          // legacy — same as VBNumber
   spoNo?: string;
-  svbid?: string;                         // legacy — same as VBShipmentNumber
   VBNumber?: mongoose.Types.ObjectId;       // ObjectId ref → VidaPO._id
   VBSerialNumber?: mongoose.Types.ObjectId;  // ObjectId ref → VBcustomerPO._id
   VBShipmentNumber?: string;              // auto e.g. "VB1-1-1"
@@ -105,10 +102,7 @@ export interface IVBshipping extends Document {
 
 const VBshippingSchema: Schema = new Schema(
   {
-    customerPOId: { type: Schema.Types.ObjectId, ref: 'VBcustomerPO', default: null },
-    poNo: { type: String, default: '' },
     spoNo: { type: String },
-    svbid: { type: String },
     VBNumber: { type: Schema.Types.ObjectId, ref: 'VidaPO', default: null },
     VBSerialNumber: { type: Schema.Types.ObjectId, ref: 'VBcustomerPO', default: null },
     VBShipmentNumber: { type: String, default: '' },
@@ -210,10 +204,9 @@ const VBshippingSchema: Schema = new Schema(
 );
 
 // Indexes for fast lookups
-VBshippingSchema.index({ customerPOId: 1 });
-VBshippingSchema.index({ poNo: 1 });
+VBshippingSchema.index({ VBNumber: 1 });
+VBshippingSchema.index({ VBSerialNumber: 1 });
 VBshippingSchema.index({ containerNo: 1 });
-VBshippingSchema.index({ svbid: 1 });
 VBshippingSchema.index({ status: 1 });
 
 const VBshipping: Model<IVBshipping> =

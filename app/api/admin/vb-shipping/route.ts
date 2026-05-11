@@ -21,14 +21,11 @@ export async function GET(req: Request) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
-    const customerPOId = searchParams.get("customerPOId");
     const VBNumber = searchParams.get("VBNumber");
     const VBSerialNumber = searchParams.get("VBSerialNumber");
-    const poNo = searchParams.get("poNo");
     const containerNo = searchParams.get("containerNo");
 
     const filter: any = {};
-    if (customerPOId) filter.customerPOId = customerPOId;
     if (VBNumber) {
       // Support both ObjectId and string matching
       if (/^[a-fA-F0-9]{24}$/.test(VBNumber)) {
@@ -37,8 +34,13 @@ export async function GET(req: Request) {
         filter.VBNumber = VBNumber;
       }
     }
-    if (VBSerialNumber) filter.VBSerialNumber = VBSerialNumber;
-    if (poNo) filter.poNo = poNo;
+    if (VBSerialNumber) {
+      if (/^[a-fA-F0-9]{24}$/.test(VBSerialNumber)) {
+        filter.VBSerialNumber = new mongoose.Types.ObjectId(VBSerialNumber);
+      } else {
+        filter.VBSerialNumber = VBSerialNumber;
+      }
+    }
     if (containerNo) filter.containerNo = containerNo;
 
     const items = await VBshipping.find(filter).sort({ createdAt: -1 }).lean();
@@ -140,6 +142,17 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const data = await req.json();
+
+    // Sanitize ObjectId fields — empty strings → null
+    const oidFields = ['VBNumber', 'VBSerialNumber', 'supplier', 'supplierLocation'];
+    for (const f of oidFields) {
+      if (data[f] === '' || data[f] === undefined) data[f] = null;
+    }
+    // Sanitize products array
+    if (Array.isArray(data.products)) {
+      data.products = data.products.filter((p: any) => p && typeof p === 'string' && /^[a-fA-F0-9]{24}$/.test(p));
+    }
+
     const newItem = await VBshipping.create(data);
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
