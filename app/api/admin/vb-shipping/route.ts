@@ -112,6 +112,39 @@ export async function GET(req: Request) {
       }
     }
 
+    // Fallback: some shipping records store a supplier location subdoc _id
+    // in the `supplier` field instead of the parent supplier _id.
+    // Find any unresolved supplier IDs and try matching by location._id.
+    const unresolvedSupIds = [...supIds].filter(id => !supMap.has(id));
+    // Also collect any supplierLocation IDs not yet in locMap
+    const unresolvedLocIds = [...locIds].filter(id => !locMap.has(id));
+    const allUnresolved = [...new Set([...unresolvedSupIds, ...unresolvedLocIds])];
+
+    if (allUnresolved.length > 0) {
+      const fallbackSups = await db!.collection("vidasuppliers").find(
+        { "location._id": { $in: allUnresolved.map(id => new mongoose.Types.ObjectId(id)) } },
+        { projection: { name: 1, vbId: 1, location: 1 } }
+      ).toArray();
+
+      for (const sup of fallbackSups) {
+        if (sup.location && Array.isArray(sup.location)) {
+          for (const loc of sup.location) {
+            if (loc._id) {
+              const locIdStr = loc._id.toString();
+              // If a supplier field held this location _id, resolve it to the supplier name
+              if (unresolvedSupIds.includes(locIdStr)) {
+                supMap.set(locIdStr, sup.name || sup.vbId || sup._id.toString());
+              }
+              // Also populate location name if missing
+              if (!locMap.has(locIdStr)) {
+                locMap.set(locIdStr, loc.locationName || loc.vbId || 'Unknown');
+              }
+            }
+          }
+        }
+      }
+    }
+
     const prodMap = new Map<string, string>();
     for (const prod of prodDocs) prodMap.set(prod._id.toString(), prod.name || prod.vbId || prod._id.toString());
 

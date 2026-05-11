@@ -292,7 +292,7 @@ export default function DocumentsBoxPage() {
             <div className="flex flex-col items-center justify-center h-full gap-2 px-4">
               <FolderOpen className="h-8 w-8 text-muted-foreground/20" />
               <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40 text-center">
-                {activeCategory !== "suppliers"
+                {activeCategory !== "suppliers" && activeCategory !== "purchase-orders"
                   ? "Coming soon"
                   : "No documents found"}
               </div>
@@ -319,11 +319,11 @@ export default function DocumentsBoxPage() {
                     }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold truncate">
-                        {entity.entityName}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground font-medium">
-                        {entity.entityId} · {fileCount} file{fileCount !== 1 ? "s" : ""}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold truncate">{entity.entityName}</span>
+                        <span className="text-[9px] font-bold text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+                          {fileCount}
+                        </span>
                       </div>
                     </div>
                     <ChevronRight
@@ -393,18 +393,8 @@ export default function DocumentsBoxPage() {
                           >
                             {/* Thumbnail */}
                             <div className="aspect-[4/3] bg-muted/50 flex items-center justify-center overflow-hidden relative">
-                              <img
-                                src={getThumbnailUrl(file)}
-                                alt={file.fileName}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                loading="lazy"
-                                onError={(e) => {
-                                  const el = e.target as HTMLImageElement;
-                                  el.style.display = "none";
-                                  el.parentElement!.querySelector(".fallback-icon")?.classList.remove("hidden");
-                                }}
-                              />
-                              <div className="fallback-icon hidden absolute inset-0 flex flex-col items-center justify-center gap-1">
+                              {/* Fallback icon — always visible underneath */}
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
                                 {type === "pdf" ? (
                                   <>
                                     <FileText className="h-8 w-8 text-red-500/60" />
@@ -419,6 +409,20 @@ export default function DocumentsBoxPage() {
                                   </>
                                 )}
                               </div>
+                              {/* Thumbnail image — covers fallback if it loads successfully */}
+                              <img
+                                src={getThumbnailUrl(file)}
+                                alt={file.fileName}
+                                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-[1]"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                onLoad={(e) => {
+                                  const img = e.target as HTMLImageElement;
+                                  // Google Drive returns tiny placeholder images for private files
+                                  if (img.naturalWidth < 10 || img.naturalHeight < 10) img.style.display = "none";
+                                }}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
                             </div>
                             {/* Verified badge */}
                             {file.isVerified && (
@@ -430,9 +434,6 @@ export default function DocumentsBoxPage() {
                             <div className="p-2 border-t border-border">
                               <p className="text-[10px] font-semibold truncate text-foreground leading-tight">
                                 {file.fileName}
-                              </p>
-                              <p className="text-[9px] text-muted-foreground/60 mt-0.5">
-                                {file.createdBy}
                               </p>
                             </div>
                           </button>
@@ -526,15 +527,7 @@ export default function DocumentsBoxPage() {
                       >
                         <Download className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        title="Open in new tab"
-                        onClick={() => window.open(selectedFile.fileLink, "_blank")}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+
                       <Button
                         variant="ghost"
                         size="icon"
@@ -557,12 +550,15 @@ export default function DocumentsBoxPage() {
                       onError={(e) => { (e.target as HTMLImageElement).src = getThumbnailUrl(selectedFile); }}
                     />
                   ) : (
-                    <iframe
-                      src={getPreviewUrl(selectedFile)}
-                      className="w-full h-full rounded-xl border border-border shadow-xl"
-                      title={selectedFile.fileName}
-                      allow="autoplay"
-                    />
+                    <div className="relative w-full h-full overflow-hidden rounded-xl border border-border shadow-xl">
+                      <iframe
+                        src={getPreviewUrl(selectedFile)}
+                        className="absolute top-0 left-0 w-[calc(100%+50px)] h-full border-0"
+                        title={selectedFile.fileName}
+                        allow="autoplay"
+                        sandbox="allow-scripts allow-same-origin"
+                      />
+                    </div>
                   )}
 
                 </div>

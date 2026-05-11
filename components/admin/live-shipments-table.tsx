@@ -13,6 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
+import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
 import Link from "next/link";
 
 
@@ -24,6 +25,7 @@ interface ContainerInfo {
   svbid: string;
   customerName: string;
   status: string;
+  updatedETA?: string;
   initialData?: TrackingData;
 }
 
@@ -99,6 +101,8 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
   const [searchQuery, setSearchQuery] = useState("");
   const [now, setNow] = useState<number | null>(null);
   const [rawJsonData, setRawJsonData] = useState<{ containerNo: string, json: string } | null>(null);
+  const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
+  const [trackingCachedJson, setTrackingCachedJson] = useState<any>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -245,42 +249,12 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
           <table className="w-full text-[10px] caption-bottom text-sm">
             <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
               <TableRow className="h-8">
-                <TableHead className="p-1 h-8">Act</TableHead>
-                <TableHead className="p-1 h-8 min-w-[50px]">VBID</TableHead>
-                <TableHead className="p-1 h-8 min-w-[70px]">PO No</TableHead>
-                <TableHead className="p-1 h-8 min-w-[70px]">SVBID</TableHead>
-                <TableHead className="p-1 h-8">Type</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px] text-center">Cont. No</TableHead>
-                <TableHead className="p-1 h-8">Line</TableHead>
-                <TableHead className="p-1 h-8 min-w-[100px]">Line Name</TableHead>
-                <TableHead className="p-1 h-8">Status</TableHead>
-                <TableHead className="p-1 h-8 min-w-[80px]">Progress</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Upd At</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">From Port</TableHead>
-                <TableHead className="p-1 h-8">F. Ctry</TableHead>
-                <TableHead className="p-1 h-8">F. Loc</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">To Port</TableHead>
-                <TableHead className="p-1 h-8">T. Ctry</TableHead>
-                <TableHead className="p-1 h-8">T. Loc</TableHead>
-                <TableHead className="p-1 h-8 min-w-[50px]">POL nm</TableHead>
-                <TableHead className="p-1 h-8 min-w-[70px]">POL dt</TableHead>
-                <TableHead className="p-1 h-8">Act</TableHead>
-                <TableHead className="p-1 h-8 min-w-[50px]">POD nm</TableHead>
-                <TableHead className="p-1 h-8 min-w-[70px]">POD dt</TableHead>
-                <TableHead className="p-1 h-8">Act</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">ETA</TableHead>
-                <TableHead className="p-1 h-8">ISO</TableHead>
-                <TableHead className="p-1 h-8">Sz/Tp</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Vessel</TableHead>
-                <TableHead className="p-1 h-8">IMO</TableHead>
-                <TableHead className="p-1 h-8">Ev Code</TableHead>
-                <TableHead className="p-1 h-8">Ev Sts</TableHead>
-                <TableHead className="p-1 h-8 min-w-[70px]">Ev Date</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Ev Loc</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Ev Fac</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Ev Ves</TableHead>
-                <TableHead className="p-1 h-8">Ev Voy</TableHead>
-                <TableHead className="p-1 h-8 min-w-[60px]">Lat/Long</TableHead>
+                <TableHead className="p-1 h-8 min-w-[100px]">Shipment #</TableHead>
+                <TableHead className="p-1 h-8 min-w-[100px]">Cont. No</TableHead>
+                <TableHead className="p-1 h-8 min-w-[100px]">Progress</TableHead>
+                <TableHead className="p-1 h-8 min-w-[80px]">From Port</TableHead>
+                <TableHead className="p-1 h-8 min-w-[80px]">To Port</TableHead>
+                <TableHead className="p-1 h-8 min-w-[80px]">Updated ETA</TableHead>
                 <TableHead className="p-1 h-8 min-w-[50px] text-center">Raw</TableHead>
               </TableRow>
             </TableHeader>
@@ -291,56 +265,29 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
 
                 return (
                   <TableRow key={idx} className="h-auto">
-                    <TableCell className="p-1 align-middle whitespace-normal">
-                      <div className="flex flex-col gap-1 items-center">
-                        {(container.status || '').toLowerCase() === 'delivered' ? (
-                          <span title="Tracking disconnected — shipment delivered" className="text-[8px] font-bold text-muted-foreground/60 uppercase">N/A</span>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={() => trackContainer(container.containerNo)}
-                            disabled={isLoading || !container.containerNo}
-                          >
-                            <IconRefresh className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-                          </Button>
-                        )}
-                        {data?.latlong && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={() => window.open(`https://www.searates.com/container/tracking/?number=${container.containerNo}&type=CT`, '_blank')}
-                          >
-                            <IconMapPin className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      <span onClick={() => window.location.assign(`/admin/purchase-orders/${container.id}`)} className="hover:underline cursor-pointer text-inherit">
-                        {container.vbid}
+                      <span onClick={() => window.location.assign(`/admin/purchase-orders/${container.id}`)} className="hover:underline cursor-pointer text-inherit font-medium">
+                        {container.svbid || '-'}
                       </span>
                     </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words" title={container.poNo}>
-                      {container.poNo ? container.poNo.split(',')[0].trim() : "-"}
-                    </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{container.svbid}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.type || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle text-center whitespace-normal break-words font-medium">{container.containerNo}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.sealine || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.sealine_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal">
-                      {data ? (
-                        <Badge variant="secondary" className={`text-[9px] px-2 py-0.5 rounded-full border-0 font-medium whitespace-nowrap
-                                ${['on water', 'in_transit', 'in transit'].includes(data.status?.toLowerCase()) ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
-                            ['arrived', 'delivered'].includes(data.status?.toLowerCase()) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
-                              ['planned', 'booking confirmed'].includes(data.status?.toLowerCase()) ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' :
-                                'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'}`}>
-                          {data.status?.replace(/_/g, " ")}
-                        </Badge>
-                      ) : "-"}
+                    <TableCell className="p-1 align-middle whitespace-normal break-words font-medium">
+                      {container.containerNo ? (
+                        <button
+                          onClick={() => {
+                            const records = container.initialData;
+                            const rawStr = records?.raw_json;
+                            if (rawStr) {
+                              try { setTrackingCachedJson(JSON.parse(rawStr)); } catch { setTrackingCachedJson(null); }
+                            } else {
+                              setTrackingCachedJson(null);
+                            }
+                            setTrackingContainer(container.containerNo);
+                          }}
+                          className="text-blue-500 hover:text-blue-400 font-mono text-xs font-bold underline underline-offset-2 decoration-blue-500/30 hover:decoration-blue-400 transition-colors"
+                        >
+                          {container.containerNo}
+                        </button>
+                      ) : '-'}
                     </TableCell>
                     <TableCell className="p-1 align-middle">
                       {(() => {
@@ -351,14 +298,13 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                         if (status === 'delivered' || status === 'arrived') {
                           progress = 100;
                         } else if (data.pol_date && (data.pod_predictive_eta || data.pod_date) && now) {
-                          const start = new Date(data.pol_date).getTime(); // POL Date (Departure)
-                          // Use predictive ETA if available, otherwise POD date (Arrival)
+                          const start = new Date(data.pol_date).getTime();
                           const end = new Date(data.pod_predictive_eta || data.pod_date).getTime();
 
                           if (end > start && now > start) {
                             progress = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
                           } else if (now >= end) {
-                            progress = 99; // Late or barely arrived
+                            progress = 99;
                           }
                         }
 
@@ -375,42 +321,11 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.updated_at?.split(' ')[0] || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.from_port_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.from_port_country || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.from_port_locode || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.to_port_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.to_port_country || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.to_port_locode || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.pol_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.pol_date?.split('T')[0] || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      {data ? (data.pol_actual ?
-                        <IconCircleCheck className="h-3.5 w-3.5 text-green-600 fill-green-100 mx-auto" /> :
-                        <IconCircleX className="h-3.5 w-3.5 text-red-500 fill-red-50 mx-auto" />
-                      ) : "-"}
+                      {container.updatedETA ? new Date(container.updatedETA).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "-"}
                     </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.pod_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.pod_date?.split('T')[0] || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      {data ? (data.pod_actual ?
-                        <IconCircleCheck className="h-3.5 w-3.5 text-green-600 fill-green-100 mx-auto" /> :
-                        <IconCircleX className="h-3.5 w-3.5 text-red-500 fill-red-50 mx-auto" />
-                      ) : "-"}
-                    </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.pod_predictive_eta?.split('T')[0] || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.container_iso_code || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.container_size_type || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.vessel_names || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.vessel_imos || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_code || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_status || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_date?.split('T')[0] || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_location || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_facility || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_vessel || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.last_event_voyage || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words leading-tight text-[9px]">{data?.latlong || "-"}</TableCell>
                     <TableCell className="p-1 align-middle text-center">
                       {(data?.raw_json) ? (
                         <Button
@@ -429,7 +344,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
               })}
               {filteredContainers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={37} className="h-24 text-center text-sm p-4">
+                  <TableCell colSpan={7} className="h-24 text-center text-sm p-4">
                     No active shipments found.
                   </TableCell>
                 </TableRow>
@@ -463,6 +378,13 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
           </div>
         </DialogContent>
       </Dialog>
+
+      <ShipmentTrackingPanel
+        open={!!trackingContainer}
+        onClose={() => { setTrackingContainer(null); setTrackingCachedJson(null); }}
+        containerNo={trackingContainer || ''}
+        cachedRawJson={trackingCachedJson}
+      />
     </div>
   );
 }

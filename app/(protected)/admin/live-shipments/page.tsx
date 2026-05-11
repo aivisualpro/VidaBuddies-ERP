@@ -15,6 +15,7 @@ export default function LiveShipmentsPage() {
     svbid: string;
     customerName: string;
     status: string;
+    updatedETA?: string;
     initialData?: any;
   }> = [];
 
@@ -45,6 +46,7 @@ export default function LiveShipmentsPage() {
               svbid: ship.svbid || "",
               customerName: cpo.customer || "Unknown",
               status: normalizeStatus(ship.status),
+              updatedETA: ship.updatedETA || ship.ETA || "",
               initialData: (hasContainer && ship.shippingTrackingRecords && ship.shippingTrackingRecords.length > 0)
                 ? JSON.parse(JSON.stringify(ship.shippingTrackingRecords[ship.shippingTrackingRecords.length - 1]))
                 : null
@@ -57,12 +59,19 @@ export default function LiveShipmentsPage() {
 
   // Unique by svbid (shipping VBID) if available, otherwise by containerNo, otherwise keep all
   const seen = new Set<string>();
-  const uniqueContainers = containers.filter(item => {
-    const key = item.svbid || item.containerNo || `${item.id}-${item.poNo}-${Math.random()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const uniqueContainers = containers
+    .filter(item => {
+      const key = item.svbid || item.containerNo || `${item.id}-${item.poNo}-${Math.random()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      if (!a.updatedETA && !b.updatedETA) return 0;
+      if (!a.updatedETA) return 1;
+      if (!b.updatedETA) return -1;
+      return new Date(a.updatedETA).getTime() - new Date(b.updatedETA).getTime();
+    });
 
   if (isLoading) {
     return <TablePageSkeleton />;

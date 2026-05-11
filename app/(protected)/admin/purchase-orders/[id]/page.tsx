@@ -239,6 +239,15 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     return mapping;
   }, [customers]);
 
+  // Customer _id → name lookup
+  const customerNames = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    customers.forEach((cust: any) => {
+      if (cust._id) mapping[cust._id] = cust.name || cust.vbId || 'Unknown';
+    });
+    return mapping;
+  }, [customers]);
+
   const suppliers = storeSuppliers || [];
 
   const supplierLocations = useMemo(() => {
@@ -249,6 +258,36 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           const label = loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId;
           if (loc._id) mapping[loc._id] = label;       // ObjectId key (post-migration)
           if (loc.vbId) mapping[loc.vbId] = label;      // vbId key (legacy compat)
+        });
+      }
+    });
+    return mapping;
+  }, [suppliers]);
+
+  // Reverse lookup: location subdoc _id → parent supplier name
+  // Handles cases where ship.supplier stores a location _id instead of supplier _id
+  const supplierByLocationId = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    suppliers.forEach((sup: any) => {
+      if (sup.location && Array.isArray(sup.location)) {
+        sup.location.forEach((loc: any) => {
+          if (loc._id) mapping[loc._id] = sup.name;
+          if (loc.vbId) mapping[loc.vbId] = sup.name;
+        });
+      }
+    });
+    return mapping;
+  }, [suppliers]);
+
+  // Reverse lookup: location subdoc _id → parent supplier _id
+  // Used to resolve the supplier dropdown selection when ship.supplier is a location _id
+  const supplierIdByLocationId = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    suppliers.forEach((sup: any) => {
+      if (sup.location && Array.isArray(sup.location)) {
+        sup.location.forEach((loc: any) => {
+          if (loc._id) mapping[loc._id] = sup._id;
+          if (loc.vbId) mapping[loc.vbId] = sup._id;
         });
       }
     });
@@ -285,6 +324,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
+  const [selectedLocationForShipping, setSelectedLocationForShipping] = useState<string>("");
+  const [selectedCarrier, setSelectedCarrier] = useState<string>("");
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
@@ -326,11 +367,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       setShipVBNumber(po._id);
       const cpo = po.customerPO?.[addingShippingToCPO.idx];
       setShipVBSerial(cpo?._id || "");
+      setSelectedCarrier("");
     } else if (editingShipping && po) {
       const ship = po.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx];
       setShipVBNumber(ship?.VBNumber || po._id || "");
       setShipVBSerial(ship?.VBSerialNumber || "");
       setAutoSvbid(ship?.VBShipmentNumber || ship?.svbid || "");
+      setSelectedCarrier(ship?.carrier || "");
     }
   }, [addingShippingToCPO, editingShipping, po]);
 
@@ -385,6 +428,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       name: (loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId) as string,
     }));
   };
+
+  // Reset location when supplier changes (unless editing)
+  useEffect(() => {
+    if (!editingShipping) {
+      setSelectedLocationForShipping("");
+    }
+  }, [selectedSupplierForShipping]);
 
   useEffect(() => {
     if (po?.vbpoNo) {
@@ -680,6 +730,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       toast.success(editingShipping ? "Shipping Updated" : "Shipping Added");
       setAddingShippingToCPO(null);
       setEditingShipping(null);
+      setSelectedLocationForShipping("");
       fetchPO();
     } catch (e) {
       toast.error("Error saving shipping");
@@ -823,7 +874,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           />
         </div>
 
-        <div className="grid grid-cols-10 gap-6 p-0 h-full relative z-10">
+        <div className="grid grid-cols-10 gap-[14px] p-0 h-full relative z-10">
 
           {/* Column 1: Customer POs (Left Side) - 30% */}
           <div className="col-span-3 flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
@@ -857,48 +908,43 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                     />
 
                     <div className="relative z-10 flex flex-col gap-4">
-                      {/* Row 1: poNo and customerPONo (Inline) */}
+                      {/* Row 1: VBSerialNumber & customerPONo */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-black leading-tight text-foreground uppercase tracking-tight">
+                        <h3 className="text-lg font-black leading-tight text-foreground uppercase tracking-tight">
                           {cpo.VBSerialNumber || "UNNAMED"}
-                          </h3>
-                          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-muted/40 rounded-lg border border-border/50">
-                            <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">REF:</span>
-                            <span className="text-[9px] font-black tracking-widest text-foreground uppercase">
-                              {cpo.customerPONo || '-'}
-                            </span>
-                          </div>
-                        </div>
+                        </h3>
+                        <h3 className="text-lg font-black leading-tight text-foreground uppercase tracking-tight">
+                          {cpo.customerPONo || '-'}
+                        </h3>
                       </div>
 
                       <Separator className="bg-border/30" />
 
-                      {/* Row 2: Site Location (Resolved Name) */}
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5 text-primary" />
-                          <p className="text-[12px] font-bold uppercase tracking-tight text-foreground/90 truncate">
-                            {locations[cpo.customerLocation || ""] || cpo.customerLocation || "Generic Site"}
+                      {/* Row 2: Customer & Location */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Customer</p>
+                          <p className="text-xs font-bold text-foreground truncate" title={customerNames[cpo.customer?.toString() || ''] || cpo.customer || '-'}>
+                            {customerNames[cpo.customer?.toString() || ''] || cpo.customer || '-'}
+                          </p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Customer Location</p>
+                          <p className="text-xs font-bold text-foreground truncate" title={locations[cpo.customerLocation || ''] || cpo.customerLocation || '-'}>
+                            {locations[cpo.customerLocation || ''] || cpo.customerLocation || '-'}
                           </p>
                         </div>
                       </div>
 
                       {/* Row 3: Dates */}
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <p className="text-[9px] font-black uppercase text-muted-foreground tracking-[0.2em] opacity-70">PO Date</p>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3 w-3 text-primary/70" />
-                            <p className="text-[11px] font-bold text-foreground/80">{formatDate(cpo.customerPODate)}</p>
-                          </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
+                          <p className="text-xs font-bold text-foreground">{formatDate(cpo.customerPODate)}</p>
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-[9px] font-black uppercase text-muted-foreground tracking-[0.2em] opacity-70">Requested</p>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3 w-3 text-primary" />
-                            <p className="text-[11px] font-bold text-foreground">{formatDate(cpo.requestedDeliveryDate)}</p>
-                          </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Requested Delivery</p>
+                          <p className="text-xs font-bold text-foreground">{formatDate(cpo.requestedDeliveryDate)}</p>
                         </div>
                       </div>
 
@@ -1068,9 +1114,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           </div>
                           <div>
                             <p className="text-sm font-bold tracking-tight flex items-center gap-2">
-                              {ship.svbid || po.vbpoNo}
+                              {ship.VBShipmentNumber || ship.svbid || po.vbpoNo}
+                              <span className="text-[10px] font-medium text-muted-foreground">{users[po.createdBy?.toLowerCase()] || po.createdBy || ''}</span>
                             </p>
-                            <p className="text-[10px] text-muted-foreground">from <span className="font-semibold text-foreground/70">{ship.parentCpoNo}</span></p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1109,7 +1155,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                 <MapPin className="h-3.5 w-3.5" />
                               </Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setSelectedSupplierForShipping(ship.supplier || ""); setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship }); }}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const rawSup = ship.supplier || ''; const resolvedSup = suppliers.find((s: any) => s._id === rawSup) ? rawSup : (supplierIdByLocationId[rawSup] || rawSup); setSelectedSupplierForShipping(resolvedSup); setSelectedLocationForShipping(ship.supplierLocation || (suppliers.find((s: any) => s._id === rawSup) ? '' : rawSup) || ''); setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship }); }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteShipping(ship._id, ship._cpoIdx, ship._shipIdx); }}>
@@ -1130,135 +1176,113 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         <div className="overflow-hidden">
                           <div className="p-5 space-y-4">
 
-                            {/* Row 1: Key Info — Container | BOL | Carrier | Vessel */}
+                            {/* Row 1: Supplier — 4 equal columns */}
                             <div className="grid grid-cols-4 gap-3">
-                              {[{ label: 'Container', value: ship.containerNo, icon: Box }, { label: 'BOL Number', value: ship.BOLNumber, icon: Hash }, { label: 'Carrier', value: ship.carrier, icon: Truck }, { label: 'Vessel / Trip', value: ship.vessellTrip, icon: Ship }].map((item, i) => (
-                                <div key={i} className="flex items-start gap-2 min-w-0">
-                                  <div className="h-7 w-7 rounded-md bg-muted/60 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <item.icon className="h-3.5 w-3.5 text-primary/70" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">{item.label}</p>
-                                    <p className="text-xs font-bold text-foreground truncate uppercase" title={item.value || '-'}>{item.value || '-'}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* Row 2: Supplier Section */}
-                            <div className="rounded-xl bg-gradient-to-r from-primary/[0.04] to-transparent border border-primary/10 p-3">
-                              <div className="flex items-center gap-1.5 mb-2">
-                                <Factory className="h-3.5 w-3.5 text-primary" />
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-primary">Supplier</p>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier</p>
+                                <p className="text-xs font-bold text-foreground truncate" title={ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || supplierByLocationId[ship.supplier] || '-'}>
+                                  {ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || supplierByLocationId[ship.supplier] || '-'}
+                                </p>
                               </div>
-                              <div className="grid grid-cols-4 gap-3">
-                                <div className="col-span-2 min-w-0">
-                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
-                                  <p className="text-xs font-bold text-foreground truncate" title={
-                                    (() => {
-                                      const supName = ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || '';
-                                      const locName = ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || '';
-                                      return supName ? `${supName} — ${locName}` : locName || '-';
-                                    })()
-                                  }>
-                                    {(() => {
-                                      const supName = ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || '';
-                                      const locName = ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || '';
-                                      return supName ? (
-                                        <><span className="text-primary">{supName}</span> <span className="text-muted-foreground">—</span> {locName}</>
-                                      ) : (locName || '-');
-                                    })()}
-                                  </p>
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
-                                  <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
-                                  <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
-                                </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier Location</p>
+                                <p className="text-xs font-bold text-foreground truncate" title={ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || supplierLocations[ship.supplier] || '-'}>
+                                  {ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || supplierLocations[ship.supplier] || '-'}
+                                </p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
+                                <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO Date</p>
+                                <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
                               </div>
                             </div>
 
-                            {/* Row 3: Products */}
-                            <div>
-                              <div className="flex items-center gap-1.5 mb-2">
-                                <Package className="h-3.5 w-3.5 text-primary/70" />
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Products</p>
+                            {/* Row 2: Container | BOL | Carrier | Booking Ref */}
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Container No</p>
+                                <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.containerNo || '-'}>{ship.containerNo || '-'}</p>
                               </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {(() => {
-                                  const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
-                                    : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
-                                      : ship.product ? [ship.product] : [];
-                                  return productIds.length > 0
-                                    ? productIds.map((pid: string, i: number) => (
-                                      <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg">
-                                        {products[pid] || pid}
-                                      </span>
-                                    ))
-                                    : <span className="text-xs text-muted-foreground">—</span>;
-                                })()}
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">BOL Number</p>
+                                <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.BOLNumber || '-'}>{ship.BOLNumber || '-'}</p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Carrier</p>
+                                <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.carrier || '-'}>{ship.carrier || '-'}</p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Carrier Booking Ref</p>
+                                <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.carrierBookingRef || '-'}>{ship.carrierBookingRef || '-'}</p>
                               </div>
                             </div>
 
-                            {/* Row 4: Logistics — Ports & Dates */}
-                            <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 overflow-hidden">
-                              <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-                                <Anchor className="h-3.5 w-3.5 text-primary/70" />
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Logistics & Route</p>
+                            {/* Row 3: Ports & Dates */}
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Port Of Lading</p>
+                                <p className="text-xs font-bold text-foreground truncate" title={ship.portOfLading || '-'}>{ship.portOfLading || '-'}</p>
                               </div>
-                              <div className="grid grid-cols-5 gap-0 px-3 pb-2.5 pt-1">
-                                {[
-                                  { label: 'Port of Lading', value: ship.portOfLading },
-                                  { label: 'Port of Entry', value: ship.portOfEntryShipTo },
-                                  { label: 'Landing Date', value: formatDate(ship.dateOfLanding) },
-                                  { label: 'ETA', value: formatDate(ship.ETA) },
-                                  { label: 'Updated ETA', value: formatDate(ship.updatedETA), highlight: true },
-                                ].map((item, i) => (
-                                  <div key={i} className={cn("text-center py-1", i < 4 && 'border-r border-border/40')}>
-                                    <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">{item.label}</p>
-                                    <p className={cn("text-[10px] font-bold truncate px-1", item.highlight ? 'text-primary' : 'text-foreground')} title={item.value || '-'}>{item.value || '-'}</p>
-                                  </div>
-                                ))}
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Port Of Entry Ship To</p>
+                                <p className="text-xs font-bold text-foreground truncate" title={ship.portOfEntryShipTo || '-'}>{ship.portOfEntryShipTo || '-'}</p>
                               </div>
-                              <div className="border-t border-border/30 px-3 py-2">
-                                <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">Booking Ref</p>
-                                <p className="text-[10px] font-bold text-foreground">{ship.carrierBookingRef || '-'}</p>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Date Of Landing</p>
+                                <p className="text-xs font-bold text-foreground">{formatDate(ship.dateOfLanding)}</p>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">ETA</p>
+                                <p className="text-xs font-bold text-foreground">{formatDate(ship.ETA)}</p>
                               </div>
                             </div>
 
-                            {/* Row 5: Cargo & Financials — Two-Column Layout */}
-                            <div className="grid grid-cols-2 gap-3">
-                              {/* Cargo */}
-                              <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <Weight className="h-3.5 w-3.5 text-primary/70" />
-                                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Weights & Measures</p>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                  {[
-                                    { label: 'Drums', value: ship.drums || 0 },
-                                    { label: 'Pallets', value: ship.pallets || 0 },
-                                    { label: 'Gallons', value: ship.gallons || 0 },
-                                    { label: 'Net KG', value: ship.netWeightKG || 0 },
-                                    { label: 'Gross KG', value: ship.grossWeightKG || 0 },
-                                  ].map((item, i) => (
-                                    <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
-                                      <p className="text-xs font-bold text-foreground">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
-                                      <p className="text-[8px] font-bold uppercase text-foreground/50 tracking-wider">{item.label}</p>
-                                    </div>
-                                  ))}
+                            {/* Row 4: Products & Measures */}
+                            <div className="grid grid-cols-2 gap-4">
+                              {/* Column 1: Products */}
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider mb-1.5">Products</p>
+                                <div className="flex flex-col gap-1">
+                                  {(() => {
+                                    const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
+                                      : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
+                                        : ship.product ? [ship.product] : [];
+                                    return productIds.length > 0
+                                      ? productIds.map((pid: string, i: number) => (
+                                        <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg w-fit">
+                                          {products[pid] || pid}
+                                        </span>
+                                      ))
+                                      : <span className="text-xs text-muted-foreground">—</span>;
+                                  })()}
                                 </div>
                               </div>
-                              {/* Financials */}
-                              <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
+                              {/* Column 2: Drums / Pallets / Gallons */}
+                              <div className="flex flex-wrap items-start gap-x-6 gap-y-1 pt-5">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Drums</p>
+                                  <p className="text-xs font-bold text-foreground">{(ship.drums || 0).toLocaleString()}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Pallets</p>
+                                  <p className="text-xs font-bold text-foreground">{(ship.pallets || 0).toLocaleString()}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Gallons</p>
+                                  <p className="text-xs font-bold text-foreground">{(ship.gallons || 0).toLocaleString()}</p>
+                                </div>
+                              </div>
+                            </div>
+                            {/* Row 5: Financials */}
+                            <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
                                 <div className="flex items-center gap-1.5 mb-2">
                                   <DollarSign className="h-3.5 w-3.5 text-primary/70" />
                                   <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Financials</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                   {[
                                     { label: 'Inv Value', value: `$${(ship.invValue || 0).toLocaleString()}` },
                                     { label: 'Est. Duties', value: `$${(ship.estTrumpDuties || 0).toLocaleString()}` },
@@ -1271,7 +1295,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                     </div>
                                   ))}
                                 </div>
-                              </div>
                             </div>
 
                             {/* Row 6: Documentation & Compliance */}
@@ -1329,18 +1352,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               </div>
                             </div>
 
-                            {/* Footer: Created By */}
-                            <div className="flex items-center justify-between pt-2 border-t border-border/20">
-                              <div className="flex items-center gap-2">
-                                <div className="h-5 w-5 rounded-md bg-muted flex items-center justify-center">
-                                  <User className="h-3 w-3 text-muted-foreground" />
-                                </div>
-                                <div>
-                                  <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider">Created By</p>
-                                  <p className="text-[10px] font-bold">{users[po.createdBy?.toLowerCase()] || po.createdBy || 'System'}</p>
-                                </div>
-                              </div>
-                            </div>
                           </div>
                         </div>
                       </div>
@@ -1493,7 +1504,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         const CARRIER_OPTIONS = ['MAERSK', 'MSC', 'CMA CGM', 'COSCO', 'ONE', 'Evergreen', 'Hapag-Lloyd', 'ZIM', 'Yang Ming', 'HMM'];
 
         return (
-          <Dialog open={!!addingShippingToCPO || !!editingShipping} onOpenChange={(v) => { if (!v) { setAddingShippingToCPO(null); setEditingShipping(null); } }}>
+          <Dialog open={!!addingShippingToCPO || !!editingShipping} onOpenChange={(v) => { if (!v) { setAddingShippingToCPO(null); setEditingShipping(null); setSelectedLocationForShipping(""); } }}>
             <DialogContent className="max-w-[90vw] w-[1100px] h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
               <form onSubmit={handleSaveShipping} className="flex flex-col flex-1 min-h-0">
                 {/* Header */}
@@ -1546,30 +1557,23 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="space-y-1">
                           <Label className="text-xs">VB Number</Label>
-                          <select
-                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                          <SearchableSelect
+                            options={vbNumberOptions}
                             value={shipVBNumber}
-                            onChange={(e) => { setShipVBNumber(e.target.value); setShipVBSerial(""); setAutoSvbid(""); }}
-                          >
-                            <option value="">Select VB Number...</option>
-                            {vbNumberOptions.map((opt: any) => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
+                            onChange={(v) => { setShipVBNumber(v); setShipVBSerial(""); setAutoSvbid(""); }}
+                            placeholder="Select VB Number..."
+                            searchPlaceholder="Search VB Number..."
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">VB Serial Number</Label>
-                          <select
-                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                          <SearchableSelect
+                            options={shipCPOs.map((cpo: any) => ({ value: cpo._id, label: `${cpo.VBSerialNumber || cpo._id}${cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}` }))}
                             value={shipVBSerial}
-                            onChange={(e) => { setShipVBSerial(e.target.value); setAutoSvbid(""); }}
-                            disabled={!shipVBNumber}
-                          >
-                            <option value="">{shipVBNumber ? "Select VB Serial..." : "Select VB Number first"}</option>
-                            {shipCPOs.map((cpo: any) => (
-                              <option key={cpo._id} value={cpo._id}>{cpo.VBSerialNumber || cpo._id}{cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}</option>
-                            ))}
-                          </select>
+                            onChange={(v) => { setShipVBSerial(v); setAutoSvbid(""); }}
+                            placeholder={shipVBNumber ? "Select VB Serial..." : "Select VB Number first"}
+                            searchPlaceholder="Search VB Serial..."
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">VB Shipment Number</Label>
@@ -1588,15 +1592,19 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <Label className="text-xs">Status</Label>
                           <select name="status" className="w-full border rounded-md h-9 px-3 text-sm bg-background" defaultValue={(() => {
                             const raw = (editingShipping?.data?.status || '').toLowerCase().trim();
+                            if (raw === 'ordered') return 'Ordered';
                             if (raw === 'delivered' || raw === 'arrived') return 'Delivered';
                             if (raw === 'in transit' || raw === 'in_transit' || raw === 'on water') return 'In Transit';
                             if (raw === 'planned' || raw === 'booking confirmed') return 'Planned';
-                            return 'Pending';
+                            if (raw === 'cancelled') return 'Cancelled';
+                            return editingShipping ? 'Pending' : 'Ordered';
                           })()}>
                             <option value="Pending">Pending</option>
+                            <option value="Ordered">Ordered</option>
                             <option value="Planned">Planned</option>
                             <option value="In Transit">In Transit</option>
                             <option value="Delivered">Delivered</option>
+                            <option value="Cancelled">Cancelled</option>
                           </select>
                         </div>
                         <div className="space-y-1">
@@ -1636,31 +1644,27 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="space-y-1">
                           <Label className="text-xs">Supplier</Label>
-                          <select
+                          <SearchableSelect
                             name="supplier"
-                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                            options={suppliers.map((sup: any) => ({ value: sup._id, label: `${sup.name} (${sup.vbId})` }))}
                             value={selectedSupplierForShipping}
-                            onChange={(e) => setSelectedSupplierForShipping(e.target.value)}
-                          >
-                            <option value="">Select Supplier</option>
-                            {suppliers.map((sup: any) => (
-                              <option key={sup._id} value={sup._id}>{sup.name} ({sup.vbId})</option>
-                            ))}
-                          </select>
+                            onChange={(v) => setSelectedSupplierForShipping(v)}
+                            placeholder="Select Supplier"
+                            searchPlaceholder="Search suppliers..."
+                            allowClear
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Supplier Location</Label>
-                          <select
+                          <SearchableSelect
                             name="supplierLocation"
-                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
-                            defaultValue={editingShipping?.data?.supplierLocation}
-                            disabled={!selectedSupplierForShipping}
-                          >
-                            <option value="">{selectedSupplierForShipping ? 'Select Location' : 'Select Supplier First'}</option>
-                            {getSupplierLocationOptions().map((loc) => (
-                              <option key={loc.id} value={loc.id}>{loc.name}</option>
-                            ))}
-                          </select>
+                            options={getSupplierLocationOptions().map((loc) => ({ value: loc.id, label: loc.name }))}
+                            value={selectedLocationForShipping}
+                            onChange={(v) => setSelectedLocationForShipping(v)}
+                            placeholder={selectedSupplierForShipping ? 'Select Location' : 'Select Supplier First'}
+                            searchPlaceholder="Search locations..."
+                            allowClear
+                          />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -1684,34 +1688,18 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <Label className="text-xs">Carrier</Label>
-                          <select
+                          <SearchableSelect
                             name="carrier"
-                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
-                            defaultValue={editingShipping?.data?.carrier || ''}
-                            onChange={(e) => {
-                              if (e.target.value === '__add_new__') {
-                                const newCarrier = prompt('Enter new carrier name:');
-                                if (newCarrier && newCarrier.trim()) {
-                                  const opt = document.createElement('option');
-                                  opt.value = newCarrier.trim();
-                                  opt.textContent = newCarrier.trim();
-                                  e.target.insertBefore(opt, e.target.lastElementChild);
-                                  e.target.value = newCarrier.trim();
-                                } else {
-                                  e.target.value = editingShipping?.data?.carrier || '';
-                                }
-                              }
-                            }}
-                          >
-                            <option value="">Select Carrier</option>
-                            {CARRIER_OPTIONS.map(c => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                            {editingShipping?.data?.carrier && !CARRIER_OPTIONS.includes(editingShipping.data.carrier) && (
-                              <option value={editingShipping.data.carrier}>{editingShipping.data.carrier}</option>
-                            )}
-                            <option value="__add_new__">＋ Add New Carrier...</option>
-                          </select>
+                            options={[
+                              ...CARRIER_OPTIONS.map(c => ({ value: c, label: c })),
+                              ...(selectedCarrier && !CARRIER_OPTIONS.includes(selectedCarrier) ? [{ value: selectedCarrier, label: selectedCarrier }] : []),
+                            ]}
+                            value={selectedCarrier}
+                            onChange={(v) => setSelectedCarrier(v)}
+                            placeholder="Select Carrier"
+                            searchPlaceholder="Search carriers..."
+                            allowClear
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Booking Ref</Label>
@@ -1848,7 +1836,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
                 {/* Footer */}
                 <div className="px-6 py-3 border-t bg-muted/20 flex items-center justify-end gap-2 shrink-0">
-                  <Button type="button" variant="outline" size="sm" onClick={() => { setAddingShippingToCPO(null); setEditingShipping(null); }}>Cancel</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setAddingShippingToCPO(null); setEditingShipping(null); setSelectedLocationForShipping(""); }}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={actionLoading}>{actionLoading ? "Saving..." : (editingShipping ? "Update Shipping" : "Add Shipping")}</Button>
                 </div>
               </form>
