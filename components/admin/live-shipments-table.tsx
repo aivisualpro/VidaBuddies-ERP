@@ -28,6 +28,7 @@ interface ContainerInfo {
   customerName: string;
   status: string;
   updatedETA?: string;
+  rawShipData?: any;
   initialData?: TrackingData;
 }
 
@@ -105,7 +106,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
   const [rawJsonData, setRawJsonData] = useState<{ containerNo: string, json: string } | null>(null);
   const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
   const [trackingCachedJson, setTrackingCachedJson] = useState<any>(null);
-  const [detailShippingId, setDetailShippingId] = useState<string | null>(null);
+  const [detailShipData, setDetailShipData] = useState<any>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -270,7 +271,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                   <TableRow key={idx} className="h-auto">
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
                       <button
-                        onClick={() => container.shippingId && setDetailShippingId(container.shippingId)}
+                        onClick={() => container.rawShipData && setDetailShipData(container.rawShipData)}
                         className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
                       >
                         {container.svbid || '-'}
@@ -393,11 +394,12 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
       />
 
       <ShipmentDetailPanel
-        open={!!detailShippingId}
-        onClose={() => setDetailShippingId(null)}
-        shipmentId={detailShippingId}
+        open={!!detailShipData}
+        onClose={() => setDetailShipData(null)}
+        shipmentId={null}
+        shipmentData={detailShipData}
         onTrack={(cn) => {
-          setDetailShippingId(null);
+          setDetailShipData(null);
           setTrackingCachedJson(null);
           setTrackingContainer(cn);
         }}

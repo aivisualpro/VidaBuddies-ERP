@@ -31,15 +31,27 @@ export default function DashboardPage() {
               const status = (ship.status || "").toLowerCase().trim();
               let category = "pending";
               
+              // Determine base category
               if (status === "delivered" || status === "arrived") {
-                delivered++;
                 category = "delivered";
               } else if (status === "in transit" || status === "in_transit" || status === "on water") {
-                inTransit++;
                 category = "inTransit";
-              } else {
-                pending++;
               }
+
+              // Auto-flag: if ETA is past and still "in transit", treat as delivered
+              if (category === "inTransit") {
+                const eta = ship.updatedETA || ship.ETA || "";
+                if (eta) {
+                  const etaDate = new Date(eta);
+                  if (!isNaN(etaDate.getTime()) && etaDate.getTime() < Date.now()) {
+                    category = "delivered";
+                  }
+                }
+              }
+
+              if (category === "delivered") delivered++;
+              else if (category === "inTransit") inTransit++;
+              else pending++;
               
               // Map locations
               if (category === "inTransit") {
@@ -54,9 +66,29 @@ export default function DashboardPage() {
                         const lat = parseFloat(parts[0].trim());
                         const lng = parseFloat(parts[1].trim());
                         if (!isNaN(lat) && !isNaN(lng)) {
+                          // Port geocoding lookup
+                          const _ports: Record<string, [number, number]> = {
+                            'chennai': [13.08, 80.27], 'ennore': [13.22, 80.32], 'mundra': [22.74, 69.72],
+                            'santos': [-23.96, -46.31], 'callao': [-12.06, -77.14], 'san antonio': [-33.59, -71.62],
+                            'moin': [10.00, -83.08], 'kingston': [17.97, -76.84], 'freeport': [26.53, -78.70],
+                            'new york': [40.68, -74.04], 'new york city': [40.68, -74.04],
+                            'philadelphia': [39.90, -75.14], 'brampton': [43.73, -79.76],
+                            'montreal': [45.50, -73.55], 'seattle': [47.60, -122.34],
+                            'london gateway': [51.45, 0.45], 'bordeaux': [44.86, -0.57],
+                            'colombo': [6.93, 79.85], 'singapore': [1.26, 103.82],
+                            'piraeus': [37.94, 23.64], 'p&w': [39.90, -75.14],
+                          };
+                          const _fp = (n?: string) => {
+                            if (!n) return undefined;
+                            const lc = n.toLowerCase().trim();
+                            for (const [k, c] of Object.entries(_ports)) { if (lc.includes(k) || k.includes(lc)) return c; }
+                            return undefined;
+                          };
+                          const oC = _fp(lastRecord.pol_name) || _fp(ship.portOfLading);
+                          const dC = _fp(lastRecord.pod_name) || _fp(ship.portOfEntryShipTo);
+
                           locations.push({
-                            lat, 
-                            lng,
+                            lat, lng,
                             title: (lastRecord.last_event_code === 'DEPA' || ship.status === 'IN_TRANSIT' || ship.status === 'In Transit' || ship.status === 'On Water') ? `On Water (${lastRecord.vessel_names || 'Vessel'})` : (lastRecord.last_event_location || ship.vessellTrip || "Unknown Location"),
                             containerNo: ship.containerNo,
                             vbid: po.vbpoNo,
@@ -68,7 +100,9 @@ export default function DashboardPage() {
                             updatedAt: lastRecord.updated_at || null,
                             vessel: lastRecord.vessel_names || ship.vesselName || null,
                             type: lastRecord.container_size_type || "",
-                            rawJson: lastRecord.raw_json || null
+                            rawJson: lastRecord.raw_json || null,
+                            originLat: oC?.[0], originLng: oC?.[1],
+                            destLat: dC?.[0], destLng: dC?.[1],
                           });
                         }
                       }

@@ -17,6 +17,7 @@ export default function LiveShipmentsPage() {
     customerName: string;
     status: string;
     updatedETA?: string;
+    rawShipData?: any;
     initialData?: any;
   }> = [];
 
@@ -59,6 +60,7 @@ export default function LiveShipmentsPage() {
               customerName: cpo.customer || "Unknown",
               status,
               updatedETA: eta,
+              rawShipData: ship,
               initialData: (hasContainer && ship.shippingTrackingRecords && ship.shippingTrackingRecords.length > 0)
                 ? JSON.parse(JSON.stringify(ship.shippingTrackingRecords[ship.shippingTrackingRecords.length - 1]))
                 : null
