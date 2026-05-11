@@ -19,11 +19,16 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  pool: true,
+  maxConnections: 3,
   requireTLS: true,
   tls: {
     minVersion: "TLSv1.2",
     ciphers: "HIGH",
   },
+  connectionTimeout: 10000,  // 10s to establish connection
+  greetingTimeout: 10000,    // 10s for SMTP greeting
+  socketTimeout: 30000,      // 30s for socket idle
 });
 
 /**
@@ -84,44 +89,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2) Then loop through any Google Drive files
+    // 2) Download Google Drive files in parallel
     if (fileIds && fileIds.length > 0) {
       const drive = getDrive();
 
-      for (const file of fileIds) {
-        try {
-          // Skip folders
-          if (file.mimeType === "application/vnd.google-apps.folder") continue;
+      const downloadResults = await Promise.allSettled(
+        fileIds
+          .filter((file: any) => file.mimeType !== "application/vnd.google-apps.folder")
+          .map(async (file: any) => {
+            const isGoogleDoc = file.mimeType?.startsWith("application/vnd.google-apps.");
+            const response = isGoogleDoc
+              ? await drive.files.export(
+                  { fileId: file.id, mimeType: "application/pdf" },
+                  { responseType: "arraybuffer" }
+                )
+              : await drive.files.get(
+                  { fileId: file.id, alt: "media" },
+                  { responseType: "arraybuffer" }
+                );
 
-          let response;
-          const isGoogleDoc = file.mimeType?.startsWith("application/vnd.google-apps.");
+            const buffer = Buffer.from(response.data as ArrayBuffer);
+            const filename = isGoogleDoc
+              ? file.name.replace(/\.[^.]+$/, "") + ".pdf"
+              : file.name;
 
-          if (isGoogleDoc) {
-            response = await drive.files.export(
-              { fileId: file.id, mimeType: "application/pdf" },
-              { responseType: "arraybuffer" }
-            );
-          } else {
-            response = await drive.files.get(
-              { fileId: file.id, alt: "media" },
-              { responseType: "arraybuffer" }
-            );
-          }
+            return { filename, content: buffer, meta: { fileId: file.id, name: file.name, mimeType: file.mimeType, size: file.size || "0" } };
+          })
+      );
 
-          const buffer = Buffer.from(response.data as ArrayBuffer);
-          const filename = isGoogleDoc
-            ? file.name.replace(/\.[^.]+$/, "") + ".pdf"
-            : file.name;
-
-          attachments.push({ filename, content: buffer });
-          attachmentsMeta.push({
-            fileId: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: file.size || "0",
-          });
-        } catch (err: any) {
-          console.error(`Failed to download file ${file.name}:`, err.message);
+      for (const result of downloadResults) {
+        if (result.status === "fulfilled") {
+          attachments.push({ filename: result.value.filename, content: result.value.content });
+          attachmentsMeta.push(result.value.meta);
+        } else {
+          console.error("[Email API] File download failed:", result.reason?.message);
         }
       }
     }
