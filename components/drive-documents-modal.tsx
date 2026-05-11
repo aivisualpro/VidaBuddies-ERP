@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose-dialog";
 import {
   Paperclip, Upload, FolderOpen, Loader2, FileText, Image, File,
-  Eye, EyeOff, Package, Ship, ShoppingCart, Mail, Send,
+  Eye, EyeOff, Package, Ship, ShoppingCart,
   FileVideo, FileAudio, FileSpreadsheet, FileArchive,
-  Trash2, X, Check,
+  X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -25,9 +27,11 @@ interface DocRecord {
   createdAt: string;
 }
 
-interface GroupedDocs {
-  label: string;
+interface SidebarItem {
+  id: string;          // _id of the record
+  label: string;       // VBNumber / VBSerialNumber / VBShipmentNumber
   kind: "VBNumber" | "VBSerialNumber" | "VBShipmentNumber";
+  collection: "vidapos" | "vbcustomerpos" | "vbshippings";
   docs: DocRecord[];
 }
 
@@ -77,139 +81,337 @@ function kindColor(kind: string) {
 }
 
 function thumbUrl(fileId: string) {
-  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+  return `https://lh3.googleusercontent.com/d/${fileId}=w400`;
 }
 
 /* ─── Component ─── */
 export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: DriveDocumentsModalProps) {
   const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState<GroupedDocs[]>([]);
-  const [activeGroup, setActiveGroup] = useState("all");
-  const [activeTab, setActiveTab] = useState<"all" | "Internal" | "External" | "emails">("all");
+  const [items, setItems] = useState<SidebarItem[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<DocRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeFileName, setMergeFileName] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Emails
-  const [emailRecords, setEmailRecords] = useState<any[]>([]);
-  const [loadingEmails, setLoadingEmails] = useState(false);
+  // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
   const [emailComposeMode, setEmailComposeMode] = useState<"compose" | "view">("compose");
-  const [emailInitialData, setEmailInitialData] = useState<EmailInitialData | undefined>();
+  const [emailInitialData, setEmailInitialData] = useState<EmailInitialData | undefined>(undefined);
+  const [emailRecords, setEmailRecords] = useState<any[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [showEmailHistory, setShowEmailHistory] = useState(false);
+  const [docTypeFilter, setDocTypeFilter] = useState<"all" | "Internal" | "External">("all");
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Upload progress
+  const [uploadFiles, setUploadFiles] = useState<{ name: string; status: "pending" | "uploading" | "done" | "error" }[]>([]);
+  const [uploadCompleted, setUploadCompleted] = useState(0);
+  const [uploadTotal, setUploadTotal] = useState(0);
+  const [uploadStartTime, setUploadStartTime] = useState(0);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const fetchDocs = useCallback(async () => {
-    if (!poNumber) return;
+    if (!poNumber) { setLoading(false); return; }
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/drive-documents?vbNumber=${encodeURIComponent(poNumber)}`);
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error); return; }
-      const result: GroupedDocs[] = [];
-      if (data.po?.driveDocuments?.length) result.push({ label: data.po.VBNumber, kind: "VBNumber", docs: data.po.driveDocuments });
-      for (const c of (data.cpos || [])) if (c.driveDocuments?.length) result.push({ label: c.VBSerialNumber, kind: "VBSerialNumber", docs: c.driveDocuments });
-      for (const s of (data.ships || [])) if (s.driveDocuments?.length) result.push({ label: s.VBShipmentNumber, kind: "VBShipmentNumber", docs: s.driveDocuments });
-      setGroups(result);
+      if (!res.ok) { toast.error(data.error); setLoading(false); return; }
+
+      const result: SidebarItem[] = [];
+      if (data.po) {
+        result.push({ id: data.po._id, label: data.po.VBNumber, kind: "VBNumber", collection: "vidapos", docs: data.po.driveDocuments || [] });
+      }
+      for (const c of (data.cpos || [])) {
+        result.push({ id: c._id, label: c.VBSerialNumber, kind: "VBSerialNumber", collection: "vbcustomerpos", docs: c.driveDocuments || [] });
+      }
+      for (const s of (data.ships || [])) {
+        result.push({ id: s._id, label: s.VBShipmentNumber, kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [] });
+      }
+      setItems(result);
     } catch { toast.error("Failed to load documents"); }
     finally { setLoading(false); }
   }, [poNumber]);
 
-  const fetchEmails = useCallback(async () => {
-    if (!poNumber) return;
-    setLoadingEmails(true);
-    try {
-      const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(poNumber)}`);
-      const data = await res.json();
-      if (res.ok) setEmailRecords(data.emails || []);
-    } catch { /* */ }
-    finally { setLoadingEmails(false); }
-  }, [poNumber]);
-
   useEffect(() => {
     if (open) {
-      fetchDocs(); fetchEmails();
-      setActiveGroup("all"); setActiveTab("all");
-      setSelectedIds(new Set()); setPreviewFile(null);
+      fetchDocs();
+      setSelected(null);
+      setPreviewFile(null);
     }
-  }, [open, fetchDocs, fetchEmails]);
+  }, [open, fetchDocs]);
 
-  // Intercept Escape: close preview first, then modal
+  // Intercept Escape: close preview first
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (previewFile) {
-          e.preventDefault();
-          e.stopPropagation();
-          setPreviewFile(null);
-        }
+      if (e.key === "Escape" && previewFile) {
+        e.preventDefault(); e.stopPropagation();
+        setPreviewFile(null);
       }
     };
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [open, previewFile]);
 
-  // Filtered docs
-  const filteredDocs: { doc: DocRecord; source: string; kind: string }[] = [];
-  if (activeTab !== "emails") {
-    for (const g of groups) {
-      if (activeGroup !== "all" && g.label !== activeGroup) continue;
-      for (const d of g.docs) {
-        if (activeTab !== "all" && d.documentType !== activeTab) continue;
-        filteredDocs.push({ doc: d, source: g.label, kind: g.kind });
-      }
+  const selectedItem = items.find(i => i.id === selected) || null;
+
+  // All docs or selected docs
+  const visibleDocs: { doc: DocRecord; source: string; kind: string }[] = [];
+  if (selectedItem) {
+    for (const d of selectedItem.docs) visibleDocs.push({ doc: d, source: selectedItem.label, kind: selectedItem.kind });
+  } else {
+    for (const item of items) {
+      for (const d of item.docs) visibleDocs.push({ doc: d, source: item.label, kind: item.kind });
     }
   }
 
-  const allDocs = groups.flatMap(g => g.docs);
-  const allCount = allDocs.length;
-  const internalCount = allDocs.filter(d => d.documentType === "Internal").length;
-  const externalCount = allDocs.filter(d => d.documentType === "External").length;
+  const totalDocs = items.reduce((sum, i) => sum + i.docs.length, 0);
 
-  const sidebarKinds = [
-    { kind: "VBNumber" as const, label: "Purchase Orders", items: groups.filter(g => g.kind === "VBNumber") },
-    { kind: "VBSerialNumber" as const, label: "Customer POs", items: groups.filter(g => g.kind === "VBSerialNumber") },
-    { kind: "VBShipmentNumber" as const, label: "Shipments", items: groups.filter(g => g.kind === "VBShipmentNumber") },
-  ];
+  // Search + type filter
+  const filteredDocs = visibleDocs.filter(v => {
+    if (searchQuery.trim() && !v.doc.documentName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (docTypeFilter !== "all" && v.doc.documentType !== docTypeFilter) return false;
+    return true;
+  });
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selCount = selectedIds.size;
-  const hasExternalSelected = selCount > 0 && Array.from(selectedIds).some(id => filteredDocs.find(d => d.doc.driveFileId === id)?.doc.documentType === "External");
-
-  const openEmailView = (email: any) => {
-    setEmailComposeMode("view");
-    setEmailInitialData({
-      id: email._id,
-      type: email.type || "Invoice",
-      reference: email.reference || "",
-      to: (email.to || []).join(", "),
-      cc: (email.cc || []).join(", "),
-      subject: email.subject || "",
-      body: email.body || "",
-      from: email.from || "info@app.vidabuddies.com",
-      sentAt: email.sentAt,
-      attachments: (email.attachments || []).map((a: any) => ({
-        id: a.fileId || a.id || "",
-        name: a.name || "",
-        mimeType: a.mimeType || "",
-        size: String(a.size || "0"),
-      })),
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
     });
-    setEmailComposeOpen(true);
   };
+
+  // Helper: get selected doc records with their source item info
+  const getSelectedDocs = () => {
+    return filteredDocs.filter((_, idx) => {
+      const d = filteredDocs[idx].doc;
+      const cardId = `${d.driveFileId}-${idx}`;
+      return selectedIds.has(cardId);
+    });
+  };
+
+  /* ─── Delete handler ─── */
+  const handleDelete = async () => {
+    if (selCount === 0) return;
+    if (!confirm(`Delete ${selCount} file(s)? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      // Group by source item (collection + recordId)
+      const bySource = new Map<string, { collection: string; recordId: string; fileIds: string[] }>();
+      for (const selId of selectedIds) {
+        const idx = filteredDocs.findIndex((_, i) => `${filteredDocs[i].doc.driveFileId}-${i}` === selId);
+        if (idx < 0) continue;
+        const item = items.find(it => it.docs.includes(filteredDocs[idx].doc));
+        if (!item) continue;
+        const key = `${item.collection}:${item.id}`;
+        if (!bySource.has(key)) bySource.set(key, { collection: item.collection, recordId: item.id, fileIds: [] });
+        bySource.get(key)!.fileIds.push(filteredDocs[idx].doc.driveFileId);
+      }
+      for (const [, src] of bySource) {
+        await fetch("/api/admin/drive-documents", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(src),
+        });
+      }
+      toast.success(`${selCount} file(s) deleted`);
+      setSelectedIds(new Set());
+      fetchDocs();
+    } catch { toast.error("Delete failed"); }
+    finally { setDeleting(false); }
+  };
+
+  /* ─── Merge handler ─── */
+  const handleMergeClick = () => {
+    const timestamp = new Date().toISOString().split("T")[0];
+    setMergeFileName(`Merged_${poNumber}_${timestamp}`);
+    setMergeDialogOpen(true);
+  };
+
+  const handleMerge = async () => {
+    if (!mergeFileName.trim()) { toast.error("Filename is required"); return; }
+    setMerging(true);
+    try {
+      // Build cardId -> driveFileId map and find source item
+      const fileIds: string[] = [];
+      let sourceItem: SidebarItem | undefined;
+      filteredDocs.forEach((item, idx) => {
+        const cardId = `${item.doc.driveFileId}-${idx}`;
+        if (selectedIds.has(cardId) && item.doc.driveFileId) {
+          fileIds.push(item.doc.driveFileId);
+          // Use first selected doc's source for saving merged file
+          if (!sourceItem) {
+            sourceItem = items.find(it => it.docs.includes(item.doc));
+          }
+        }
+      });
+
+      if (fileIds.length < 2) {
+        toast.error("Need at least 2 files with valid IDs to merge");
+        setMerging(false);
+        return;
+      }
+
+      // Determine where to save: selectedItem first, else source of first selected doc
+      const targetItem = selectedItem || sourceItem;
+
+      const res = await fetch("/api/admin/drive/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds, poNumber, fileName: mergeFileName.trim() }),
+      });
+      const data = await res.json();
+      console.log("[Merge] Response:", data);
+      if (res.ok) {
+        // Save merged doc to the target collection
+        if (targetItem && data.uploaded) {
+          const docRecord = {
+            documentName: (mergeFileName.trim().endsWith('.pdf') ? mergeFileName.trim() : `${mergeFileName.trim()}.pdf`),
+            documentLink: data.uploaded.webViewLink || "",
+            documentType: "Internal",
+            driveFileId: data.uploaded.id || "",
+            mimeType: "application/pdf",
+            size: data.uploaded.size || "0",
+            createdAt: new Date().toISOString(),
+          };
+          console.log("[Merge] Saving doc record:", { collection: targetItem.collection, recordId: targetItem.id, document: docRecord });
+          const saveRes = await fetch("/api/admin/drive-documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collection: targetItem.collection, recordId: targetItem.id, document: docRecord }),
+          });
+          const saveData = await saveRes.json();
+          console.log("[Merge] Save result:", saveData);
+        } else {
+          console.warn("[Merge] No target item or uploaded data:", { targetItem: !!targetItem, uploaded: !!data.uploaded });
+        }
+        toast.success("Documents merged successfully");
+        setSelectedIds(new Set());
+        setMergeDialogOpen(false);
+        fetchDocs();
+      } else {
+        toast.error("Merge failed", { description: data.error });
+      }
+    } catch (e) { console.error("[Merge] Error:", e); toast.error("Merge failed"); }
+    finally { setMerging(false); }
+  };
+
+  /* ─── Email handler ─── */
+  const fetchEmailRecords = useCallback(async () => {
+    if (!poNumber) return;
+    setLoadingEmails(true);
+    try {
+      const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(poNumber)}`);
+      const data = await res.json();
+      if (res.ok) setEmailRecords(data.emails || []);
+    } catch { /* silent */ }
+    finally { setLoadingEmails(false); }
+  }, [poNumber]);
+
+  const handleEmail = () => {
+    const docs = getSelectedDocs().filter(d => d.doc.documentType === "External");
+    if (docs.length === 0) {
+      toast.error("No External documents selected", { description: "Email is only available for documents marked as External" });
+      return;
+    }
+    const attachments = docs.map(d => ({
+      id: d.doc.driveFileId,
+      name: d.doc.documentName,
+      mimeType: d.doc.mimeType || "application/octet-stream",
+      size: d.doc.size || "0",
+    }));
+    setEmailInitialData(undefined);
+    setEmailComposeMode("compose");
+    setEmailComposeOpen(true);
+    // Store attachments temporarily for the compose dialog via state
+    setEmailAttachments(attachments);
+  };
+
+  const [emailAttachments, setEmailAttachments] = useState<{ id: string; name: string; mimeType: string; size: string }[]>([]);
+
+  /* ─── Upload handler ─── */
+  const handleUpload = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0 || !selectedItem) return;
+    const files = Array.from(fileList);
+    const total = files.length;
+    setUploading(true);
+    setUploadTotal(total);
+    setUploadCompleted(0);
+    setUploadStartTime(Date.now());
+    setUploadFiles(files.map(f => ({ name: f.name, status: "pending" as const })));
+    let successCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "uploading" } : f));
+      try {
+        const formData = new FormData();
+        formData.append("poNumber", poNumber);
+        formData.append("file", file);
+        const res = await fetch("/api/admin/drive", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "error" } : f));
+          continue;
+        }
+        const docRecord = {
+          documentName: file.name,
+          documentLink: data.uploaded?.webViewLink || "",
+          documentType: "Internal",
+          driveFileId: data.uploaded?.id || "",
+          mimeType: data.uploaded?.mimeType || file.type || "application/octet-stream",
+          size: data.uploaded?.size || String(file.size),
+          createdAt: new Date().toISOString(),
+        };
+        await fetch("/api/admin/drive-documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ collection: selectedItem.collection, recordId: selectedItem.id, document: docRecord }),
+        });
+        successCount++;
+        setUploadCompleted(prev => prev + 1);
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done" } : f));
+      } catch {
+        setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "error" } : f));
+      }
+    }
+
+    setUploading(false);
+    if (successCount > 0) toast.success(`${successCount} file(s) uploaded`);
+    fetchDocs();
+    setTimeout(() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }, 4000);
+  };
+
+  // Sidebar grouping
+  const poItems = items.filter(i => i.kind === "VBNumber");
+  const cpoItems = items.filter(i => i.kind === "VBSerialNumber");
+  const shipItems = items.filter(i => i.kind === "VBShipmentNumber");
 
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => {
         if (!v) {
-          // If preview is open, close preview only
           if (previewFile) { setPreviewFile(null); return; }
           onClose();
         }
       }}>
         <DialogContent
-          className="max-w-6xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden"
+          className="max-w-6xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden [&>button[data-slot=dialog-close]]:hidden"
           onInteractOutside={(e) => { if (previewFile) e.preventDefault(); }}
           onPointerDownOutside={(e) => { if (previewFile) e.preventDefault(); }}
-          onFocusOutside={(e) => { if (previewFile) e.preventDefault(); }}
         >
           {/* HEADER */}
           <div className="flex items-center justify-between px-6 py-3.5 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
@@ -219,183 +421,388 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   <Paperclip className="h-4 w-4 text-primary" />
                 </div>
                 Attachments
-                <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{poNumber}</span>
               </DialogTitle>
-              <DialogDescription className="sr-only">Manage attachments for {poNumber}</DialogDescription>
+              <DialogDescription className="sr-only">Manage attachments</DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-2">
-              {selCount > 0 && activeTab !== "emails" && (
-                <>
-                  {hasExternalSelected && (
-                    <Button size="sm" className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 shadow-sm">
-                      <Mail className="h-3.5 w-3.5" /> Email ({selCount})
-                    </Button>
+              {/* Documents / Emails toggle */}
+              <div className="flex items-center bg-muted/40 rounded-lg p-0.5 border border-border/40">
+                <button
+                  onClick={() => { setShowEmailHistory(false); }}
+                  className={cn("h-7 px-3 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5",
+                    !showEmailHistory ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                >
+                  <Paperclip className="h-3 w-3" /> Documents
+                </button>
+                <button
+                  onClick={() => { setShowEmailHistory(true); fetchEmailRecords(); }}
+                  className={cn("h-7 px-3 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5",
+                    showEmailHistory ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                >
+                  <Mail className="h-3 w-3" /> Emails
+                  {emailRecords.length > 0 && (
+                    <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{emailRecords.length}</span>
                   )}
-                  {selCount > 1 && (
-                    <Button size="sm" className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white">
-                      <FileText className="h-3.5 w-3.5" /> Merge ({selCount})
-                    </Button>
-                  )}
-                  <Button size="sm" variant="destructive" className="h-8 text-xs gap-1.5 shadow-sm">
-                    <Trash2 className="h-3.5 w-3.5" /> Delete ({selCount})
-                  </Button>
-                  <div className="w-px h-6 bg-border/40 mx-1" />
-                </>
-              )}
-              {onOpenLegacy && (
+                </button>
+              </div>
+              {/* Search — always visible */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder={showEmailHistory ? "Search emails..." : "Search files..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 w-48 rounded-lg border border-border/60 bg-muted/30 pl-8 pr-3 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
+                />
+              </div>
+              {!showEmailHistory && selectedItem && (
                 <>
-                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={onOpenLegacy}>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
+                    toast.info("Please allow the browser prompt to upload folder structure");
+                    folderInputRef.current?.click();
+                  }} disabled={uploading}>
                     <FolderOpen className="h-3.5 w-3.5" /> Folder
                   </Button>
-                  <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={onOpenLegacy}>
-                    <Upload className="h-3.5 w-3.5" /> Upload
+                  <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    Upload to {selectedItem.label}
                   </Button>
                 </>
               )}
+              <button onClick={onClose} className="h-8 w-8 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-1">
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
+
+          {/* Hidden inputs */}
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }} />
+          <input ref={folderInputRef} type="file" multiple
+            // @ts-ignore
+            webkitdirectory="" className="hidden" onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }} />
 
           {/* BODY */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
 
             {/* Sidebar */}
-            <div className="w-[190px] border-r bg-muted/10 flex flex-col shrink-0 overflow-y-auto">
-              <button onClick={() => { setActiveGroup("all"); setSelectedIds(new Set()); }}
+            <div className="w-[200px] border-r bg-muted/10 flex flex-col shrink-0 overflow-y-auto">
+              {/* All */}
+              <button onClick={() => { setSelected(null); setPreviewFile(null); }}
                 className={cn("w-full text-left px-4 py-3 text-xs font-semibold transition-all border-l-2 flex items-center justify-between",
-                  activeGroup === "all" ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
+                  !selected ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                 <span className="flex items-center gap-2"><Paperclip className="h-3.5 w-3.5" /> All</span>
-                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full">{allCount}</span>
+                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full">{totalDocs}</span>
               </button>
-              {sidebarKinds.map((sk) => sk.items.length > 0 && (
-                <div key={sk.kind}>
-                  <div className="px-4 pt-3 pb-1"><p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/50">{sk.label}</p></div>
-                  {sk.items.map((item) => (
-                    <button key={item.label} onClick={() => { setActiveGroup(item.label); setSelectedIds(new Set()); }}
+
+              {/* PO */}
+              {poItems.length > 0 && (
+                <div>
+                  <div className="px-4 pt-3 pb-1"><p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/50">Purchase Order</p></div>
+                  {poItems.map(item => (
+                    <button key={item.id} onClick={() => { setSelected(item.id); setPreviewFile(null); }}
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
-                        activeGroup === item.label ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
+                        selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
                       <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
                     </button>
                   ))}
                 </div>
-              ))}
+              )}
+
+              {/* CPOs */}
+              {cpoItems.length > 0 && (
+                <div>
+                  <div className="px-4 pt-3 pb-1"><p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/50">Customer POs</p></div>
+                  {cpoItems.map(item => (
+                    <button key={item.id} onClick={() => { setSelected(item.id); setPreviewFile(null); }}
+                      className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
+                        selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
+                      <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Shipments */}
+              {shipItems.length > 0 && (
+                <div>
+                  <div className="px-4 pt-3 pb-1"><p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/50">Shipments</p></div>
+                  {shipItems.map(item => (
+                    <button key={item.id} onClick={() => { setSelected(item.id); setPreviewFile(null); }}
+                      className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
+                        selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
+                      <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Content */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* Tabs */}
-              <div className="flex items-center gap-1 px-4 py-2 border-b border-border/30 bg-muted/20 shrink-0">
-                {([
-                  { key: "all" as const, label: "All", count: allCount, icon: <Paperclip className="h-3 w-3" /> },
-                  { key: "Internal" as const, label: "Internal", count: internalCount, icon: <Eye className="h-3 w-3" /> },
-                  { key: "External" as const, label: "External", count: externalCount, icon: <EyeOff className="h-3 w-3" /> },
-                  { key: "emails" as const, label: "Emails", count: emailRecords.length, icon: <Mail className="h-3 w-3" /> },
-                ]).map((tab) => (
-                  <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSelectedIds(new Set()); setPreviewFile(null); }}
-                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                      activeTab === tab.key ? (tab.key === "emails" ? "bg-blue-500/10 text-blue-500 shadow-sm" : "bg-primary/10 text-primary shadow-sm") : "text-muted-foreground hover:text-foreground hover:bg-muted/50")}>
-                    {tab.icon} {tab.label}
-                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                      activeTab === tab.key ? (tab.key === "emails" ? "bg-blue-500/20 text-blue-500" : "bg-primary/20 text-primary") : "bg-muted text-muted-foreground")}>{tab.count}</span>
-                  </button>
-                ))}
-              </div>
+              {/* Selected header */}
+              {selectedItem && (
+                <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 shrink-0 flex items-center gap-2">
+                  <span className={cn("h-6 w-6 rounded-lg flex items-center justify-center", kindColor(selectedItem.kind), "bg-current/10")}>
+                    {kindIcon(selectedItem.kind)}
+                  </span>
+                  <span className="text-sm font-bold">{selectedItem.label}</span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">{selectedItem.docs.length} files</span>
+                </div>
+              )}
 
-              {/* Grid / Emails */}
-              <div className="flex-1 overflow-y-auto min-h-0 p-3">
-                {activeTab === "emails" ? (
-                  loadingEmails ? (
-                    <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
-                  ) : emailRecords.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-3">
-                      <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center"><Mail className="h-7 w-7 text-blue-500/40" /></div>
-                      <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
+              {/* All / Internal / External tabs */}
+              {!showEmailHistory && (
+                <div className="px-4 py-2 border-b border-border/30 bg-muted/10 shrink-0 flex items-center gap-1.5">
+                  {([
+                    { key: "all" as const, label: "All", count: visibleDocs.length },
+                    { key: "Internal" as const, label: "Internal", count: visibleDocs.filter(v => v.doc.documentType === "Internal").length },
+                    { key: "External" as const, label: "External", count: visibleDocs.filter(v => v.doc.documentType === "External").length },
+                  ]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setDocTypeFilter(tab.key)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all",
+                        docTypeFilter === tab.key
+                          ? tab.key === "External"
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-sm"
+                            : "bg-primary/10 text-primary shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      {tab.label}
+                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
+                        docTypeFilter === tab.key
+                          ? tab.key === "External" ? "bg-amber-500/10 text-amber-600" : "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      )}>{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Upload Progress - inside content */}
+              {uploadFiles.length > 0 && (
+                <div className="border-b border-border/40 bg-gradient-to-b from-primary/[0.02] to-transparent shrink-0">
+                  <div className="px-4 pt-3 pb-2.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {uploading ? (
+                          <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center"><CloudUpload className="h-3.5 w-3.5 text-primary animate-pulse" /></div>
+                        ) : uploadFiles.some(f => f.status === "error") ? (
+                          <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center"><AlertCircle className="h-3.5 w-3.5 text-amber-500" /></div>
+                        ) : (
+                          <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center"><CheckCircle className="h-3.5 w-3.5 text-emerald-500" /></div>
+                        )}
+                        <div>
+                          <p className="text-xs font-bold leading-none">
+                            {uploading ? "Uploading..." : uploadFiles.some(f => f.status === "error") ? "Completed with errors" : "Upload Complete!"}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                            {uploadCompleted}/{uploadTotal} files
+                            {uploadStartTime > 0 && ` • ${Math.round((Date.now() - uploadStartTime) / 1000)}s`}
+                          </p>
+                        </div>
+                      </div>
+                      {!uploading && (
+                        <button onClick={() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+                      )}
                     </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {emailRecords.map((email: any, idx: number) => (
-                        <div key={email._id || idx} onClick={() => openEmailView(email)}
-                          className="flex items-start gap-3 p-3 rounded-xl border border-border/30 hover:bg-muted/30 hover:border-border/60 transition-all cursor-pointer group">
-                          <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", email.status === "sent" ? "bg-emerald-500/10" : "bg-destructive/10")}>
-                            <Send className={cn("h-3.5 w-3.5", email.status === "sent" ? "text-emerald-600" : "text-destructive")} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold truncate">{email.subject || "(No subject)"}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">To: {(email.to || []).join(", ")}</p>
-                            {email.body && <p className="text-[10px] text-muted-foreground/50 mt-1 line-clamp-1">{email.body.substring(0, 80)}</p>}
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-[10px] text-muted-foreground">{fmtDate(email.sentAt)}</span>
-                            {email.attachments?.length > 0 && (
-                              <span className="text-[9px] font-bold bg-muted px-1.5 py-0.5 rounded-full">{email.attachments.length} files</span>
-                            )}
-                          </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary to-primary/60"
+                        style={{ width: `${uploadTotal > 0 ? (uploadCompleted / uploadTotal) * 100 : 0}%` }} />
+                    </div>
+                    <div className="max-h-[100px] overflow-y-auto space-y-0.5">
+                      {uploadFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 text-[11px] py-0.5">
+                          {f.status === "done" ? <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" /> :
+                           f.status === "uploading" ? <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" /> :
+                           f.status === "error" ? <XCircle className="h-3 w-3 text-destructive shrink-0" /> :
+                           <div className="h-3 w-3 rounded-full border border-border/60 shrink-0" />}
+                          <span className={cn("truncate", f.status === "done" ? "text-muted-foreground" : f.status === "error" ? "text-destructive" : "text-foreground font-medium")}>{f.name}</span>
                         </div>
                       ))}
                     </div>
-                  )
-                ) : loading ? (
+                  </div>
+                </div>
+              )}
+
+              {/* Email History */}
+              {showEmailHistory ? (
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  {loadingEmails ? (
+                    <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
+                  ) : emailRecords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-3">
+                      <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center">
+                        <Mail className="h-7 w-7 text-blue-500/40" />
+                      </div>
+                      <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
+                      <p className="text-xs text-muted-foreground/60">Select files and click Email to send</p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/40 bg-muted/20 sticky top-0 z-10">
+                          <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[40px]"></th>
+                          <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">To</th>
+                          <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Subject</th>
+                          <th className="px-3 py-2.5 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[40px]"><Paperclip className="h-3 w-3 mx-auto" /></th>
+                          <th className="px-3 py-2.5 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[120px]">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailRecords
+                          .filter(e => !searchQuery.trim() || 
+                            (e.subject || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (e.to || []).join(", ").toLowerCase().includes(searchQuery.toLowerCase()))
+                          .map((email: any, idx: number) => (
+                          <tr key={email._id || idx}
+                            onClick={() => {
+                              setEmailComposeMode("view");
+                              setEmailInitialData({
+                                id: email._id,
+                                type: email.type || "Invoice",
+                                reference: email.reference || "",
+                                to: (email.to || []).join(", "),
+                                cc: (email.cc || []).join(", "),
+                                subject: email.subject || "",
+                                body: email.body || "",
+                                from: email.from || "info@app.vidabuddies.com",
+                                sentAt: email.sentAt,
+                                attachments: (email.attachments || []).map((a: any) => ({
+                                  id: a.fileId || a.id || "",
+                                  name: a.name || "",
+                                  mimeType: a.mimeType || "",
+                                  size: String(a.size || "0"),
+                                })),
+                              });
+                              setEmailComposeOpen(true);
+                            }}
+                            className="border-b border-border/20 hover:bg-muted/30 cursor-pointer transition-colors">
+                            <td className="px-3 py-2.5">
+                              <div className={cn("h-6 w-6 rounded-lg flex items-center justify-center",
+                                email.status === "sent" ? "bg-emerald-500/10" : "bg-destructive/10")}>
+                                <Send className={cn("h-3 w-3", email.status === "sent" ? "text-emerald-600" : "text-destructive")} />
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 truncate max-w-[150px]"><span className="font-medium">{(email.to || []).join(", ")}</span></td>
+                            <td className="px-3 py-2.5 font-semibold truncate max-w-[200px]">{email.subject || "(No subject)"}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              {email.attachments?.length > 0 ? (
+                                <span className="bg-muted/60 text-foreground/70 px-1.5 py-0.5 rounded font-bold text-[10px]">{email.attachments.length}</span>
+                              ) : <span className="text-muted-foreground/30">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-muted-foreground/60 whitespace-nowrap">
+                              {email.sentAt ? new Date(email.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ) : (
+
+              /* Grid */
+              <div className="flex-1 overflow-y-auto min-h-0 p-3">
+                {loading ? (
                   <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
-                ) : filteredDocs.length === 0 ? (
+                ) : visibleDocs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-4">
                     <div className="h-20 w-20 rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 flex items-center justify-center"><Paperclip className="h-8 w-8 text-primary/30" /></div>
-                    <p className="text-sm font-semibold text-muted-foreground">No documents found</p>
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {selectedItem ? `No documents in ${selectedItem.label}` : "No documents found"}
+                    </p>
+                    {selectedItem && (
+                      <Button size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                        <Upload className="h-3.5 w-3.5" /> Upload Files
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                     {filteredDocs.map((item, idx) => {
                       const d = item.doc;
-                      const isSelected = selectedIds.has(d.driveFileId);
+                      const cardId = `${d.driveFileId}-${idx}`;
                       const isPreviewing = previewFile?.driveFileId === d.driveFileId;
+                      const isSelected = selectedIds.has(cardId);
                       return (
-                        <div key={`${d.driveFileId}-${idx}`}
+                        <div key={cardId}
                           className={cn(
                             "group relative rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer",
-                            isPreviewing ? "border-primary ring-2 ring-primary/20 shadow-lg" :
-                            isSelected ? "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]" :
-                            "border-border/40 hover:border-border/80 hover:shadow-md"
+                            isSelected ? "border-primary ring-2 ring-primary/20 shadow-lg" :
+                            isPreviewing ? "border-primary/60 ring-1 ring-primary/10 shadow-md" : "border-border/40 hover:border-border/80 hover:shadow-md"
                           )}
                           onClick={() => setPreviewFile(d)}>
-
-                          {/* Checkbox */}
-                          <div className="absolute top-2.5 left-2.5 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(d.driveFileId); }}>
-                            <div className={cn("h-6 w-6 rounded-lg border-2 flex items-center justify-center transition-all shadow-sm",
-                              isSelected ? "bg-primary border-primary text-white" : "bg-background/80 backdrop-blur-sm border-border/60 opacity-0 group-hover:opacity-100")}>
-                              {isSelected && <Check className="h-3.5 w-3.5" />}
-                            </div>
+                          {/* Name header - dark bg on top */}
+                          <div className="bg-zinc-900 dark:bg-zinc-800 px-3 py-2 flex items-center gap-2">
+                            <button
+                              onClick={(e) => toggleSelect(cardId, e)}
+                              className={cn("h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0",
+                                isSelected ? "bg-primary border-primary text-primary-foreground" : "border-white/40 text-transparent hover:border-white hover:text-white/60")}
+                            >
+                              <Check className="h-3 w-3" />
+                            </button>
+                            <p className="text-xs font-semibold text-white truncate flex-1" title={d.documentName}>{d.documentName}</p>
                           </div>
-
                           {/* Thumbnail */}
-                          <div className="relative h-[140px] bg-muted/30 overflow-hidden">
+                          <div className="relative h-[120px] bg-muted/30 overflow-hidden">
                             <img src={thumbUrl(d.driveFileId)} alt={d.documentName}
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              onError={(e) => {
-                                const img = e.target as HTMLImageElement;
-                                img.style.display = 'none';
-                                const fb = img.parentElement?.querySelector('.thumb-fb') as HTMLElement;
-                                if (fb) fb.style.display = 'flex';
-                              }} />
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; const fb = (e.target as HTMLImageElement).parentElement?.querySelector('.thumb-fb') as HTMLElement; if (fb) fb.style.display = 'flex'; }} />
                             <div className="thumb-fb absolute inset-0 items-center justify-center bg-gradient-to-br from-muted/40 to-muted/20" style={{ display: 'none' }}>
                               <div className="flex flex-col items-center gap-2">
                                 <div className="h-14 w-14 rounded-2xl bg-background/80 border border-border/40 flex items-center justify-center shadow-sm">{getIcon(d.mimeType)}</div>
                                 <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{d.documentName?.split('.').pop()?.toUpperCase() || 'FILE'}</span>
                               </div>
                             </div>
-                            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent" />
                           </div>
-
-                          {/* Info */}
-                          <div className="p-3 space-y-2">
-                            <p className="text-xs font-semibold truncate leading-tight" title={d.documentName}>{d.documentName}</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              <span className={cn("inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                                d.documentType === "Internal" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
-                                {d.documentType === "Internal" ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
-                                {d.documentType}
-                              </span>
-                              <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full">{fmtSize(d.size)}</span>
-                              <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full">{fmtDate(d.createdAt)}</span>
+                          {/* Footer */}
+                          <div className="px-3 py-2 flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {!selectedItem && (
+                                <span className={cn("inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-muted/60 shrink-0", kindColor(item.kind))}>
+                                  {item.source}
+                                </span>
+                              )}
+                              <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtSize(d.size)}</span>
+                              <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtDate(d.createdAt)}</span>
                             </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newType = d.documentType === 'Internal' ? 'External' : 'Internal';
+                                // Find the source item for this doc
+                                const srcItem = selectedItem || items.find(it => it.docs.includes(d));
+                                if (!srcItem) { toast.error("Cannot find source"); return; }
+                                // Optimistic update
+                                d.documentType = newType;
+                                setItems([...items]);
+                                // API call
+                                fetch("/api/admin/drive-documents", {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ collection: srcItem.collection, recordId: srcItem.id, driveFileId: d.driveFileId, updates: { documentType: newType } }),
+                                }).then(res => {
+                                  if (res.ok) toast.success(`Set to ${newType}`);
+                                  else toast.error("Failed to update");
+                                }).catch(() => toast.error("Failed to update"));
+                              }}
+                              className={cn(
+                                "inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full transition-all shrink-0 relative",
+                                d.documentType === "Internal"
+                                  ? "bg-primary/10 text-primary hover:bg-amber-500/15 hover:text-amber-600"
+                                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-primary/15 hover:text-primary"
+                              )}
+                              title={`Click to switch to ${d.documentType === 'Internal' ? 'External' : 'Internal'}`}
+                            >
+                              {d.documentType === "Internal" ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+                              {d.documentType}
+                            </button>
                           </div>
                         </div>
                       );
@@ -403,24 +810,110 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   </div>
                 )}
               </div>
+              )}
 
               {/* Footer */}
-              <div className="px-4 py-2 border-t border-border/30 bg-muted/20 shrink-0">
+              <div className="px-4 py-2 border-t border-border/30 bg-muted/20 shrink-0 flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {activeTab === "emails" ? `${emailRecords.length} email${emailRecords.length !== 1 ? "s" : ""}` :
-                  `${filteredDocs.length} file${filteredDocs.length !== 1 ? "s" : ""}`}
+                  {filteredDocs.length} file{filteredDocs.length !== 1 ? "s" : ""}
+                  {selectedItem && ` in ${selectedItem.label}`}
                   {selCount > 0 && ` · ${selCount} selected`}
                 </p>
+                <div className="flex items-center gap-1.5">
+                  {selCount > 0 && (
+                    <>
+                      {(() => {
+                        const extCount = getSelectedDocs().filter(d => d.doc.documentType === "External").length;
+                        return (
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleEmail}
+                            disabled={extCount === 0}
+                            title={extCount === 0 ? "Select External documents to email" : `Email ${extCount} external file(s)`}>
+                            <Mail className="h-3 w-3" /> Email ({extCount})
+                          </Button>
+                        );
+                      })()}
+                      {selCount > 1 && (
+                        <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleMergeClick} disabled={merging}>
+                          {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({selCount})
+                        </Button>
+                      )}
+                      <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDelete} disabled={deleting}>
+                        {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete ({selCount})
+                      </Button>
+                      <button onClick={() => setSelectedIds(new Set())} className="text-[10px] font-bold text-muted-foreground hover:text-foreground ml-1">Clear</button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ═══ RIGHT-SIDE PREVIEW PANEL (50vw, fixed on screen) ═══ */}
-      {previewFile && (
-        <div className="fixed inset-y-0 right-0 w-[50vw] z-[60] flex flex-col bg-background border-l border-border/40 shadow-2xl animate-in slide-in-from-right duration-200">
-          {/* Preview header */}
+      {/* Merge Filename Dialog */}
+      <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Combine className="h-5 w-5 text-indigo-500" /> Merge Documents
+            </DialogTitle>
+            <DialogDescription>Enter a filename for the merged PDF</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <Input
+              value={mergeFileName}
+              onChange={(e) => setMergeFileName(e.target.value)}
+              placeholder="Merged_Documents"
+              className="h-10"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>Cancel</Button>
+              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5" onClick={handleMerge} disabled={merging || !mergeFileName.trim()}>
+                {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Combine className="h-4 w-4" />}
+                Merge {selCount} Files
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Compose Dialog */}
+      <EmailComposeDialog
+        open={emailComposeOpen}
+        onClose={() => {
+          setEmailComposeOpen(false);
+          setEmailComposeMode("compose");
+          setEmailInitialData(undefined);
+          setSelectedIds(new Set());
+          setEmailAttachments([]);
+        }}
+        attachments={emailComposeMode === "compose" && !emailInitialData ? emailAttachments : []}
+        vbpoNo={poNumber}
+        onSent={() => {
+          fetchEmailRecords();
+          setEmailComposeMode("compose");
+          setEmailInitialData(undefined);
+          setEmailAttachments([]);
+        }}
+        mode={emailComposeMode}
+        initialData={emailInitialData}
+        onForward={(data) => {
+          setEmailComposeOpen(false);
+          setTimeout(() => {
+            setEmailComposeMode("compose");
+            setEmailInitialData(data);
+            setEmailComposeOpen(true);
+          }, 200);
+        }}
+      />
+
+      {/* RIGHT-SIDE PREVIEW PANEL — rendered via portal to escape Dialog event capture */}
+      {previewFile && mounted && createPortal(
+        <div
+          className="fixed inset-y-0 right-0 w-[50vw] flex flex-col bg-background border-l border-border/40 shadow-2xl animate-in slide-in-from-right duration-200"
+          style={{ zIndex: 9999, pointerEvents: "auto" }}
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between px-5 py-3 border-b border-border/40 bg-gradient-to-r from-background to-muted/10 shrink-0">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               {getIcon(previewFile.mimeType)}
@@ -428,47 +921,40 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                 <p className="text-sm font-bold truncate">{previewFile.documentName}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                    previewFile.documentType === "Internal" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600")}>
-                    {previewFile.documentType}
-                  </span>
+                    previewFile.documentType === "Internal" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600")}>{previewFile.documentType}</span>
                   <span className="text-[10px] text-muted-foreground">{fmtSize(previewFile.size)}</span>
-                  <span className="text-[10px] text-muted-foreground">{fmtDate(previewFile.createdAt)}</span>
                 </div>
               </div>
             </div>
-            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setPreviewFile(null)}>
-              <X className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg shrink-0" onClick={() => setPreviewFile(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
-          {/* Iframe */}
-          <div className="flex-1 min-h-0 relative bg-muted/5">
-            <iframe
-              key={previewFile.driveFileId}
-              src={`https://drive.google.com/file/d/${previewFile.driveFileId}/preview`}
-              className="absolute inset-0 w-full h-full border-0"
-              title={`Preview: ${previewFile.documentName}`}
-              allow="autoplay"
-            />
-            {/* Hide Google Drive's pop-out icon */}
-            <div className="absolute top-0 right-0 w-14 h-14 bg-background z-10" />
+          <div className="flex-1 overflow-hidden" style={{ pointerEvents: "auto" }}>
+            {previewFile.mimeType?.startsWith("image/") ? (
+              <div className="w-full h-full flex items-center justify-center overflow-auto p-4" style={{ pointerEvents: "auto" }}>
+                <img
+                  src={`/api/admin/drive/preview/${previewFile.driveFileId}`}
+                  alt={previewFile.documentName}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            ) : (
+              <embed
+                key={previewFile.driveFileId}
+                src={`/api/admin/drive/preview/${previewFile.driveFileId}`}
+                type={previewFile.mimeType || "application/pdf"}
+                width="100%"
+                height="100%"
+                style={{ pointerEvents: "auto" }}
+              />
+            )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-
-      {/* Email Compose/View Dialog */}
-      <EmailComposeDialog
-        open={emailComposeOpen}
-        onClose={() => { setEmailComposeOpen(false); setEmailComposeMode("compose"); setEmailInitialData(undefined); }}
-        attachments={[]}
-        vbpoNo={poNumber}
-        onSent={() => { fetchEmails(); setEmailComposeMode("compose"); setEmailInitialData(undefined); }}
-        mode={emailComposeMode}
-        initialData={emailInitialData}
-        onForward={(data) => {
-          setEmailComposeOpen(false);
-          setTimeout(() => { setEmailComposeMode("compose"); setEmailInitialData(data); setEmailComposeOpen(true); }, 200);
-        }}
-      />
     </>
   );
 }

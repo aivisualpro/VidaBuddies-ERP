@@ -5,15 +5,25 @@ import connectToDatabase from "@/lib/db";
 import EmailRecord from "@/lib/models/EmailRecord";
 import { getSession } from "@/lib/auth";
 
+/**
+ * SMTP Transport — For Office365 with Basic Auth, ensure:
+ * 1. SMTP AUTH is enabled for the mailbox in Exchange Admin
+ * 2. Security Defaults / MFA may require an App Password instead of regular password
+ * 3. Update SMTP_PASS in .env.local with the correct App Password
+ */
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.office365.com",
   port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: false, // true for 465, false for 587
+  secure: false, // STARTTLS on port 587
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  tls: { ciphers: "SSLv3" },
+  requireTLS: true,
+  tls: {
+    minVersion: "TLSv1.2",
+    ciphers: "HIGH",
+  },
 });
 
 /**

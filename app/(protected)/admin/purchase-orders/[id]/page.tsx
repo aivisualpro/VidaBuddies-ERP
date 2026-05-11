@@ -480,6 +480,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const handleDeleteCPO = (cpoId: string, idx: number) => {
     toast("Delete Customer PO?", {
       description: "Click 'Delete' to confirm. This cannot be undone.",
+      duration: 10000,
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
       action: {
         label: "Delete",
         onClick: async () => {
@@ -558,6 +563,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const handleDeleteShipping = (shipId: string, cpoIdx: number, shipIdx: number) => {
     toast("Delete Shipping Record?", {
       description: "Click 'Delete' to confirm. This action cannot be undone.",
+      duration: 10000,
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
       action: {
         label: "Delete",
         onClick: async () => {
@@ -933,7 +943,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               e.stopPropagation();
                               // Pass shipping svbids as childFolders so they're pre-created on Drive
                               const shipFolders = (cpo.shipping || []).map((s: any) => s.svbid).filter(Boolean);
-                              setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo.poNo || undefined, childFolders: shipFolders });
+                              setAttachmentsOpen({ poNumber: (po as any)?.VBNumber || po?.vbpoNo || '', spoNumber: cpo.poNo || undefined, childFolders: shipFolders });
                             }}
                           >
                             <Paperclip className="h-3.5 w-3.5" />
@@ -1088,7 +1098,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           </span>
                           {/* Actions */}
                           <div className="flex items-center gap-0.5">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const cpo = po?.customerPO?.[ship._cpoIdx]; setAttachmentsOpen({ poNumber: po?.vbpoNo || '', spoNumber: cpo?.poNo || '', shipNumber: ship.svbid || undefined }); }}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const cpo = po?.customerPO?.[ship._cpoIdx]; setAttachmentsOpen({ poNumber: (po as any)?.VBNumber || po?.vbpoNo || '', spoNumber: cpo?.poNo || '', shipNumber: ship.svbid || undefined }); }}>
                               <Paperclip className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: po?.customerPO?.[ship._cpoIdx]?._id, VBShipmentNumber: ship._id, title: `Timeline — ${ship.svbid || 'Shipping'}` }); }}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import {
   Dialog,
@@ -127,19 +127,26 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   
   const { purchaseOrders } = useUserDataStore();
   
-  const availableReferences = useMemo(() => {
-    if (!vbpoNo) return [];
-    const po = purchaseOrders.find((p) => p.vbpoNo === vbpoNo);
-    if (!po) return [];
-    
-    const refs: string[] = [];
-    po.customerPO?.forEach((cpo: any) => {
-      cpo.shipping?.forEach((ship: any) => {
-        if (ship.svbid) refs.push(ship.svbid);
-      });
-    });
-    return refs;
-  }, [purchaseOrders, vbpoNo]);
+  // Fetch available shipping references from API (legacy embedded data is gone)
+  const [availableReferences, setAvailableReferences] = useState<string[]>([]);
+
+  const fetchReferences = useCallback(async () => {
+    if (!vbpoNo) return;
+    try {
+      // First resolve the PO's ObjectId (vbpoNo might be VBNumber like "VB1")
+      const po = purchaseOrders.find((p) => p.vbpoNo === vbpoNo || p.VBNumber === vbpoNo);
+      const poId = po?._id || vbpoNo;
+      
+      const res = await fetch(`/api/admin/vb-shipping?VBNumber=${encodeURIComponent(poId)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const refs = data
+          .map((s: any) => s.VBShipmentNumber)
+          .filter(Boolean);
+        setAvailableReferences(refs);
+      }
+    } catch { /* silent */ }
+  }, [vbpoNo, purchaseOrders]);
 
   // Templates
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -163,6 +170,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   // Initialize attachments and subject when dialog opens
   useEffect(() => {
     if (open) {
+      fetchReferences();
       if (initialData) {
         // Parse to/cc from string to arrays
         const parseEmails = (val?: string) =>

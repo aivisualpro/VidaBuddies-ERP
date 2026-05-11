@@ -43,6 +43,7 @@ import {
   Send,
   Clock,
   Pencil,
+  X,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -702,7 +703,7 @@ export function AttachmentsModal({
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!v && !uploading) onClose(); }}>
-        <DialogContent className="max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent className="max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden [&>button[data-slot=dialog-close]]:hidden">
 
           {/* ═══════ HEADER ═══════ */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
@@ -870,7 +871,15 @@ export function AttachmentsModal({
                   {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   Upload
                 </Button>
+                <button onClick={onClose} className="h-8 w-8 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-1">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
+            )}
+            {activeTab === "emails" && (
+              <button onClick={onClose} className="h-8 w-8 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
 

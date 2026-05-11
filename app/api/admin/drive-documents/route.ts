@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import mongoose from "mongoose";
+import { getSession } from "@/lib/auth";
 
 /**
  * GET /api/admin/drive-documents?vbNumber=VB300-8
@@ -52,10 +53,10 @@ export async function GET(request: NextRequest) {
 
     // 3. Get all Shippings for this VBNumber
     const shipQuery: any = {
-      VBNumber: { $in: vbNumberVariants },
+      VBNumber: { $in: vbNumberVariants.map(v => /^[a-fA-F0-9]{24}$/.test(v) ? new mongoose.Types.ObjectId(v) : v) },
     };
     const ships = await vbshippings
-      .find(shipQuery, { projection: { svbid: 1, VBShipmentNumber: 1, VBSerialNumber: 1, driveDocuments: 1 } })
+      .find(shipQuery, { projection: { VBShipmentNumber: 1, VBSerialNumber: 1, driveDocuments: 1 } })
       .toArray();
 
     return NextResponse.json({
@@ -78,6 +79,124 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("[drive-documents] Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/admin/drive-documents
+ * Push a driveDocument record to a specific collection/record.
+ * Body: { collection: "vidapos"|"vbcustomerpos"|"vbshippings", recordId, document: {...} }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { collection, recordId, document } = await request.json();
+
+    if (!collection || !recordId || !document) {
+      return NextResponse.json({ error: "collection, recordId, and document are required" }, { status: 400 });
+    }
+
+    const validCollections = ["vidapos", "vbcustomerpos", "vbshippings"];
+    if (!validCollections.includes(collection)) {
+      return NextResponse.json({ error: "Invalid collection" }, { status: 400 });
+    }
+
+    // Auto-set createdBy from session
+    const session = await getSession();
+    if (session?.id) {
+      document.createdBy = session.id;
+    }
+
+    const col = mongoose.connection.collection(collection);
+    await col.updateOne(
+      { _id: new mongoose.Types.ObjectId(recordId) },
+      { $push: { driveDocuments: document } as any }
+    );
+
+    return NextResponse.json({ success: true }, { status: 201 });
+  } catch (error: any) {
+    console.error("[drive-documents] POST Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/admin/drive-documents
+ * Remove driveDocument entries from collection and delete from Google Drive.
+ * Body: { collection, recordId, driveFileIds: string[] }
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { collection, recordId, driveFileIds } = await request.json();
+
+    if (!collection || !recordId || !driveFileIds?.length) {
+      return NextResponse.json({ error: "collection, recordId, and driveFileIds are required" }, { status: 400 });
+    }
+
+    const validCollections = ["vidapos", "vbcustomerpos", "vbshippings"];
+    if (!validCollections.includes(collection)) {
+      return NextResponse.json({ error: "Invalid collection" }, { status: 400 });
+    }
+
+    // 1. Remove from collection's driveDocuments array
+    const col = mongoose.connection.collection(collection);
+    await col.updateOne(
+      { _id: new mongoose.Types.ObjectId(recordId) },
+      { $pull: { driveDocuments: { driveFileId: { $in: driveFileIds } } } as any }
+    );
+
+    // 2. Delete from Google Drive
+    try {
+      const { deleteFiles } = await import("@/lib/google-drive");
+      await deleteFiles(driveFileIds);
+    } catch (e) {
+      console.error("[drive-documents] Drive delete error:", e);
+    }
+
+    return NextResponse.json({ deleted: driveFileIds.length });
+  } catch (error: any) {
+    console.error("[drive-documents] DELETE Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/admin/drive-documents
+ * Update a driveDocument field (e.g. documentType toggle).
+ * Body: { collection, recordId, driveFileId, updates: { documentType: "Internal"|"External" } }
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { collection, recordId, driveFileId, updates } = await request.json();
+
+    if (!collection || !recordId || !driveFileId || !updates) {
+      return NextResponse.json({ error: "collection, recordId, driveFileId, and updates are required" }, { status: 400 });
+    }
+
+    const validCollections = ["vidapos", "vbcustomerpos", "vbshippings"];
+    if (!validCollections.includes(collection)) {
+      return NextResponse.json({ error: "Invalid collection" }, { status: 400 });
+    }
+
+    const col = mongoose.connection.collection(collection);
+
+    // Build $set object for matching array element
+    const setObj: any = {};
+    for (const [key, val] of Object.entries(updates)) {
+      setObj[`driveDocuments.$.${key}`] = val;
+    }
+
+    await col.updateOne(
+      { _id: new mongoose.Types.ObjectId(recordId), "driveDocuments.driveFileId": driveFileId },
+      { $set: setObj }
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("[drive-documents] PUT Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
