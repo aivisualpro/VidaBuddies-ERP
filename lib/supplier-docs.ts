@@ -40,4 +40,5 @@ export const REQUIRED_DOCS = [
   { category: "Quality & HACCP Documentation", name: "HACCP CCP Plan Sheet" },
   { category: "Quality & HACCP Documentation", name: "Batch Coding Procedure" },
   { category: "Organic Certificate", name: "Organic Certificate" },
+  { category: "Country of Origin", name: "Country of Origin" },
 ];
