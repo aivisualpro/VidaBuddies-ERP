@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { X, Ship, Box, Hash, Truck, Factory, Package, Anchor, DollarSign, FileCheck, User, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { useUserDataStore } from "@/store/useUserDataStore";
 import { toast } from "sonner";
 
 interface ShipmentDetailPanelProps {
@@ -34,20 +33,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
   const [ship, setShip] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const { suppliers: storeSuppliers, products: storeProducts } = useUserDataStore();
-  const suppliers = storeSuppliers || [];
-
-  // Build product name map
-  const productMap: Record<string, string> = {};
-  (storeProducts || []).forEach((p: any) => { if (p._id) productMap[p._id] = p.name || p._id; if (p.vbId) productMap[p.vbId] = p.name || p.vbId; });
-
-  // Build supplier location map
-  const supplierLocMap: Record<string, string> = {};
-  suppliers.forEach((s: any) => {
-    (s.location || []).forEach((l: any) => {
-      if (l.vbId) supplierLocMap[l.vbId] = l.locationName || l.vbId;
-    });
-  });
+  // Display names come pre-resolved from denormalized API (_display* fields)
 
   useEffect(() => {
     if (!open) { setShip(null); return; }
@@ -79,12 +65,8 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
 
   if (!open) return null;
 
-  const supplierName = (() => {
-    const sup = suppliers.find((s: any) => s._id === ship?.supplier || s.vbId === ship?.supplier);
-    return sup?.name || ship?.supplier || '-';
-  })();
-
-  const supplierLocName = supplierLocMap[ship?.supplierLocation] || ship?.supplierLocation || '';
+  const supplierName = ship?._displaySupplier || ship?.supplier || '-';
+  const supplierLocName = ship?._displaySupplierLocation || ship?.supplierLocation || '';
   const statusColor = (s: string) => {
     const st = (s || '').toLowerCase();
     if (st === 'in transit') return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
@@ -116,7 +98,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
             </div>
             <div>
               <h2 className="text-lg font-bold tracking-tight">{ship?.VBShipmentNumber || ship?.svbid || 'Shipment Details'}</h2>
-              <p className="text-xs text-muted-foreground">from <span className="font-semibold text-foreground/70">{ship?.VBSerialNumber || ship?.VBNumber || '-'}</span></p>
+              <p className="text-xs text-muted-foreground">from <span className="font-semibold text-foreground/70">{ship?._displayVBSerialNumber || ship?._displayVBNumber || '-'}</span></p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -249,7 +231,9 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
                     return pids.length > 0
                       ? pids.map((pid: string, i: number) => (
                         <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg">
-                          {productMap[pid] || pid}
+                          {(Array.isArray(ship._displayProducts) && ship._displayProducts.length > 0)
+                            ? ship._displayProducts[i] || pid
+                            : pid}
                         </span>
                       ))
                       : <span className="text-xs text-muted-foreground">—</span>;

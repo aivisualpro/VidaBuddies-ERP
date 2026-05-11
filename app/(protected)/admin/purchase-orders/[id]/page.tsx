@@ -204,6 +204,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   // ─── Pull ALL reference data from global Zustand store (already loaded at app init) ───
   const {
     refetchPurchaseOrders,
+    purchaseOrders: allPurchaseOrders,
     users: rawStoreUsers,
     customers: storeCustomers,
     suppliers: storeSuppliers,
@@ -245,9 +246,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     suppliers.forEach((sup: any) => {
       if (sup.location && Array.isArray(sup.location)) {
         sup.location.forEach((loc: any) => {
-          if (loc.vbId) {
-            mapping[loc.vbId] = loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId;
-          }
+          const label = loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId;
+          if (loc._id) mapping[loc._id] = label;       // ObjectId key (post-migration)
+          if (loc.vbId) mapping[loc.vbId] = label;      // vbId key (legacy compat)
         });
       }
     });
@@ -276,6 +277,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [autoPoNo, setAutoPoNo] = useState<string>("");
   const [autoSvbid, setAutoSvbid] = useState<string>("");
   const [addingShippingToCPO, setAddingShippingToCPO] = useState<{ idx: number, poNo: string } | null>(null);
+
+  // Shipping form: VBNumber / VBSerialNumber dropdowns
+  const [shipVBNumber, setShipVBNumber] = useState<string>("");
+  const [shipVBSerial, setShipVBSerial] = useState<string>("");
+  const [shipCPOs, setShipCPOs] = useState<any[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
@@ -289,6 +295,45 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [editPOData, setEditPOData] = useState<Partial<PurchaseOrder>>({});
 
   const { setLeftContent, setRightContent } = useHeaderActions();
+
+  // VB Number dropdown options from store
+  const vbNumberOptions = useMemo(() =>
+    (allPurchaseOrders || []).map((po: any) => ({ value: po._id, label: po.VBNumber || po._id })),
+    [allPurchaseOrders]
+  );
+
+  // Fetch CPOs when shipVBNumber changes (for VBSerialNumber dropdown)
+  useEffect(() => {
+    if (!shipVBNumber) { setShipCPOs([]); return; }
+    fetch(`/api/admin/vb-customer-po?VBNumber=${shipVBNumber}`)
+      .then(r => r.json())
+      .then(items => { if (Array.isArray(items)) setShipCPOs(items); })
+      .catch(() => setShipCPOs([]));
+  }, [shipVBNumber]);
+
+  // Auto-generate VBShipmentNumber when VBSerialNumber is selected
+  useEffect(() => {
+    if (!shipVBSerial || editingShipping) return;
+    fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${shipVBSerial}`)
+      .then(r => r.json())
+      .then(res => { if (res.nextNumber) setAutoSvbid(res.nextNumber); })
+      .catch(() => {});
+  }, [shipVBSerial, editingShipping]);
+
+  // Pre-fill shipping form state when dialog opens
+  useEffect(() => {
+    if (addingShippingToCPO && po) {
+      // "Add Ship" clicked from a CPO context — pre-fill VBNumber from current PO
+      setShipVBNumber(po._id);
+      const cpo = po.customerPO?.[addingShippingToCPO.idx];
+      setShipVBSerial(cpo?._id || "");
+    } else if (editingShipping && po) {
+      const ship = po.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx];
+      setShipVBNumber(ship?.VBNumber || po._id || "");
+      setShipVBSerial(ship?.VBSerialNumber || "");
+      setAutoSvbid(ship?.VBShipmentNumber || ship?.svbid || "");
+    }
+  }, [addingShippingToCPO, editingShipping, po]);
 
   const fetchPO = async () => {
     try {
@@ -336,8 +381,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     if (!selectedSupplierForShipping) return [];
     const sup = suppliers.find((s: any) => s._id === selectedSupplierForShipping || s.vbId === selectedSupplierForShipping);
     if (!sup?.location) return [];
-    return sup.location.filter((loc: any) => loc.vbId).map((loc: any) => ({
-      id: loc.vbId as string,
+    return sup.location.filter((loc: any) => loc._id).map((loc: any) => ({
+      id: (loc._id || loc.vbId) as string,
       name: (loc.locationName || `${sup.name} - ${loc.city}` || loc.vbId) as string,
     }));
   };
@@ -586,12 +631,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     const formattedData: any = { ...data };
     if (!editingShipping) formattedData.status = 'Ordered'; // Default status for new
 
-    // Auto-generate svbid if empty (for new shipping records)
-    if (!editingShipping && (!formattedData.svbid || formattedData.svbid.trim() === '') && addingShippingToCPO) {
-      const cpo = po?.customerPO?.[addingShippingToCPO.idx];
-      const existingShipCount = cpo?.shipping?.length || 0;
-      formattedData.svbid = `${addingShippingToCPO.poNo}-${existingShipCount + 1}`;
-    }
+    // Inject VBNumber / VBSerialNumber / VBShipmentNumber from controlled state
+    formattedData.VBNumber = shipVBNumber;
+    formattedData.VBSerialNumber = shipVBSerial;
+    formattedData.VBShipmentNumber = autoSvbid || formattedData.svbid?.trim() || '';
+    delete formattedData.svbid; // cleanup legacy form field name
 
     // Numbers
     ['drums', 'pallets', 'gallons', 'netWeightKG', 'grossWeightKG', 'invValue', 'estTrumpDuties', 'feesAmount', 'estimatedDuties', 'qty'].forEach(k => {
@@ -941,12 +985,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             className="h-7 px-3 text-[10px] font-bold uppercase tracking-wide ml-1"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Auto-generate svbid: {cpo.poNo}-{nextShipIndex}
-                              const existingShipCount = cpo.shipping?.length || 0;
-                              const nextSvbid = `${cpo.poNo || ''}-${existingShipCount + 1}`;
-                              setAutoSvbid(nextSvbid);
+                              setAutoSvbid("");
                               setSelectedSupplierForShipping("");
-                              setAddingShippingToCPO({ idx, poNo: cpo.poNo || '' });
+                              setAddingShippingToCPO({ idx, poNo: cpo.VBSerialNumber || '' });
                             }}
                           >
                             <Plus className="h-3 w-3 mr-1.5" />
@@ -1062,7 +1103,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                 <MapPin className="h-3.5 w-3.5" />
                               </Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const locId = ship.supplierLocation; if (locId) { const matchedSup = suppliers.find((s: any) => s.location?.some((l: any) => l.vbId === locId)); setSelectedSupplierForShipping(matchedSup?._id || matchedSup?.vbId || ""); } else { setSelectedSupplierForShipping(ship.supplier || ""); } setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship }); }}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setSelectedSupplierForShipping(ship.supplier || ""); setEditingShipping({ cpoIdx: ship._cpoIdx, shipIdx: ship._shipIdx, data: ship }); }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteShipping(ship._id, ship._cpoIdx, ship._shipIdx); }}>
@@ -1109,16 +1150,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                   <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
                                   <p className="text-xs font-bold text-foreground truncate" title={
                                     (() => {
-                                      const locName = supplierLocations[ship.supplierLocation] || ship.supplierLocation || '';
-                                      const sup = suppliers.find((s: any) => s.location?.some((l: any) => l.vbId === ship.supplierLocation));
-                                      const supName = sup?.name || '';
+                                      const supName = ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || '';
+                                      const locName = ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || '';
                                       return supName ? `${supName} — ${locName}` : locName || '-';
                                     })()
                                   }>
                                     {(() => {
-                                      const locName = supplierLocations[ship.supplierLocation] || ship.supplierLocation || '';
-                                      const sup = suppliers.find((s: any) => s.location?.some((l: any) => l.vbId === ship.supplierLocation));
-                                      const supName = sup?.name || '';
+                                      const supName = ship._displaySupplier || suppliers.find((s: any) => s._id === ship.supplier)?.name || '';
+                                      const locName = ship._displaySupplierLocation || supplierLocations[ship.supplierLocation] || '';
                                       return supName ? (
                                         <><span className="text-primary">{supName}</span> <span className="text-muted-foreground">—</span> {locName}</>
                                       ) : (locName || '-');
@@ -1496,11 +1535,49 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                         <span className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center text-[10px]">📦</span>
                         Core Information
                       </h4>
-                      <div className="grid grid-cols-3 gap-4">
+
+                      {/* VB Number / VB Serial Number / VB Shipment Number */}
+                      <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="space-y-1">
-                          <Label className="text-xs">VBID</Label>
-                          <Input name="svbid" required className="text-sm" defaultValue={editingShipping?.data?.svbid || (!editingShipping ? autoSvbid : '')} />
+                          <Label className="text-xs">VB Number</Label>
+                          <select
+                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                            value={shipVBNumber}
+                            onChange={(e) => { setShipVBNumber(e.target.value); setShipVBSerial(""); setAutoSvbid(""); }}
+                          >
+                            <option value="">Select VB Number...</option>
+                            {vbNumberOptions.map((opt: any) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
                         </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">VB Serial Number</Label>
+                          <select
+                            className="w-full border rounded-md h-9 px-3 text-sm bg-background"
+                            value={shipVBSerial}
+                            onChange={(e) => { setShipVBSerial(e.target.value); setAutoSvbid(""); }}
+                            disabled={!shipVBNumber}
+                          >
+                            <option value="">{shipVBNumber ? "Select VB Serial..." : "Select VB Number first"}</option>
+                            {shipCPOs.map((cpo: any) => (
+                              <option key={cpo._id} value={cpo._id}>{cpo.VBSerialNumber || cpo._id}{cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">VB Shipment Number</Label>
+                          <Input
+                            name="svbid"
+                            className="text-sm"
+                            placeholder="Auto-generated"
+                            value={autoSvbid}
+                            onChange={(e) => setAutoSvbid(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <Label className="text-xs">Status</Label>
                           <select name="status" className="w-full border rounded-md h-9 px-3 text-sm bg-background" defaultValue={(() => {

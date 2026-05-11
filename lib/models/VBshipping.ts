@@ -41,11 +41,11 @@ export interface IVBshipping extends Document {
   poNo?: string;                          // legacy — same as VBNumber
   spoNo?: string;
   svbid?: string;                         // legacy — same as VBShipmentNumber
-  VBNumber?: string;                      // vbpoNo e.g. "VB1"  (resolved from vidapos._id)
-  VBSerialNumber?: string;                // CPO poNo e.g. "VB1-1" (resolved from vbcustomerpos._id)
+  VBNumber?: mongoose.Types.ObjectId;       // ObjectId ref → VidaPO._id
+  VBSerialNumber?: mongoose.Types.ObjectId;  // ObjectId ref → VBcustomerPO._id
   VBShipmentNumber?: string;              // auto e.g. "VB1-1-1"
-  supplier?: string;
-  supplierLocation?: string;
+  supplier?: mongoose.Types.ObjectId;        // ObjectId ref → VidaSupplier._id
+  supplierLocation?: mongoose.Types.ObjectId; // ObjectId ref → VidaSupplier.location[]._id
   supplierPO?: string;
   supplierPoDate?: Date;
   carrier?: string;
@@ -58,7 +58,7 @@ export interface IVBshipping extends Document {
   dateOfLanding?: Date;
   ETA?: Date;
   product?: string;
-  products?: string[];
+  products?: mongoose.Types.ObjectId[];    // ObjectId refs → VidaProduct._id
   drums?: number;
   pallets?: number;
   gallons?: number;
@@ -109,11 +109,11 @@ const VBshippingSchema: Schema = new Schema(
     poNo: { type: String, default: '' },
     spoNo: { type: String },
     svbid: { type: String },
-    VBNumber: { type: String, default: '' },
-    VBSerialNumber: { type: String, default: '' },
+    VBNumber: { type: Schema.Types.ObjectId, ref: 'VidaPO', default: null },
+    VBSerialNumber: { type: Schema.Types.ObjectId, ref: 'VBcustomerPO', default: null },
     VBShipmentNumber: { type: String, default: '' },
-    supplier: { type: String },
-    supplierLocation: { type: String },
+    supplier: { type: Schema.Types.ObjectId, ref: 'VidaSupplier', default: null },
+    supplierLocation: { type: Schema.Types.ObjectId, default: null },
     supplierPO: { type: String },
     supplierPoDate: { type: Date },
     carrier: { type: String },
@@ -126,7 +126,7 @@ const VBshippingSchema: Schema = new Schema(
     dateOfLanding: { type: Date },
     ETA: { type: Date },
     product: { type: String },
-    products: [{ type: String }],
+    products: [{ type: Schema.Types.ObjectId, ref: 'VidaProduct' }],
     drums: { type: Number },
     pallets: { type: Number },
     gallons: { type: Number },

@@ -47,6 +47,12 @@ interface ShipmentRecord {
   quickNote?: string;
   shippingTrackingRecords?: any[];
   createdAt?: string;
+  // Denormalized display fields from API
+  _displayVBNumber?: string;
+  _displayVBSerialNumber?: string;
+  _displaySupplier?: string;
+  _displaySupplierLocation?: string;
+  _displayProducts?: string[];
 }
 
 function normalizeStatus(raw: string): string {
@@ -106,43 +112,12 @@ export default function ShipmentsListPage() {
   const { suppliers: storeSuppliers, purchaseOrders } = useUserDataStore();
   const suppliers = storeSuppliers || [];
 
-  // Build lookup maps to resolve ObjectIDs → display names (VBNumber, VBSerialNumber)
-  const poLookup = useMemo(() => {
-    const map: Record<string, string> = {};
-    (purchaseOrders || []).forEach((po: any) => {
-      if (po._id) map[po._id] = po.vbpoNo || po.VBNumber || po._id;
-    });
-    return map;
-  }, [purchaseOrders]);
-
-  // CPO lookup — must come from the standalone VBcustomerPO collection
-  // (the embedded sub-doc _ids in VidaPO don't match VBcustomerPO _ids)
-  const [cpoLookup, setCpoLookup] = useState<Record<string, string>>({});
-  useEffect(() => {
-    fetch('/api/admin/vb-customer-po?fields=_id,VBSerialNumber,poNo')
-      .then(r => r.json())
-      .then((items: any[]) => {
-        if (!Array.isArray(items)) return;
-        const map: Record<string, string> = {};
-        items.forEach((c) => {
-          map[c._id] = c.VBSerialNumber || c.poNo || c._id;
-        });
-        setCpoLookup(map);
-      })
-      .catch(() => {});
-  }, []);
-
-  /** Resolve VBNumber/VBSerialNumber — they might be ObjectIDs or display names */
-  const resolveShipNames = (ship: any) => {
-    const vbNum = ship.VBNumber || '';
-    const vbSer = ship.VBSerialNumber || ship.poNo || '';
-    const vbShip = ship.VBShipmentNumber || ship.svbid || '';
-    return {
-      poNumber: poLookup[vbNum] || vbNum,
-      spoNumber: cpoLookup[vbSer] || vbSer || undefined,
-      shipNumber: vbShip || undefined,
-    };
-  };
+  /** Resolve display names — now returned directly from denormalized API */
+  const resolveShipNames = (ship: any) => ({
+    poNumber: ship._displayVBNumber || ship.VBNumber || '',
+    spoNumber: ship._displayVBSerialNumber || ship.VBSerialNumber || undefined,
+    shipNumber: ship.VBShipmentNumber || ship.svbid || undefined,
+  });
 
   const fetchData = async () => {
     try {
@@ -230,7 +205,7 @@ export default function ShipmentsListPage() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(item => {
-        const searchable = [item.VBNumber, item.VBSerialNumber, item.VBShipmentNumber, item.supplier, item.carrier, item.containerNo, item.BOLNumber, item.quickNote].filter(Boolean).join(' ').toLowerCase();
+        const searchable = [item._displayVBNumber, item._displayVBSerialNumber, item.VBShipmentNumber, item._displaySupplier, item.carrier, item.containerNo, item.BOLNumber, item.quickNote].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
@@ -293,8 +268,7 @@ export default function ShipmentsListPage() {
       header: "Supplier",
       cell: ({ row }) => {
         const val = row.original.supplier || "";
-        const sup = suppliers.find((s: any) => s._id === val || s.vbId === val);
-        return sup?.name || val || "-";
+        return (row.original as any)._displaySupplier || val || "-";
       },
     },
     { accessorKey: "carrier", header: "Carrier" },

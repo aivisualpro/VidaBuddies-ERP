@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Search, ChevronRight, ChevronDown, Ship, Package, Layers } from "lucide-react";
-import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface ShipmentGroupSidebarProps {
-  data: { VBNumber?: string; VBSerialNumber?: string; poNo?: string; customerPOId?: string }[];
+  data: { VBNumber?: string; VBSerialNumber?: string; _displayVBNumber?: string; _displayVBSerialNumber?: string }[];
   /** Currently active filter — null means "All" */
   activeVBNumber: string | null;
   activeVBSerial: string | null;
@@ -21,69 +20,37 @@ export function ShipmentGroupSidebar({
   const [search, setSearch] = useState("");
   const [expandedPOs, setExpandedPOs] = useState<Set<string>>(new Set());
 
-  // Use global store data (already loaded at app init) — no async fetch needed
-  const { purchaseOrders } = useUserDataStore();
-
-  // Build lookup maps from store data — instant, no flash
-  const poLookup = useMemo(() => {
-    const map: Record<string, string> = {};
-    (purchaseOrders || []).forEach((po: any) => {
-      map[po._id] = po.VBNumber || po.vbpoNo || po._id;
-    });
-    return map;
-  }, [purchaseOrders]);
-
-  // Build CPO lookup from shipping data itself — each shipping record
-  // has VBSerialNumber (ObjectId) that we need to display.
-  // We'll fetch CPOs once but from store if available, otherwise parse from data patterns.
-  const [cpoLookup, setCpoLookup] = useState<Record<string, string>>({});
-  const [cpoLoaded, setCpoLoaded] = useState(false);
-
-  // Fetch CPO lookup once (lightweight, just IDs and names)
-  useMemo(() => {
-    if (cpoLoaded) return;
-    fetch('/api/admin/vb-customer-po?fields=_id,VBSerialNumber,poNo')
-      .then(r => r.json())
-      .then((items: any[]) => {
-        if (!Array.isArray(items)) return;
-        const map: Record<string, string> = {};
-        items.forEach((c) => {
-          map[c._id] = c.VBSerialNumber || c.poNo || c._id;
-        });
-        setCpoLookup(map);
-        setCpoLoaded(true);
-      })
-      .catch(() => {});
-  }, [cpoLoaded]);
-
-  const resolveVBNumber = (id: string) => poLookup[id] || id;
-  const resolveVBSerial = (id: string) => cpoLookup[id] || id;
-
-  // Build tree: VBNumber (Level-1) → VBSerialNumber (Level-2) with counts
+  // Build tree using _display* fields from denormalized API data — no client-side lookups needed
   const tree = useMemo(() => {
-    const map = new Map<string, Map<string, number>>();
+    const map = new Map<string, { displayName: string; serials: Map<string, { displayName: string; count: number }> }>();
+
     data.forEach((item) => {
       const vbNum = item.VBNumber || "Unlinked";
       const vbSer = item.VBSerialNumber || "none";
-      if (!map.has(vbNum)) map.set(vbNum, new Map());
-      const serMap = map.get(vbNum)!;
-      serMap.set(vbSer, (serMap.get(vbSer) || 0) + 1);
+      const vbNumDisplay = (item as any)._displayVBNumber || vbNum;
+      const vbSerDisplay = (item as any)._displayVBSerialNumber || vbSer;
+
+      if (!map.has(vbNum)) map.set(vbNum, { displayName: vbNumDisplay, serials: new Map() });
+      const node = map.get(vbNum)!;
+      if (!node.serials.has(vbSer)) node.serials.set(vbSer, { displayName: vbSerDisplay, count: 0 });
+      node.serials.get(vbSer)!.count++;
     });
+
     return Array.from(map.entries())
-      .sort(([a], [b]) => resolveVBNumber(a).localeCompare(resolveVBNumber(b)))
-      .map(([vbNumber, serMap]) => ({
+      .sort(([, a], [, b]) => a.displayName.localeCompare(b.displayName))
+      .map(([vbNumber, { displayName, serials }]) => ({
         vbNumber,
-        displayName: resolveVBNumber(vbNumber),
-        total: Array.from(serMap.values()).reduce((s, n) => s + n, 0),
-        children: Array.from(serMap.entries())
-          .sort(([a], [b]) => resolveVBSerial(a).localeCompare(resolveVBSerial(b)))
-          .map(([vbSerial, count]) => ({
+        displayName,
+        total: Array.from(serials.values()).reduce((s, n) => s + n.count, 0),
+        children: Array.from(serials.entries())
+          .sort(([, a], [, b]) => a.displayName.localeCompare(b.displayName))
+          .map(([vbSerial, { displayName: serDisplay, count }]) => ({
             vbSerial,
-            displayName: resolveVBSerial(vbSerial),
+            displayName: serDisplay,
             count,
           })),
       }));
-  }, [data, poLookup, cpoLookup]);
+  }, [data]);
 
   // Filter tree by search (searches against resolved display names)
   const filteredTree = useMemo(() => {
@@ -127,9 +94,6 @@ export function ShipmentGroupSidebar({
 
   const isAllActive = !activeVBNumber;
 
-  // Don't render items while PO lookup is empty (prevents ObjectId flash)
-  const isReady = Object.keys(poLookup).length > 0 || (purchaseOrders || []).length === 0;
-
   return (
     <div className="flex flex-col h-full border-r bg-muted/20 w-[180px] shrink-0">
       {/* Search */}
@@ -162,7 +126,7 @@ export function ShipmentGroupSidebar({
           <span className="ml-auto text-[10px] tabular-nums opacity-60">{data.length}</span>
         </button>
 
-        {isReady && filteredTree.map((node) => {
+        {filteredTree.map((node) => {
           const isExpanded = expandedPOs.has(node.vbNumber);
           const isLevel1Active = activeVBNumber === node.vbNumber && !activeVBSerial;
 
