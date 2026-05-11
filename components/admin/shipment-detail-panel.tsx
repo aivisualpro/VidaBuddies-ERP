@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Ship, Box, Hash, Truck, Factory, Package, Anchor, DollarSign, FileCheck, User, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2 } from "lucide-react";
+import { X, Ship, DollarSign, FileCheck, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -97,8 +97,10 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
               <Ship className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight">{ship?.VBShipmentNumber || ship?.svbid || 'Shipment Details'}</h2>
-              <p className="text-xs text-muted-foreground">from <span className="font-semibold text-foreground/70">{ship?._displayVBSerialNumber || ship?._displayVBNumber || '-'}</span></p>
+              <p className="text-sm font-bold tracking-tight flex items-center gap-2">
+                {ship?.VBShipmentNumber || ship?.svbid || 'Shipment Details'}
+                <span className="text-[10px] font-medium text-muted-foreground">{ship?.createdByName || ''}</span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -107,7 +109,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
                 {ship.status}
               </span>
             )}
-            {/* Action buttons — same as PO detail page */}
+            {/* Action buttons */}
             {ship && (
               <div className="flex items-center gap-0.5">
                 {onAttachments && (
@@ -174,139 +176,121 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
           ) : (
             <div className="p-5 space-y-4">
 
-              {/* Row 1: Container | BOL | Carrier | Vessel */}
+              {/* Row 1: Supplier — 4 equal columns */}
               <div className="grid grid-cols-4 gap-3">
-                {[
-                  { label: 'Container', value: ship.containerNo, icon: Box },
-                  { label: 'BOL Number', value: ship.BOLNumber, icon: Hash },
-                  { label: 'Carrier', value: ship.carrier, icon: Truck },
-                  { label: 'Vessel / Trip', value: ship.vessellTrip, icon: Ship },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 min-w-0">
-                    <div className="h-7 w-7 rounded-md bg-muted/60 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <item.icon className="h-3.5 w-3.5 text-primary/70" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">{item.label}</p>
-                      <p className="text-xs font-bold text-foreground truncate uppercase" title={item.value || '-'}>{item.value || '-'}</p>
-                    </div>
-                  </div>
-                ))}
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier</p>
+                  <p className="text-xs font-bold text-foreground truncate" title={supplierName}>{supplierName}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier Location</p>
+                  <p className="text-xs font-bold text-foreground truncate" title={supplierLocName || '-'}>{supplierLocName || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
+                  <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO Date</p>
+                  <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
+                </div>
               </div>
 
-              {/* Row 2: Supplier */}
-              <div className="rounded-xl bg-gradient-to-r from-primary/[0.04] to-transparent border border-primary/10 p-3">
+              {/* Row 2: Container | BOL | Carrier | Booking Ref */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Container No</p>
+                  <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.containerNo || '-'}>{ship.containerNo || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">BOL Number</p>
+                  <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.BOLNumber || '-'}>{ship.BOLNumber || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Carrier</p>
+                  <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.carrier || '-'}>{ship.carrier || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Carrier Booking Ref</p>
+                  <p className="text-xs font-bold text-foreground truncate uppercase" title={ship.carrierBookingRef || '-'}>{ship.carrierBookingRef || '-'}</p>
+                </div>
+              </div>
+
+              {/* Row 3: Ports & Dates */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Port Of Lading</p>
+                  <p className="text-xs font-bold text-foreground truncate" title={ship.portOfLading || '-'}>{ship.portOfLading || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Port Of Entry Ship To</p>
+                  <p className="text-xs font-bold text-foreground truncate" title={ship.portOfEntryShipTo || '-'}>{ship.portOfEntryShipTo || '-'}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Date Of Landing</p>
+                  <p className="text-xs font-bold text-foreground">{formatDate(ship.dateOfLanding)}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">ETA</p>
+                  <p className="text-xs font-bold text-foreground">{formatDate(ship.ETA)}</p>
+                </div>
+              </div>
+
+              {/* Row 4: Products & Measures */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Column 1: Products */}
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider mb-1.5">Products</p>
+                  <div className="flex flex-col gap-1">
+                    {(() => {
+                      const pids = Array.isArray(ship.products) ? ship.products : ship.product ? [ship.product] : [];
+                      return pids.length > 0
+                        ? pids.map((pid: string, i: number) => (
+                          <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg w-fit">
+                            {(Array.isArray(ship._displayProducts) && ship._displayProducts.length > 0)
+                              ? ship._displayProducts[i] || pid
+                              : pid}
+                          </span>
+                        ))
+                        : <span className="text-xs text-muted-foreground">—</span>;
+                    })()}
+                  </div>
+                </div>
+                {/* Column 2: Drums / Pallets / Gallons */}
+                <div className="flex flex-wrap items-start gap-x-6 gap-y-1 pt-5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Drums</p>
+                    <p className="text-xs font-bold text-foreground">{(ship.drums || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Pallets</p>
+                    <p className="text-xs font-bold text-foreground">{(ship.pallets || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Gallons</p>
+                    <p className="text-xs font-bold text-foreground">{(ship.gallons || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 5: Financials */}
+              <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
                 <div className="flex items-center gap-1.5 mb-2">
-                  <Factory className="h-3.5 w-3.5 text-primary" />
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-primary">Supplier</p>
+                  <DollarSign className="h-3.5 w-3.5 text-primary/70" />
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Financials</p>
                 </div>
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="col-span-2 min-w-0">
-                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Name & Location</p>
-                    <p className="text-xs font-bold text-foreground truncate">
-                      <span className="text-primary">{supplierName}</span>
-                      {supplierLocName && <> <span className="text-muted-foreground">—</span> {supplierLocName}</>}
-                    </p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Supplier PO</p>
-                    <p className="text-xs font-bold text-foreground truncate">{ship.supplierPO || '-'}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">PO Date</p>
-                    <p className="text-xs font-bold text-foreground">{formatDate(ship.supplierPoDate)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3: Products */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Package className="h-3.5 w-3.5 text-primary/70" />
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Products</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(() => {
-                    const pids = Array.isArray(ship.products) ? ship.products : ship.product ? [ship.product] : [];
-                    return pids.length > 0
-                      ? pids.map((pid: string, i: number) => (
-                        <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg">
-                          {(Array.isArray(ship._displayProducts) && ship._displayProducts.length > 0)
-                            ? ship._displayProducts[i] || pid
-                            : pid}
-                        </span>
-                      ))
-                      : <span className="text-xs text-muted-foreground">—</span>;
-                  })()}
-                </div>
-              </div>
-
-              {/* Row 4: Logistics */}
-              <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 overflow-hidden">
-                <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-                  <Anchor className="h-3.5 w-3.5 text-primary/70" />
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Logistics & Route</p>
-                </div>
-                <div className="grid grid-cols-5 gap-0 px-3 pb-2.5 pt-1">
+                <div className="grid grid-cols-4 gap-2">
                   {[
-                    { label: 'Port of Lading', value: ship.portOfLading },
-                    { label: 'Port of Entry', value: ship.portOfEntryShipTo },
-                    { label: 'Landing Date', value: formatDate(ship.dateOfLanding) },
-                    { label: 'ETA', value: formatDate(ship.ETA) },
-                    { label: 'Updated ETA', value: formatDate(ship.updatedETA), highlight: true },
+                    { label: 'Inv Value', value: `$${(ship.invValue || 0).toLocaleString()}` },
+                    { label: 'Est. Duties', value: `$${(ship.estTrumpDuties || 0).toLocaleString()}` },
+                    { label: 'Fees Amount', value: `$${(ship.feesAmount || 0).toLocaleString()}` },
+                    { label: 'Est Duties (2)', value: `$${(ship.estimatedDuties || 0).toLocaleString()}` },
                   ].map((item, i) => (
-                    <div key={i} className={cn("text-center py-1", i < 4 && 'border-r border-border/40')}>
-                      <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">{item.label}</p>
-                      <p className={cn("text-[10px] font-bold truncate px-1", item.highlight ? 'text-primary' : 'text-foreground')} title={item.value || '-'}>{item.value || '-'}</p>
+                    <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
+                      <p className="text-xs font-bold text-foreground">{item.value}</p>
+                      <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
                     </div>
                   ))}
-                </div>
-                <div className="border-t border-border/30 px-3 py-2">
-                  <p className="text-[9px] font-bold uppercase text-foreground/50 tracking-wider mb-0.5">Booking Ref</p>
-                  <p className="text-[10px] font-bold text-foreground">{ship.carrierBookingRef || '-'}</p>
-                </div>
-              </div>
-
-              {/* Row 5: Cargo & Financials */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Package className="h-3.5 w-3.5 text-primary/70" />
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Weights & Measures</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: 'Drums', value: ship.drums || 0 },
-                      { label: 'Pallets', value: ship.pallets || 0 },
-                      { label: 'Gallons', value: ship.gallons || 0 },
-                      { label: 'Net KG', value: ship.netWeightKG || 0 },
-                      { label: 'Gross KG', value: ship.grossWeightKG || 0 },
-                    ].map((item, i) => (
-                      <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
-                        <p className="text-xs font-bold text-foreground">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
-                        <p className="text-[8px] font-bold uppercase text-foreground/50 tracking-wider">{item.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <DollarSign className="h-3.5 w-3.5 text-primary/70" />
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Financials</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'Inv Value', value: `$${(ship.invValue || 0).toLocaleString()}` },
-                      { label: 'Est. Duties', value: `$${(ship.estTrumpDuties || 0).toLocaleString()}` },
-                      { label: 'Fees Amount', value: `$${(ship.feesAmount || 0).toLocaleString()}` },
-                      { label: 'Est Duties (2)', value: `$${(ship.estimatedDuties || 0).toLocaleString()}` },
-                    ].map((item, i) => (
-                      <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
-                        <p className="text-xs font-bold text-foreground">{item.value}</p>
-                        <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
 

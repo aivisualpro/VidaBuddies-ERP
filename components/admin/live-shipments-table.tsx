@@ -14,11 +14,13 @@ import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
+import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
 import Link from "next/link";
 
 
 interface ContainerInfo {
   id: string;
+  shippingId: string;
   containerNo: string;
   vbid: string;
   poNo: string;
@@ -103,6 +105,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
   const [rawJsonData, setRawJsonData] = useState<{ containerNo: string, json: string } | null>(null);
   const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
   const [trackingCachedJson, setTrackingCachedJson] = useState<any>(null);
+  const [detailShippingId, setDetailShippingId] = useState<string | null>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -266,9 +269,12 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                 return (
                   <TableRow key={idx} className="h-auto">
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
-                      <span onClick={() => window.location.assign(`/admin/purchase-orders/${container.id}`)} className="hover:underline cursor-pointer text-inherit font-medium">
+                      <button
+                        onClick={() => container.shippingId && setDetailShippingId(container.shippingId)}
+                        className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
+                      >
                         {container.svbid || '-'}
-                      </span>
+                      </button>
                     </TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words font-medium">
                       {container.containerNo ? (
@@ -384,6 +390,17 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
         onClose={() => { setTrackingContainer(null); setTrackingCachedJson(null); }}
         containerNo={trackingContainer || ''}
         cachedRawJson={trackingCachedJson}
+      />
+
+      <ShipmentDetailPanel
+        open={!!detailShippingId}
+        onClose={() => setDetailShippingId(null)}
+        shipmentId={detailShippingId}
+        onTrack={(cn) => {
+          setDetailShippingId(null);
+          setTrackingCachedJson(null);
+          setTrackingContainer(cn);
+        }}
       />
     </div>
   );

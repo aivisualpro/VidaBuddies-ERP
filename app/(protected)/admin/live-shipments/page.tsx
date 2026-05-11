@@ -9,6 +9,7 @@ export default function LiveShipmentsPage() {
 
   const containers: Array<{
     id: string;
+    shippingId: string;
     containerNo: string;
     vbid: string;
     poNo: string;
@@ -27,7 +28,6 @@ export default function LiveShipmentsPage() {
     if (s === 'in transit' || s === 'in_transit' || s === 'on water') return 'In Transit';
     if (s === 'planned' || s === 'booking confirmed') return 'Planned';
     if (s === 'pending' || s === 'ordered') return 'Pending';
-    // If it's already one of the app statuses, return as-is
     if (['Pending', 'Planned', 'In Transit', 'Delivered'].includes(raw)) return raw;
     return 'Pending';
   }
@@ -38,15 +38,27 @@ export default function LiveShipmentsPage() {
         if (cpo.shipping && Array.isArray(cpo.shipping)) {
           cpo.shipping.forEach((ship: any) => {
             const hasContainer = ship.containerNo && ship.containerNo.toLowerCase() !== "tbd";
+            const eta = ship.updatedETA || ship.ETA || "";
+            let status = normalizeStatus(ship.status);
+
+            // Auto-flag: if ETA is in the past and status is still "In Transit", show as "Delivered"
+            if (status === 'In Transit' && eta) {
+              const etaDate = new Date(eta);
+              if (!isNaN(etaDate.getTime()) && etaDate.getTime() < Date.now()) {
+                status = 'Delivered';
+              }
+            }
+
             containers.push({
               id: po._id.toString(),
+              shippingId: ship._id?.toString() || "",
               containerNo: ship.containerNo || "",
               vbid: po.vbpoNo,
               poNo: cpo.poNo || "",
               svbid: ship.svbid || "",
               customerName: cpo.customer || "Unknown",
-              status: normalizeStatus(ship.status),
-              updatedETA: ship.updatedETA || ship.ETA || "",
+              status,
+              updatedETA: eta,
               initialData: (hasContainer && ship.shippingTrackingRecords && ship.shippingTrackingRecords.length > 0)
                 ? JSON.parse(JSON.stringify(ship.shippingTrackingRecords[ship.shippingTrackingRecords.length - 1]))
                 : null
@@ -57,7 +69,7 @@ export default function LiveShipmentsPage() {
     }
   });
 
-  // Unique by svbid (shipping VBID) if available, otherwise by containerNo, otherwise keep all
+  // Unique by svbid
   const seen = new Set<string>();
   const uniqueContainers = containers
     .filter(item => {
