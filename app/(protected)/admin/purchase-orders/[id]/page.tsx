@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AttachmentsModal } from "@/components/attachments-modal";
+import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { useUserDataStore } from "@/store/useUserDataStore";
 
@@ -275,6 +276,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [actionsVisible, setActionsVisible] = useState(false); // Helper if needed
   const [editingShipping, setEditingShipping] = useState<{ cpoIdx: number, shipIdx: number, data: any } | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
+  const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
   const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; title?: string } | null>(null);
 
@@ -1767,17 +1769,33 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         );
       })()}
 
-      {/* Attachments Modal */}
-      <AttachmentsModal
+      {/* Drive Documents Modal (reads from MongoDB) */}
+      <DriveDocumentsModal
         open={!!attachmentsOpen}
         onClose={() => {
           setAttachmentsOpen(null);
           if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
         }}
         poNumber={attachmentsOpen?.poNumber || ''}
-        spoNumber={attachmentsOpen?.spoNumber}
-        shipNumber={attachmentsOpen?.shipNumber}
-        childFolders={attachmentsOpen?.childFolders}
+        onOpenLegacy={() => {
+          // Close DriveDocuments and open legacy AttachmentsModal
+          const saved = attachmentsOpen;
+          setAttachmentsOpen(null);
+          setTimeout(() => setLegacyAttachmentsOpen(saved), 100);
+        }}
+      />
+
+      {/* Legacy Attachments Modal (Google Drive upload/folder) */}
+      <AttachmentsModal
+        open={!!legacyAttachmentsOpen}
+        onClose={() => {
+          setLegacyAttachmentsOpen(null);
+          if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
+        }}
+        poNumber={legacyAttachmentsOpen?.poNumber || ''}
+        spoNumber={legacyAttachmentsOpen?.spoNumber}
+        shipNumber={legacyAttachmentsOpen?.shipNumber}
+        childFolders={legacyAttachmentsOpen?.childFolders}
       />
 
       {/* Timeline Modal */}

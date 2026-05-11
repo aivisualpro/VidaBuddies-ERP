@@ -70,7 +70,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <AppSidebar variant="inset" isSupplierProp={session?.role === "Supplier"} initialPermissions={initialPermissions} initialIsAdmin={isSuperAdmin} />
         <SidebarInset className="flex flex-col h-full w-full overflow-hidden bg-background">
           <SiteHeader />
-          <div className="flex-1 overflow-auto origin-top-left flex flex-col">
+          <div className="flex-1 overflow-auto origin-top-left flex flex-col p-4">
               {children}
           </div>
         </SidebarInset>

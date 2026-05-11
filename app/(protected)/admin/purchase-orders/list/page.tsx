@@ -236,7 +236,8 @@ export default function PurchaseOrdersPage() {
     if (data.length > 0) {
       const numbers = data
         .map((item) => {
-          const match = item.vbpoNo?.match(/^VB(\d+)$/i);
+          const val = item.vbpoNo || (item as any).VBNumber || "";
+          const match = val.match(/^VB(\d+)$/i);
           return match ? parseInt(match[1], 10) : 0;
         })
         .filter((n) => n > 0);

@@ -32,7 +32,9 @@ export function AddPurchaseOrderDialog({
       if (purchaseOrders && purchaseOrders.length > 0) {
         const numbers = purchaseOrders
           .map((item: any) => {
-            const match = item.vbpoNo?.match(/^VB(\d+)$/i);
+            // Check both vbpoNo and VBNumber for the VB number pattern
+            const val = item.vbpoNo || item.VBNumber || "";
+            const match = val.match(/^VB(\d+)$/i);
             return match ? parseInt(match[1], 10) : 0;
           })
           .filter((n: number) => n > 0);

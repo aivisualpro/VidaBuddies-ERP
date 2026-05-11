@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const { 
       docName, expiryDate, supplierNotes, adminNotes, isVerified, isNA, logAction, 
-      fileId: targetFileId, fileIsVerified, fileProducts, fileExpiryDate,
+      fileId: targetFileId, fileIsVerified, fileProducts, fileExpiryDate, fileRename,
       verifyAll  // new: set all files' isVerified to true
     } = await req.json();
 
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           if (fileIsVerified !== undefined) doc.files[fileIndex].isVerified = fileIsVerified;
           if (fileProducts !== undefined) doc.files[fileIndex].products = fileProducts;
           if (fileExpiryDate !== undefined) doc.files[fileIndex].expiryDate = fileExpiryDate || null;
+          if (fileRename) doc.files[fileIndex].fileName = fileRename;
         }
       }
     }

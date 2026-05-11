@@ -204,6 +204,7 @@ const VBshippingSchema: Schema = new Schema(
         timestamp: { type: Date, default: Date.now },
       },
     ],
+    driveDocuments: [{ type: Schema.Types.Mixed }],
   },
   { timestamps: true }
 );

@@ -29,6 +29,11 @@ export async function POST(req: Request) {
       data.createdBy = session.email;
     }
 
+    // Ensure VBNumber is set to match vbpoNo
+    if (data.vbpoNo && !data.VBNumber) {
+      data.VBNumber = data.vbpoNo;
+    }
+
     const newItem = await VidaPO.create(data);
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {

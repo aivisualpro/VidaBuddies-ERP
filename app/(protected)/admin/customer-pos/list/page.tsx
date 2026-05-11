@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, MessageCircle } from "lucide-react";
+import { Pencil, Trash2, MessageCircle, Paperclip } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
@@ -13,6 +13,7 @@ import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
 import { useUserDataStore } from "@/store/useUserDataStore";
+import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 
 interface CustomerPO {
   _id: string;
@@ -32,6 +33,7 @@ interface CustomerPO {
   vidaPOId?: string;
   createdAt?: string;
   updatedAt?: string;
+  driveDocuments?: any[];
 }
 
 export default function CustomerPOsListPage() {
@@ -47,6 +49,7 @@ export default function CustomerPOsListPage() {
   const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
 
   const { customers: storeCustomers } = useUserDataStore();
   const customers = storeCustomers || [];
@@ -174,11 +177,6 @@ export default function CustomerPOsListPage() {
 
   const columns: ColumnDef<CustomerPO>[] = [
     {
-      accessorKey: "vbpoNo",
-      header: "VB Number",
-      cell: ({ row }) => row.original.vbpoNo || "-",
-    },
-    {
       accessorKey: "poNo",
       header: "VB Number Serial",
       cell: ({ row }) => row.original.VBSerialNumber || row.original.poNo || "-",
@@ -235,6 +233,26 @@ export default function CustomerPOsListPage() {
               />
             </div>
           </div>
+        );
+      },
+    },
+    {
+      id: "documents",
+      header: "Docs",
+      cell: ({ row }) => {
+        const count = row.original.driveDocuments?.length || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const poNo = row.original.vbpoNo || "";
+              if (poNo) setAttachmentsPoNumber(poNo);
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${count > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground hover:bg-muted'}`}
+          >
+            <Paperclip className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
         );
       },
     },
@@ -370,6 +388,13 @@ export default function CustomerPOsListPage() {
           parentRefKind="VBNumber"
         />
       )}
+
+      {/* Drive Documents Modal */}
+      <DriveDocumentsModal
+        open={!!attachmentsPoNumber}
+        onClose={() => setAttachmentsPoNumber(null)}
+        poNumber={attachmentsPoNumber || ""}
+      />
     </div>
   );
 }

@@ -83,6 +83,11 @@ const data = {
       url: "/admin/active-actions",
       icon: IconCheckbox,
     },
+    {
+      name: "Documents Box",
+      url: "/admin/documents-box",
+      icon: IconFileDescription,
+    },
   ],
   inventory: [
     {

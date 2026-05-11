@@ -37,6 +37,7 @@ const VBcustomerPOSchema: Schema = new Schema(
     UOM: { type: String },
     warehouse: { type: String },
     _originalCpoId: { type: String },
+    driveDocuments: [{ type: Schema.Types.Mixed }],
   },
   { timestamps: true }
 );
