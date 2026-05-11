@@ -41,9 +41,8 @@ export async function POST() {
         } else {
           // Create standalone customerPO
           const newCpo = await VBcustomerPO.create({
-            vidaPOId: po._id,
-            vbpoNo: po.vbpoNo || "",
-            poNo: cpo.poNo,
+            VBNumber: po._id,
+            VBSerialNumber: cpo.poNo || "",
             customer: cpo.customer,
             customerLocation: cpo.customerLocation,
             customerPONo: cpo.customerPONo,

@@ -241,8 +241,8 @@ const VidaPOSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now },
   isArchived: { type: Boolean, default: false },
   isNigalu: { type: Boolean, default: false },
-  customerPO: [VidaPOCustomerPOSchema],
-  driveDocuments: [{ type: Schema.Types.Mixed }],
+  customerPO: { type: [VidaPOCustomerPOSchema], default: undefined },  // legacy — separate collections now
+  driveDocuments: { type: [Schema.Types.Mixed], default: undefined },
 });
 
 const VidaPO: Model<IVidaPO> = mongoose.models.VidaPO || mongoose.model<IVidaPO>('VidaPO', VidaPOSchema);

@@ -1,13 +1,10 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IVBcustomerPO extends Document {
-  vidaPOId?: mongoose.Types.ObjectId; // ref to VidaPO
-  vbpoNo?: string;                    // display field — same as parent VidaPO.vbpoNo
-  VBNumber?: string;                  // vidapos._id as string (ref)
-  poNo?: string;                      // legacy — same as VBSerialNumber
-  VBSerialNumber?: string;            // new name for poNo (e.g. "VB1-1")
-  customer?: string;
-  customerLocation?: string;
+  VBNumber?: mongoose.Types.ObjectId; // ref to VidaPO._id (link to vidapos)
+  VBSerialNumber?: string;            // e.g. "VB1-1"
+  customer?: mongoose.Types.ObjectId;    // ref to VidaCustomer._id
+  customerLocation?: mongoose.Types.ObjectId; // ref to VidaCustomer.location[]._id
   customerPONo?: string;
   customerPODate?: Date;
   requestedDeliveryDate?: Date;
@@ -22,13 +19,10 @@ export interface IVBcustomerPO extends Document {
 
 const VBcustomerPOSchema: Schema = new Schema(
   {
-    vidaPOId: { type: Schema.Types.ObjectId, ref: 'VidaPO', default: null },
-    vbpoNo: { type: String, default: '' },
-    VBNumber: { type: String, default: '' },
-    poNo: { type: String },
+    VBNumber: { type: Schema.Types.ObjectId, ref: 'VidaPO', default: null },
     VBSerialNumber: { type: String, default: '' },
-    customer: { type: String },
-    customerLocation: { type: String },
+    customer: { type: Schema.Types.ObjectId, ref: 'VidaCustomer', default: null },
+    customerLocation: { type: Schema.Types.ObjectId, default: null },
     customerPONo: { type: String },
     customerPODate: { type: Date },
     requestedDeliveryDate: { type: Date },
@@ -43,9 +37,6 @@ const VBcustomerPOSchema: Schema = new Schema(
 );
 
 // Index for fast lookups
-VBcustomerPOSchema.index({ vidaPOId: 1 });
-VBcustomerPOSchema.index({ vbpoNo: 1 });
-VBcustomerPOSchema.index({ poNo: 1 });
 VBcustomerPOSchema.index({ VBNumber: 1 });
 VBcustomerPOSchema.index({ VBSerialNumber: 1 });
 

@@ -86,6 +86,8 @@ interface Shipping {
 
 interface CustomerPO {
   _id?: string;
+  VBNumber?: string;
+  VBSerialNumber?: string;
   poNo?: string;
   customer?: string;
   customerLocation?: string;
@@ -102,6 +104,7 @@ interface CustomerPO {
 interface PurchaseOrder {
   _id: string;
   vbpoNo: string;
+  VBNumber: string;
   orderType: string;
   date: string;
   category: string;
@@ -226,7 +229,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     customers.forEach((cust: any) => {
       if (cust.location && Array.isArray(cust.location)) {
         cust.location.forEach((loc: any) => {
-          if (loc.vbId) mapping[loc.vbId] = loc.locationName || loc.vbId;
+          const name = loc.locationName || loc.vbId || 'Unknown';
+          if (loc._id) mapping[loc._id] = name;       // ObjectId key
+          if (loc.vbId) mapping[loc.vbId] = name;      // legacy vbId key
         });
       }
     });
@@ -290,7 +295,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       // Fire all 3 requests in parallel — id is already known from the URL
       const [poRes, cpoRes, shipRes] = await Promise.all([
         fetch(`/api/admin/purchase-orders/${id}`),
-        fetch(`/api/admin/vb-customer-po?vidaPOId=${id}`),
+        fetch(`/api/admin/vb-customer-po?VBNumber=${id}`),
         fetch(`/api/admin/vb-shipping?VBNumber=${id}`),
       ]);
 
@@ -359,9 +364,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   // Auto-select single location when customer changes
   useEffect(() => {
     if (selectedCustomerForCPO) {
-      const cust = customers.find((c: any) => c.vbId === selectedCustomerForCPO);
+      const cust = customers.find((c: any) => c._id === selectedCustomerForCPO);
       if (cust?.location?.length === 1) {
-        setSelectedLocationForCPO(cust.location[0].vbId);
+        setSelectedLocationForCPO(cust.location[0]._id);
       } else {
         // Reset location if customer changed (unless editing)
         if (!editingCPO) setSelectedLocationForCPO("");
@@ -486,8 +491,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         if (!response.ok) throw new Error("Failed to update");
       } else {
         // Create new standalone VBcustomerPO linked to this PO
-        formattedData.vidaPOId = po?._id;
-        formattedData.vbpoNo = po?.vbpoNo || '';
+        formattedData.VBNumber = po?._id || '';
         const response = await fetch('/api/admin/vb-customer-po', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -721,9 +725,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           Timeline
         </Button>
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
-          // Auto-generate next CPO poNo
+          // Auto-generate next CPO serial number
           const existingCount = po?.customerPO?.length || 0;
-          const nextPoNo = `${po?.vbpoNo || 'VB'}-${existingCount + 1}`;
+          const displayName = (po as any)?.VBNumber || po?.vbpoNo || 'VB';
+          const nextPoNo = `${displayName}-${existingCount + 1}`;
           setAutoPoNo(nextPoNo);
           setIsAddCPOOpen(true);
         }}>
@@ -806,7 +811,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-black leading-tight text-foreground uppercase tracking-tight">
-                            {cpo.poNo || "UNNAMED"}
+                          {cpo.VBSerialNumber || "UNNAMED"}
                           </h3>
                           <div className="flex items-center gap-1.5 px-2 py-0.5 bg-muted/40 rounded-lg border border-border/50">
                             <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">REF:</span>
@@ -1318,8 +1323,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             {/* Row 1: PO # (Internal) | Customer PO # */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>PO # (Internal)</Label>
-                <Input name="poNo" defaultValue={editingCPO?.data?.poNo || autoPoNo} required />
+                <Label>VB Serial Number</Label>
+                <Input name="VBSerialNumber" defaultValue={editingCPO?.data?.VBSerialNumber || editingCPO?.data?.poNo || autoPoNo} required />
               </div>
               <div className="space-y-1">
                 <Label>Customer PO #</Label>
@@ -1332,7 +1337,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 <Label>Customer Ref</Label>
                 <SearchableSelect
                   name="customer"
-                  options={customers.map((cust: any) => ({ value: cust.vbId, label: cust.name }))}
+                  options={customers.map((cust: any) => ({ value: cust._id, label: cust.name }))}
                   value={selectedCustomerForCPO}
                   onChange={(val) => setSelectedCustomerForCPO(val)}
                   placeholder="Select Customer"
@@ -1345,9 +1350,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 <SearchableSelect
                   name="customerLocation"
                   options={(() => {
-                    const selectedCust = customers.find((c: any) => c.vbId === selectedCustomerForCPO);
+                    const selectedCust = customers.find((c: any) => c._id === selectedCustomerForCPO);
                     if (selectedCust?.location?.length) {
-                      return selectedCust.location.map((loc: any) => ({ value: loc.vbId, label: loc.locationName || loc.vbId }));
+                      return selectedCust.location.map((loc: any) => ({ value: loc._id, label: loc.locationName || loc.vbId }));
                     }
                     return Object.entries(locations).map(([id, name]) => ({ value: id, label: name }));
                   })()}

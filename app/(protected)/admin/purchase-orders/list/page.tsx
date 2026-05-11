@@ -237,7 +237,7 @@ export default function PurchaseOrdersPage() {
     if (data.length > 0) {
       const numbers = data
         .map((item) => {
-          const val = (item as any).VBNumber || item.vbpoNo || "";
+          const val = (item as any).VBNumber || "";
           const match = val.match(/^VB(\d+)$/i);
           return match ? parseInt(match[1], 10) : 0;
         })
@@ -268,7 +268,7 @@ export default function PurchaseOrdersPage() {
     {
       id: "VBNumber",
       header: "VB Number",
-      cell: ({ row }) => row.original.VBNumber || row.original.vbpoNo || "—",
+      cell: ({ row }) => row.original.VBNumber || "—",
     },
     {
       accessorKey: "date",
@@ -411,8 +411,8 @@ export default function PurchaseOrdersPage() {
           });
         });
         
-        const vbpoNo = row.original.vbpoNo;
-        const invCount = invoiceCounts[vbpoNo] || 0;
+        const vbNumber = row.original.VBNumber || row.original._id;
+        const invCount = invoiceCounts[vbNumber] || 0;
         
         if (count === 0 && invCount === 0) return <span className="text-muted-foreground">-</span>;
         
@@ -474,14 +474,14 @@ export default function PurchaseOrdersPage() {
       id: "timeline",
       header: "Timeline",
       cell: ({ row }) => {
-        const vbpoNo = row.original.vbpoNo;
+        const vbNumber = row.original.VBNumber || row.original._id;
         const poId = row.original._id;
-        const count = timelineCounts[vbpoNo] || 0;
+        const count = timelineCounts[vbNumber] || 0;
         return (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbpoNo}` });
+              setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbNumber}` });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
@@ -499,7 +499,7 @@ export default function PurchaseOrdersPage() {
       header: "Chat",
       cell: ({ row }) => {
         const poId = row.original._id;
-        const vbpoNo = row.original.vbpoNo;
+        const vbNumber = row.original.VBNumber || poId;
         const info = chatInfo[poId];
         const count = info?.unread || 0;
         const hasConv = info?.hasConversation || false;
@@ -507,7 +507,7 @@ export default function PurchaseOrdersPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setChatOpen({ refKind: "VBNumber", refId: poId, display: vbpoNo });
+              setChatOpen({ refKind: "VBNumber", refId: poId, display: vbNumber });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
@@ -515,7 +515,7 @@ export default function PurchaseOrdersPage() {
               ? 'text-primary/60 hover:bg-primary/10 cursor-pointer'
               : 'text-muted-foreground hover:bg-muted cursor-pointer'
               }`}
-            aria-label={`Chat for ${vbpoNo}`}
+            aria-label={`Chat for ${vbNumber}`}
           >
             <MessageCircle className={`h-3 w-3 ${hasConv ? 'fill-current' : ''}`} />
             {count > 0 ? count : hasConv ? '' : '—'}
@@ -527,13 +527,13 @@ export default function PurchaseOrdersPage() {
       id: "emails",
       header: "Emails",
       cell: ({ row }) => {
-        const vbpoNo = row.original.vbpoNo;
-        const count = emailCounts[vbpoNo] || 0;
+        const vbNumber = row.original.VBNumber || row.original._id;
+        const count = emailCounts[vbNumber] || 0;
         return (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setAttachmentsOpen({ poNumber: vbpoNo });
+              setAttachmentsOpen({ poNumber: vbNumber });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 cursor-pointer'
@@ -637,7 +637,7 @@ export default function PurchaseOrdersPage() {
       const q = searchQuery.toLowerCase();
       const createdByName = users[po.createdBy?.toLowerCase()] || po.createdBy || '';
       const searchable = [
-        po.vbpoNo, po.orderType, po.category, po.date, po.createdBy, createdByName
+        po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName
       ].filter(Boolean).join(' ').toLowerCase();
       if (!searchable.includes(q)) return false;
     }
@@ -750,7 +750,7 @@ export default function PurchaseOrdersPage() {
     router.prefetch(`/admin/purchase-orders/${row._id}`);
     // Prefetch the data APIs into browser cache
     fetch(`/api/admin/purchase-orders/${row._id}`).catch(() => {});
-    fetch(`/api/admin/vb-customer-po?vidaPOId=${row._id}`).catch(() => {});
+    fetch(`/api/admin/vb-customer-po?VBNumber=${row._id}`).catch(() => {});
   };
 
   return (
@@ -780,7 +780,7 @@ export default function PurchaseOrdersPage() {
                   <Input
                     id="VBNumber"
                     className="pl-9"
-                    value={(formData as any).VBNumber || formData.vbpoNo || ""}
+                    value={(formData as any).VBNumber || ""}
                     onChange={(e) =>
                       setFormData({ ...formData, VBNumber: e.target.value } as any)
                     }

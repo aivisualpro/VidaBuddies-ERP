@@ -57,7 +57,7 @@ export interface AddCustomerPODialogProps {
   /** Called after successful save so parent can refetch data */
   onSaved?: () => void;
   /** For auto PO # generation — all existing CPOs for counting */
-  existingCPOs?: { vbpoNo?: string }[];
+  existingCPOs?: { VBNumber?: string }[];
 }
 
 export function AddCustomerPODialog({
@@ -89,8 +89,8 @@ export function AddCustomerPODialog({
   const vbpoOptions = useMemo(
     () =>
       (purchaseOrders || []).map((po: any) => ({
-        value: po.vbpoNo || "",
-        label: po.vbpoNo || "—",
+        value: po._id || "",
+        label: po.VBNumber || po.vbpoNo || "—",
       })),
     [purchaseOrders]
   );
@@ -98,7 +98,7 @@ export function AddCustomerPODialog({
   const customerOptions = useMemo(
     () =>
       (customers || []).map((c: any) => ({
-        value: c.vbId,
+        value: c._id,
         label: c.name || c.companyName || c.email || c.vbId,
       })),
     [customers]
@@ -106,11 +106,11 @@ export function AddCustomerPODialog({
 
   const locationOptions = useMemo(() => {
     const selected = (customers || []).find(
-      (c: any) => c.vbId === selectedCustomer
+      (c: any) => c._id === selectedCustomer
     );
     if (selected?.location?.length) {
       return selected.location.map((l: any) => ({
-        value: l.vbId,
+        value: l._id,
         label: l.locationName || l.vbId,
       }));
     }
@@ -118,8 +118,8 @@ export function AddCustomerPODialog({
     const all: { value: string; label: string }[] = [];
     (customers || []).forEach((c: any) => {
       (c.location || []).forEach((l: any) => {
-        if (l.vbId)
-          all.push({ value: l.vbId, label: l.locationName || l.vbId });
+        if (l._id)
+          all.push({ value: l._id, label: l.locationName || l.vbId });
       });
     });
     return all;
@@ -138,8 +138,8 @@ export function AddCustomerPODialog({
   useEffect(() => {
     if (!open) return;
     if (editingData) {
-      setSelectedVBPO(editingData.vbpoNo || "");
-      setPoNo(editingData.poNo || "");
+      setSelectedVBPO(editingData.VBNumber || "");
+      setPoNo(editingData.VBSerialNumber || "");
       setCustomerPONo(editingData.customerPONo || "");
       setSelectedCustomer(editingData.customer || "");
       setSelectedLocation(editingData.customerLocation || "");
@@ -178,10 +178,10 @@ export function AddCustomerPODialog({
   useEffect(() => {
     if (selectedCustomer) {
       const cust = (customers || []).find(
-        (c: any) => c.vbId === selectedCustomer
+        (c: any) => c._id === selectedCustomer
       );
       if (cust?.location?.length === 1 && !editingData) {
-        setSelectedLocation(cust.location[0].vbId);
+        setSelectedLocation(cust.location[0]._id);
       } else if (!editingData) {
         setSelectedLocation("");
       }
@@ -194,8 +194,11 @@ export function AddCustomerPODialog({
   const handleVBPOChange = (val: string) => {
     setSelectedVBPO(val);
     if (!editingData && val) {
-      const count = existingCPOs.filter((cpo) => cpo.vbpoNo === val).length;
-      setPoNo(`${val}-${count + 1}`);
+      // val is now the VidaPO _id — find the display name (VBNumber) for generating the serial
+      const matchedPO = (purchaseOrders || []).find((p: any) => p._id === val);
+      const displayName = matchedPO?.VBNumber || val;
+      const count = existingCPOs.filter((cpo) => cpo.VBNumber === val).length;
+      setPoNo(`${displayName}-${count + 1}`);
     } else if (!val) {
       setPoNo("");
     }
@@ -206,17 +209,14 @@ export function AddCustomerPODialog({
     e.preventDefault();
     setActionLoading(true);
 
-    // Resolve the PO _id from the selected vbpoNo for the ObjectId reference
+    // selectedVBPO is now the VidaPO _id directly
     const matchedPO = (purchaseOrders || []).find(
-      (p: any) => p.vbpoNo === selectedVBPO
+      (p: any) => p._id === selectedVBPO
     );
 
     const payload: Record<string, any> = {
-      vidaPOId: matchedPO?._id || null,
-      vbpoNo: selectedVBPO,
-      VBNumber: matchedPO?._id?.toString() || "",   // vidapos._id as string
-      poNo,
-      VBSerialNumber: poNo,                          // same value as poNo
+      VBNumber: selectedVBPO || null,                   // vidapos._id as ObjectId
+      VBSerialNumber: poNo,                           // e.g. "VB-1"
       customerPONo,
       customer: selectedCustomer,
       customerLocation: selectedLocation,
@@ -247,7 +247,7 @@ export function AddCustomerPODialog({
       } else {
         // Embedded mode — push into parent PO
         const targetPO = (purchaseOrders || []).find(
-          (p: any) => p.vbpoNo === selectedVBPO
+          (p: any) => p._id === selectedVBPO
         );
         if (!targetPO) {
           toast.error("Parent PO not found");
@@ -305,10 +305,10 @@ export function AddCustomerPODialog({
         </DialogHeader>
 
         <form onSubmit={handleSave} className="grid gap-5 py-4">
-          {/* Row 1: VB PO # + PO # */}
+          {/* Row 1: VB Number (PO) + VB Serial Number */}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label>VB PO # (from Purchase Orders)</Label>
+              <Label>VB Number (from Purchase Orders)</Label>
               <SearchableSelect
                 options={vbpoOptions}
                 value={selectedVBPO}
@@ -318,7 +318,7 @@ export function AddCustomerPODialog({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>PO #</Label>
+              <Label>VB Serial Number</Label>
               <Input
                 value={poNo}
                 onChange={(e) => setPoNo(e.target.value)}

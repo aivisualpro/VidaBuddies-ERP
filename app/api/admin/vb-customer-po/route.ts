@@ -5,20 +5,18 @@ import VBcustomerPO from "@/lib/models/VBcustomerPO";
 /**
  * GET /api/admin/vb-customer-po
  * Query params:
- *   - vidaPOId: filter by parent PO
- *   - vbpoNo: filter by vbpoNo string
+ *   - vidaPOId (legacy alias) or VBNumber: filter by parent VidaPO ObjectId
  *   - all (no params): return all
  */
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
-    const vidaPOId = searchParams.get("vidaPOId");
-    const vbpoNo = searchParams.get("vbpoNo");
+    // Support both legacy "vidaPOId" param and new "VBNumber" param
+    const vbNumber = searchParams.get("VBNumber") || searchParams.get("vidaPOId");
 
     const filter: any = {};
-    if (vidaPOId) filter.vidaPOId = vidaPOId;
-    if (vbpoNo) filter.vbpoNo = vbpoNo;
+    if (vbNumber) filter.VBNumber = vbNumber;
 
     const items = await VBcustomerPO.find(filter).sort({ createdAt: -1 });
     return NextResponse.json(items);

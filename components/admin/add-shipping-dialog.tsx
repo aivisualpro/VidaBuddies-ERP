@@ -68,7 +68,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
 
   // VB PO options for standalone mode — value is _id (ObjectId) for VBNumber
   const vbpoOptions = useMemo(() =>
-    (purchaseOrders || []).map((po: any) => ({ value: po._id || '', label: po.VBNumber || po.vbpoNo || '—' })),
+    (purchaseOrders || []).map((po: any) => ({ value: po._id || '', label: po.VBNumber || '—' })),
     [purchaseOrders]
   );
 
@@ -76,7 +76,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
   const filteredStandaloneCPOs = useMemo(() => {
     if (!selectedVBPO) return standaloneCPOs;
     return standaloneCPOs.filter((cpo: any) =>
-      (cpo.VBNumber || cpo.vidaPOId) === selectedVBPO
+      cpo.VBNumber === selectedVBPO
     );
   }, [standaloneCPOs, selectedVBPO]);
 
@@ -129,7 +129,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       setSelectedSupplierLocation(editingData.supplierLocation || "");
       setSelectedStatus(editingData.status || "Ordered");
       setSelectedCarrier(editingData.carrier || "");
-      setSelectedVBPO(editingData.VBNumber || editingData.vbpoNo || editingData.poNo || "");
+      setSelectedVBPO(editingData.VBNumber || "");
       setSelectedCPO(editingData.VBSerialNumber || editingData.customerPOId || "");
       setAutoShipmentNumber(editingData.VBShipmentNumber || editingData.svbid || "");
     } else {
@@ -283,7 +283,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                     <div className="space-y-1">
                       <Label className="text-xs">Select VBPO</Label>
                       <SearchableSelect
-                        options={(purchaseOrders || []).map((po: any) => ({ value: po._id, label: po.vbpoNo || po._id }))}
+                        options={(purchaseOrders || []).map((po: any) => ({ value: po._id, label: po.VBNumber || po._id }))}
                         value={selectedVBPO}
                         onChange={(v) => { setSelectedVBPO(v); setSelectedCPO(""); }}
                         placeholder="Select VBPO..."
@@ -292,7 +292,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                     <div className="space-y-1">
                       <Label className="text-xs">Select Customer PO</Label>
                       <SearchableSelect
-                        options={activeCPOs.map((cpo: any) => ({ value: cpo._id || cpo.customerPONo, label: cpo.customerPONo || cpo.poNo }))}
+                        options={activeCPOs.map((cpo: any) => ({ value: cpo._id || cpo.customerPONo, label: cpo.customerPONo || cpo.VBSerialNumber }))}
                         value={selectedCPO}
                         onChange={(v) => setSelectedCPO(v)}
                         placeholder={selectedVBPO ? "Select Customer PO..." : "Select VBPO first"}
@@ -328,7 +328,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                       <SearchableSelect
                         options={filteredStandaloneCPOs.map((cpo: any) => ({
                           value: cpo._id,
-                          label: `${cpo.VBSerialNumber || cpo.poNo || '—'}${cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}`
+                          label: `${cpo.VBSerialNumber || '—'}${cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}`
                         }))}
                         value={selectedCPO}
                         onChange={(v) => setSelectedCPO(v)}

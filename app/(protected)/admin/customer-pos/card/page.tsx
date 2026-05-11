@@ -25,9 +25,7 @@ import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface CustomerPO {
   _id: string;
-  vbpoNo?: string;
   VBNumber?: string;
-  poNo?: string;
   VBSerialNumber?: string;
   customer?: string;
   customerLocation?: string;
@@ -38,7 +36,6 @@ interface CustomerPO {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: string;
-  vidaPOId?: string;
   createdAt?: string;
 }
 
@@ -53,8 +50,29 @@ export default function CustomerPOsCardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
 
-  const { customers: storeCustomers } = useUserDataStore();
+  const { customers: storeCustomers, purchaseOrders } = useUserDataStore();
   const customers = storeCustomers || [];
+
+  // Resolve location ObjectId → display name
+  const locationMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    customers.forEach((cust: any) => {
+      (cust.location || []).forEach((loc: any) => {
+        if (loc._id) map[loc._id] = loc.locationName || loc.vbId || 'Unknown';
+        if (loc.vbId) map[loc.vbId] = loc.locationName || loc.vbId;
+      });
+    });
+    return map;
+  }, [customers]);
+
+  // Resolve VBNumber ObjectId → VidaPO display name
+  const poDisplayMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id && po.VBNumber) map[po._id] = po.VBNumber;
+    });
+    return map;
+  }, [purchaseOrders]);
 
   const fetchData = async () => {
     try {
@@ -105,13 +123,13 @@ export default function CustomerPOsCardPage() {
     // Sidebar filter
     if (sidebarVBNumber) {
       result = result.filter(item =>
-        (item.VBNumber || item.vidaPOId || item.vbpoNo || 'Unlinked') === sidebarVBNumber
+        (item.VBNumber || 'Unlinked') === sidebarVBNumber
       );
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(item => {
-        const searchable = [item.VBNumber, item.VBSerialNumber, item.vbpoNo, item.poNo, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
+        const searchable = [item.VBNumber, item.VBSerialNumber, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
@@ -160,7 +178,7 @@ export default function CustomerPOsCardPage() {
             const percent = (item.qtyOrdered && item.qtyOrdered > 0)
               ? Math.round(((item.qtyReceived || 0) / item.qtyOrdered) * 100)
               : 0;
-            const custName = customers.find((c: any) => c.vbId === item.customer)?.name || item.customer;
+            const custName = customers.find((c: any) => c._id === item.customer || c._id === item.customer?.toString())?.name || item.customer;
 
             return (
               <div
@@ -178,9 +196,9 @@ export default function CustomerPOsCardPage() {
                         <ClipboardList className="h-4.5 w-4.5 text-primary" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold tracking-tight leading-none">{item.VBSerialNumber || item.poNo || "—"}</h3>
+                        <h3 className="text-sm font-bold tracking-tight leading-none">{item.VBSerialNumber || "—"}</h3>
                         <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                          {item.vbpoNo || "—"}
+                          {poDisplayMap[item.VBNumber || ""] || item.VBNumber || "—"}
                         </p>
                       </div>
                     </div>

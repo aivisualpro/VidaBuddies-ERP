@@ -17,9 +17,7 @@ import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 
 interface CustomerPO {
   _id: string;
-  vbpoNo?: string;
   VBNumber?: string;
-  poNo?: string;
   VBSerialNumber?: string;
   customer?: string;
   customerLocation?: string;
@@ -30,7 +28,6 @@ interface CustomerPO {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: string;
-  vidaPOId?: string;
   createdAt?: string;
   updatedAt?: string;
   driveDocuments?: any[];
@@ -51,8 +48,29 @@ export default function CustomerPOsListPage() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
 
-  const { customers: storeCustomers } = useUserDataStore();
+  const { customers: storeCustomers, purchaseOrders } = useUserDataStore();
   const customers = storeCustomers || [];
+
+  // Resolve location ObjectId → display name
+  const locationMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    customers.forEach((cust: any) => {
+      (cust.location || []).forEach((loc: any) => {
+        if (loc._id) map[loc._id] = loc.locationName || loc.vbId || 'Unknown';
+        if (loc.vbId) map[loc.vbId] = loc.locationName || loc.vbId;
+      });
+    });
+    return map;
+  }, [customers]);
+
+  // Resolve VBNumber ObjectId → VidaPO display name (e.g. "VB300")
+  const poDisplayMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id && po.VBNumber) map[po._id] = po.VBNumber;
+    });
+    return map;
+  }, [purchaseOrders]);
 
   const fetchData = async () => {
     try {
@@ -94,8 +112,7 @@ export default function CustomerPOsListPage() {
           if (serData[cpoId].hasConversation) hasConv = true;
         }
 
-        // Check by parent VBNumber — try vidaPOId first, then VBNumber field
-        const parentId = cpo.vidaPOId || cpo.VBNumber;
+        const parentId = cpo.VBNumber;
         if (parentId && vbData[parentId]) {
           unread += vbData[parentId].unread || 0;
           if (vbData[parentId].hasConversation) hasConv = true;
@@ -162,13 +179,13 @@ export default function CustomerPOsListPage() {
     // Sidebar filter
     if (sidebarVBNumber) {
       result = result.filter(item =>
-        (item.VBNumber || item.vidaPOId || item.vbpoNo || 'Unlinked') === sidebarVBNumber
+        (item.VBNumber || 'Unlinked') === sidebarVBNumber
       );
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(item => {
-        const searchable = [item.VBNumber, item.VBSerialNumber, item.vbpoNo, item.poNo, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
+        const searchable = [item.VBNumber, item.VBSerialNumber, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
@@ -177,17 +194,27 @@ export default function CustomerPOsListPage() {
 
   const columns: ColumnDef<CustomerPO>[] = [
     {
+      id: "VBNumber",
+      header: "VB Number",
+      cell: ({ row }) => poDisplayMap[row.original.VBNumber || ""] || row.original.VBNumber || "-",
+    },
+    {
       accessorKey: "poNo",
-      header: "VB Number Serial",
-      cell: ({ row }) => row.original.VBSerialNumber || row.original.poNo || "-",
+      header: "VB Serial Number",
+      cell: ({ row }) => row.original.VBSerialNumber || "-",
     },
     {
       accessorKey: "customer",
       header: "Customer",
       cell: ({ row }) => {
-        const cust = customers.find((c: any) => c.vbId === row.original.customer);
+        const cust = customers.find((c: any) => c._id === row.original.customer || c._id === row.original.customer?.toString());
         return cust?.name || row.original.customer || "-";
       },
+    },
+    {
+      accessorKey: "customerLocation",
+      header: "Location",
+      cell: ({ row }) => locationMap[row.original.customerLocation || ""] || row.original.customerLocation || "-",
     },
     { accessorKey: "customerPONo", header: "Customer PO #" },
     {
@@ -245,7 +272,7 @@ export default function CustomerPOsListPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const poNo = row.original.vbpoNo || "";
+              const poNo = row.original.VBNumber || "";
               if (poNo) setAttachmentsPoNumber(poNo);
             }}
             className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${count > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground hover:bg-muted'}`}
@@ -261,7 +288,7 @@ export default function CustomerPOsListPage() {
       header: "Chat",
       cell: ({ row }) => {
         const cpoId = row.original._id;
-        const display = row.original.VBSerialNumber || row.original.poNo || cpoId;
+        const display = row.original.VBSerialNumber || cpoId;
         const info = chatInfo[cpoId];
         const count = info?.unread || 0;
         const hasConv = info?.hasConversation || false;
@@ -269,7 +296,7 @@ export default function CustomerPOsListPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const parentId = row.original.vidaPOId || row.original.VBNumber;
+              const parentId = row.original.VBNumber;
               setChatOpen({ refKind: "VBSerialNumber", refId: cpoId, display, parentRefId: parentId || undefined });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0

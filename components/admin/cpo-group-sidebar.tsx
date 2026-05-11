@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Search, Layers, Ship } from "lucide-react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface CPOGroupSidebarProps {
-  data: { VBNumber?: string; vbpoNo?: string; vidaPOId?: string }[];
+  data: { VBNumber?: string }[];
   activeVBNumber: string | null;
   onSelect: (vbNumber: string | null) => void;
 }
@@ -15,16 +16,25 @@ export function CPOGroupSidebar({
   onSelect,
 }: CPOGroupSidebarProps) {
   const [search, setSearch] = useState("");
+  const { purchaseOrders } = useUserDataStore();
 
-  // Build grouped list using vbpoNo (display name) — no async lookup needed
-  // Also build a map of display name → first matching ObjectId key for filtering
+  // Build a map: VidaPO _id → VBNumber display name (e.g. "VB300")
+  const poDisplayMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id && po.VBNumber) map[po._id] = po.VBNumber;
+    });
+    return map;
+  }, [purchaseOrders]);
+
+  // Build grouped list — resolve ObjectId to human-readable VBNumber
   const { groups, displayToKey } = useMemo(() => {
     const countMap = new Map<string, number>();
     const keyMap: Record<string, string> = {};
 
     data.forEach((item) => {
-      const displayName = item.vbpoNo || "Unlinked";
-      const objectKey = item.VBNumber || item.vidaPOId || item.vbpoNo || "Unlinked";
+      const objectKey = item.VBNumber || "Unlinked";
+      const displayName = poDisplayMap[objectKey] || objectKey;
       countMap.set(displayName, (countMap.get(displayName) || 0) + 1);
       if (!keyMap[displayName]) keyMap[displayName] = objectKey;
     });
@@ -38,7 +48,7 @@ export function CPOGroupSidebar({
       }));
 
     return { groups: sorted, displayToKey: keyMap };
-  }, [data]);
+  }, [data, poDisplayMap]);
 
   // Reverse map: find display name for active key
   const activeDisplayName = useMemo(() => {

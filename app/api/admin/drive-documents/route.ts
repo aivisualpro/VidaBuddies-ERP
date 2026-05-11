@@ -28,35 +28,31 @@ export async function GET(request: NextRequest) {
     const vbcustomerpos = mongoose.connection.collection("vbcustomerpos");
     const vbshippings = mongoose.connection.collection("vbshippings");
 
-    // 1. Get the PO
+    // 1. Get the PO — try by VBNumber string, or by _id if it's a valid ObjectId
+    const poFilter: any[] = [{ VBNumber: vbNumber }];
+    if (/^[a-fA-F0-9]{24}$/.test(vbNumber)) {
+      poFilter.push({ _id: new mongoose.Types.ObjectId(vbNumber) });
+    }
     const po = await vidapos.findOne(
-      { $or: [{ vbpoNo: vbNumber }, { VBNumber: vbNumber }] },
-      { projection: { vbpoNo: 1, VBNumber: 1, driveDocuments: 1 } }
+      { $or: poFilter },
+      { projection: { VBNumber: 1, driveDocuments: 1 } }
     );
 
     // Build list of possible VBNumber values used across collections
-    // (some records store the ObjectId string, others the vbpoNo string)
     const vbNumberVariants: string[] = [vbNumber];
     if (po?._id) vbNumberVariants.push(po._id.toString());
-    if (po?.vbpoNo && !vbNumberVariants.includes(po.vbpoNo)) vbNumberVariants.push(po.vbpoNo);
 
-    // 2. Get all CPOs for this VBNumber (also try vidaPOId for ObjectId ref)
+    // 2. Get all CPOs for this VBNumber (ObjectId reference)
     const cpoQuery: any = {
-      $or: [
-        { VBNumber: { $in: vbNumberVariants } },
-        ...(po?._id ? [{ vidaPOId: po._id }, { vidaPOId: po._id.toString() }] : []),
-      ],
+      VBNumber: { $in: vbNumberVariants.map(v => v.length === 24 ? new mongoose.Types.ObjectId(v) : v) },
     };
     const cpos = await vbcustomerpos
-      .find(cpoQuery, { projection: { poNo: 1, VBSerialNumber: 1, driveDocuments: 1 } })
+      .find(cpoQuery, { projection: { VBSerialNumber: 1, driveDocuments: 1 } })
       .toArray();
 
     // 3. Get all Shippings for this VBNumber
     const shipQuery: any = {
-      $or: [
-        { VBNumber: { $in: vbNumberVariants } },
-        { poNo: { $in: vbNumberVariants } },
-      ],
+      VBNumber: { $in: vbNumberVariants },
     };
     const ships = await vbshippings
       .find(shipQuery, { projection: { svbid: 1, VBShipmentNumber: 1, VBSerialNumber: 1, driveDocuments: 1 } })
@@ -65,12 +61,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       po: po ? {
         _id: po._id,
-        VBNumber: po.VBNumber || po.vbpoNo,
+        VBNumber: po.VBNumber,
         driveDocuments: po.driveDocuments || [],
       } : null,
       cpos: cpos.map((c: any) => ({
         _id: c._id,
-        VBSerialNumber: c.VBSerialNumber || c.poNo,
+        VBSerialNumber: c.VBSerialNumber,
         driveDocuments: c.driveDocuments || [],
       })),
       ships: ships.map((s: any) => ({
