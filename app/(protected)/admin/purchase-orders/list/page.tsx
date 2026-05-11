@@ -28,6 +28,7 @@ import { ViewToggle } from "@/components/admin/view-toggle";
 interface PurchaseOrder {
   _id: string;
   vbpoNo: string;
+  VBNumber?: string;
   orderType: string;
   category: string;
   date: string;
@@ -104,7 +105,7 @@ export default function PurchaseOrdersPage() {
   const prefetchedIds = useRef(new Set<string>());
 
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
-    vbpoNo: "",
+    VBNumber: "",
     orderType: "",
     category: "",
     createdBy: "",
@@ -231,23 +232,23 @@ export default function PurchaseOrdersPage() {
 
   const openAddSheet = () => {
     setEditingItem(null);
-    // Auto-generate next VB PO #
-    let nextVbpoNo = "VB1";
+    // Auto-generate next VB Number
+    let nextVBNumber = "VB1";
     if (data.length > 0) {
       const numbers = data
         .map((item) => {
-          const val = item.vbpoNo || (item as any).VBNumber || "";
+          const val = (item as any).VBNumber || item.vbpoNo || "";
           const match = val.match(/^VB(\d+)$/i);
           return match ? parseInt(match[1], 10) : 0;
         })
         .filter((n) => n > 0);
       if (numbers.length > 0) {
         const maxNum = Math.max(...numbers);
-        nextVbpoNo = `VB${maxNum + 1}`;
+        nextVBNumber = `VB${maxNum + 1}`;
       }
     }
     setFormData({
-      vbpoNo: nextVbpoNo,
+      VBNumber: nextVBNumber,
       orderType: "",
       category: "",
       date: new Date().toISOString().split('T')[0],
@@ -265,8 +266,9 @@ export default function PurchaseOrdersPage() {
 
   const columns: ColumnDef<PurchaseOrder>[] = [
     {
-      accessorKey: "vbpoNo",
-      header: "VB PO #",
+      id: "VBNumber",
+      header: "VB Number",
+      cell: ({ row }) => row.original.VBNumber || row.original.vbpoNo || "—",
     },
     {
       accessorKey: "date",
@@ -772,15 +774,15 @@ export default function PurchaseOrdersPage() {
           <form onSubmit={handleSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="vbpoNo">VB PO #</Label>
+                <Label htmlFor="VBNumber">VB Number</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="vbpoNo"
+                    id="VBNumber"
                     className="pl-9"
-                    value={formData.vbpoNo || ""}
+                    value={(formData as any).VBNumber || formData.vbpoNo || ""}
                     onChange={(e) =>
-                      setFormData({ ...formData, vbpoNo: e.target.value })
+                      setFormData({ ...formData, VBNumber: e.target.value } as any)
                     }
                     required
                   />

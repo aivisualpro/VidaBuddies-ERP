@@ -554,7 +554,7 @@ function ShippingCard({
               <Ship className={`h-4.5 w-4.5 ${statusCfg.color}`} />
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight leading-none">{po.vbpoNo}</h3>
+              <h3 className="text-sm font-bold tracking-tight leading-none">{po.vbpoNo || (po as any).VBNumber}</h3>
               <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
                 {po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
               </p>
@@ -913,11 +913,11 @@ export default function ShippingsPage() {
   const openEditDialog = useCallback((po: PurchaseOrder) => {
     setEditingPO(po);
     setEditFormData({
-      vbpoNo: po.vbpoNo,
+      VBNumber: (po as any).VBNumber || po.vbpoNo,
       orderType: po.orderType,
       category: po.category,
       date: po.date ? po.date.split("T")[0] : "",
-    });
+    } as any);
     setEditDialogOpen(true);
   }, []);
 
@@ -1140,14 +1140,14 @@ export default function ShippingsPage() {
           <form onSubmit={handleEditSubmit} className="grid gap-5 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="edit-vbpoNo">VB PO #</Label>
+                <Label htmlFor="edit-VBNumber">VB Number</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="edit-vbpoNo"
+                    id="edit-VBNumber"
                     className="pl-9"
-                    value={editFormData.vbpoNo || ""}
-                    onChange={(e) => setEditFormData({ ...editFormData, vbpoNo: e.target.value })}
+                    value={(editFormData as any).VBNumber || editFormData.vbpoNo || ""}
+                    onChange={(e) => setEditFormData({ ...editFormData, VBNumber: e.target.value } as any)}
                     required
                   />
                 </div>

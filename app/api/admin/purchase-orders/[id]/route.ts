@@ -45,7 +45,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       );
     }
 
-    const vbpoNo = originalDoc.vbpoNo;
+    const vbpoNo = originalDoc.vbpoNo || originalDoc.VBNumber;
 
     const updatedItem = await VidaPO.findByIdAndUpdate(id, data, {
       new: true,

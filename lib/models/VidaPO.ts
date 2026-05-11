@@ -232,8 +232,8 @@ const VidaPOCustomerPOSchema: Schema = new Schema({
 });
 
 const VidaPOSchema: Schema = new Schema({
-  vbpoNo: { type: String, required: true, unique: true },
-  VBNumber: { type: String, default: '' },
+  vbpoNo: { type: String, sparse: true },  // legacy — kept for old records only
+  VBNumber: { type: String, required: true, unique: true },
   orderType: { type: String },
   date: { type: Date, default: Date.now },
   category: { type: String },

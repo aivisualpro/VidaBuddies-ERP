@@ -18,7 +18,7 @@ export function AddPurchaseOrderDialog({
 }) {
   const { purchaseOrders, refetchPurchaseOrders } = useUserDataStore();
   const [formData, setFormData] = useState({
-    vbpoNo: "",
+    VBNumber: "",
     orderType: "",
     category: "",
     createdBy: "",
@@ -27,24 +27,23 @@ export function AddPurchaseOrderDialog({
 
   useEffect(() => {
     if (open) {
-      // Auto-generate next VB PO #
-      let nextVbpoNo = "VB1";
+      // Auto-generate next VB Number
+      let nextVBNumber = "VB1";
       if (purchaseOrders && purchaseOrders.length > 0) {
         const numbers = purchaseOrders
           .map((item: any) => {
-            // Check both vbpoNo and VBNumber for the VB number pattern
-            const val = item.vbpoNo || item.VBNumber || "";
+            const val = item.VBNumber || item.vbpoNo || "";
             const match = val.match(/^VB(\d+)$/i);
             return match ? parseInt(match[1], 10) : 0;
           })
           .filter((n: number) => n > 0);
         if (numbers.length > 0) {
           const maxNum = Math.max(...numbers);
-          nextVbpoNo = `VB${maxNum + 1}`;
+          nextVBNumber = `VB${maxNum + 1}`;
         }
       }
       setFormData({
-        vbpoNo: nextVbpoNo,
+        VBNumber: nextVBNumber,
         orderType: "",
         category: "",
         createdBy: "",
@@ -84,15 +83,15 @@ export function AddPurchaseOrderDialog({
         <form onSubmit={handleSubmit} className="grid gap-6 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="vbpoNo">VB PO #</Label>
+              <Label htmlFor="VBNumber">VB Number</Label>
               <div className="relative">
                 <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="vbpoNo"
+                  id="VBNumber"
                   className="pl-9"
-                  value={formData.vbpoNo}
+                  value={formData.VBNumber}
                   onChange={(e) =>
-                    setFormData({ ...formData, vbpoNo: e.target.value })
+                    setFormData({ ...formData, VBNumber: e.target.value })
                   }
                   required
                 />
