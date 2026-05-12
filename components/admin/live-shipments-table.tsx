@@ -1,21 +1,17 @@
 
 "use client";
 
-import { useTransition } from "react";
+import { useTransition, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { IconMapPin, IconRefresh, IconShip, IconCircleCheck, IconCircleX, IconCalendar, IconCode } from "@tabler/icons-react";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { IconRefresh, IconShip, IconCircleCheck, IconCalendar, IconCode } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
 import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
-import Link from "next/link";
 
 
 interface ContainerInfo {
@@ -68,35 +64,33 @@ interface TrackingData {
 }
 
 export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[] }) {
-  const [trackingData, setTrackingData] = useState<Record<string, TrackingData>>(() => {
+  const [trackingData, setTrackingData] = useState<Record<string, TrackingData>>({});
+
+  // Populate trackingData from initialData whenever containers change
+  useEffect(() => {
     const initial: Record<string, TrackingData> = {};
     containers.forEach(c => {
-      if (c.initialData) {
+      if (c.initialData && c.containerNo) {
         initial[c.containerNo] = c.initialData;
       }
     });
-    return initial;
-  });
+    setTrackingData(prev => ({ ...initial, ...prev }));
+  }, [containers]);
 
-  // Auto-detect the best default tab based on app status
-  const [filterMode, setFilterMode] = useState<"live" | "delivered" | "planned" | "pending">(() => {
-    let hasLive = false;
-    let hasPlanned = false;
-    let hasDelivered = false;
-    let hasPending = false;
-    containers.forEach(c => {
-      const status = (c.status || '').toLowerCase();
-      if (status === 'delivered') hasDelivered = true;
-      else if (status === 'planned') hasPlanned = true;
-      else if (status === 'in transit') hasLive = true;
-      else hasPending = true;
+  // Compute tab counts
+  const tabCounts = useMemo(() => {
+    const c = { pending: 0, planned: 0, live: 0, delivered: 0 };
+    containers.forEach(item => {
+      const s = (item.status || 'Pending').toLowerCase();
+      if (s === 'delivered') c.delivered++;
+      else if (s === 'planned') c.planned++;
+      else if (s === 'in transit') c.live++;
+      else c.pending++;
     });
-    if (hasLive) return "live";
-    if (hasPending) return "pending";
-    if (hasPlanned) return "planned";
-    if (hasDelivered) return "delivered";
-    return "live";
-  });
+    return c;
+  }, [containers]);
+
+  const [filterMode, setFilterMode] = useState<"live" | "delivered" | "planned" | "pending">("live");
 
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -172,19 +166,19 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
         >
           <ToggleGroupItem value="pending" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
             <IconCalendar className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">Pending</span>
+            <span className="text-xs font-medium">Pending ({tabCounts.pending})</span>
           </ToggleGroupItem>
           <ToggleGroupItem value="planned" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
             <IconCalendar className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">Planned</span>
+            <span className="text-xs font-medium">Planned ({tabCounts.planned})</span>
           </ToggleGroupItem>
           <ToggleGroupItem value="live" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
             <IconShip className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">In Transit</span>
+            <span className="text-xs font-medium">In Transit ({tabCounts.live})</span>
           </ToggleGroupItem>
           <ToggleGroupItem value="delivered" className="h-7 px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-zinc-800 data-[state=on]:shadow-sm">
             <IconCircleCheck className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs font-medium">Delivered</span>
+            <span className="text-xs font-medium">Delivered ({tabCounts.delivered})</span>
           </ToggleGroupItem>
         </ToggleGroup>
         <Button onClick={trackAll} disabled={isPending} variant="outline" size="sm">
@@ -211,7 +205,7 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
       matchesMode = appStatus === 'planned';
     } else if (filterMode === "live") {
       matchesMode = appStatus === 'in transit';
-    } else {
+    } else if (filterMode === "delivered") {
       matchesMode = appStatus === 'delivered';
     }
 

@@ -1,25 +1,12 @@
 "use client";
 
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useEffect, useState } from "react";
 import { LiveShipmentsTable } from "@/components/admin/live-shipments-table";
 import { TablePageSkeleton } from "@/components/skeletons";
 
 export default function LiveShipmentsPage() {
-  const { purchaseOrders: rawShipments, isLoading } = useUserDataStore();
-
-  const containers: Array<{
-    id: string;
-    shippingId: string;
-    containerNo: string;
-    vbid: string;
-    poNo: string;
-    svbid: string;
-    customerName: string;
-    status: string;
-    updatedETA?: string;
-    rawShipData?: any;
-    initialData?: any;
-  }> = [];
+  const [containers, setContainers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Normalize legacy/raw status values to app standard statuses
   function normalizeStatus(raw: string): string {
@@ -33,51 +20,61 @@ export default function LiveShipmentsPage() {
     return 'Pending';
   }
 
-  rawShipments.forEach((po: any) => {
-    if (po.customerPO && Array.isArray(po.customerPO)) {
-      po.customerPO.forEach((cpo: any) => {
-        if (cpo.shipping && Array.isArray(cpo.shipping)) {
-          cpo.shipping.forEach((ship: any) => {
-            const hasContainer = ship.containerNo && ship.containerNo.toLowerCase() !== "tbd";
-            const eta = ship.updatedETA || ship.ETA || "";
-            let status = normalizeStatus(ship.status);
+  useEffect(() => {
+    async function fetchShipments() {
+      try {
+        const res = await fetch("/api/admin/vb-shipping");
+        const items = await res.json();
+        if (!Array.isArray(items)) { setContainers([]); return; }
 
-            containers.push({
-              id: po._id.toString(),
-              shippingId: ship._id?.toString() || "",
-              containerNo: ship.containerNo || "",
-              vbid: po.vbpoNo,
-              poNo: cpo.poNo || "",
-              svbid: ship.svbid || "",
-              customerName: cpo.customer || "Unknown",
-              status,
-              updatedETA: eta,
-              rawShipData: ship,
-              initialData: (hasContainer && ship.shippingTrackingRecords && ship.shippingTrackingRecords.length > 0)
-                ? JSON.parse(JSON.stringify(ship.shippingTrackingRecords[ship.shippingTrackingRecords.length - 1]))
-                : null
-            });
+        const mapped = items.map((ship: any) => {
+          const hasContainer = ship.containerNo && ship.containerNo.toLowerCase() !== "tbd";
+          const eta = ship.updatedETA || ship.ETA || "";
+          const status = normalizeStatus(ship.status);
+
+          return {
+            id: ship._id?.toString() || "",
+            shippingId: ship._id?.toString() || "",
+            containerNo: ship.containerNo || "",
+            vbid: ship._displayVBNumber || ship.VBNumber || "",
+            poNo: ship._displayVBSerialNumber || ship.VBSerialNumber || "",
+            svbid: ship.VBShipmentNumber || ship.svbid || "",
+            customerName: ship._displaySupplier || "Unknown",
+            status,
+            updatedETA: eta,
+            rawShipData: ship,
+            initialData: (hasContainer && ship.shippingTrackingRecords && ship.shippingTrackingRecords.length > 0)
+              ? ship.shippingTrackingRecords[ship.shippingTrackingRecords.length - 1]
+              : null,
+          };
+        });
+
+        // Unique by shippingId
+        const seen = new Set<string>();
+        const unique = mapped
+          .filter((item: any) => {
+            const key = item.shippingId || item.containerNo || `${item.id}-${Math.random()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a: any, b: any) => {
+            if (!a.updatedETA && !b.updatedETA) return 0;
+            if (!a.updatedETA) return 1;
+            if (!b.updatedETA) return -1;
+            return new Date(a.updatedETA).getTime() - new Date(b.updatedETA).getTime();
           });
-        }
-      });
-    }
-  });
 
-  // Unique by svbid
-  const seen = new Set<string>();
-  const uniqueContainers = containers
-    .filter(item => {
-      const key = item.svbid || item.containerNo || `${item.id}-${item.poNo}-${Math.random()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => {
-      if (!a.updatedETA && !b.updatedETA) return 0;
-      if (!a.updatedETA) return 1;
-      if (!b.updatedETA) return -1;
-      return new Date(a.updatedETA).getTime() - new Date(b.updatedETA).getTime();
-    });
+        setContainers(unique);
+      } catch (error) {
+        console.error("Failed to fetch shipments for live view:", error);
+        setContainers([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchShipments();
+  }, []);
 
   if (isLoading) {
     return <TablePageSkeleton />;
@@ -85,7 +82,7 @@ export default function LiveShipmentsPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto h-full">
-      <LiveShipmentsTable containers={uniqueContainers} />
+      <LiveShipmentsTable containers={containers} />
     </div>
   );
 }

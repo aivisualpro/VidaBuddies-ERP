@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Dialog,
     DialogContent,
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { TimelineEntryDialog } from "@/components/admin/timeline-entry-dialog";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
     Plus,
     Search,
@@ -24,6 +25,7 @@ import {
     Package,
     Anchor,
 } from "lucide-react";
+import { useUserDataStore } from "@/store/useUserDataStore";
 
 interface TimelineEntry {
     _id: string;
@@ -88,58 +90,131 @@ const TYPE_COLORS: Record<string, string> = {
         "bg-red-500/10 text-red-600 border-red-500/20 dark:text-red-400",
 };
 
+// ---- Hierarchy types (use display names as values, matching what timeline stores) ----
+interface POOption { value: string; label: string; }
+interface CPOOption { value: string; label: string; parentVBNumber: string; }
+interface ShipOption { value: string; label: string; parentVBNumber: string; parentSerial: string; }
+
 // ---- Table rows ----
 function TimelineTable({
     entries,
     resolveUser,
     onEdit,
     onDelete,
+    poOptions,
+    cpoOptions,
+    shipOptions,
+    onFieldChange,
+    resolveVBNumber,
+    resolveSerial,
+    resolveShip,
 }: {
     entries: TimelineEntry[];
     resolveUser: (email?: string) => string;
     onEdit: (entry: TimelineEntry) => void;
     onDelete: (id: string) => void;
+    poOptions: { value: string; label: string }[];
+    cpoOptions: CPOOption[];
+    shipOptions: ShipOption[];
+    onFieldChange: (id: string, field: string, value: string, cascadeClear?: string[]) => void;
+    resolveVBNumber: (raw?: string) => string;
+    resolveSerial: (raw?: string) => string;
+    resolveShip: (raw?: string) => string;
 }) {
     if (entries.length === 0) return null;
     return (
         <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
                 <tr className="border-b">
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Date</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Type</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Category</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground" style={{ minWidth: 180 }}>Comments</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Status</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Reminder</th>
-                    <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Created By</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">VBNumber</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Serial #</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Shipment #</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Date</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Type</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Category</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground" style={{ minWidth: 160 }}>Comments</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Status</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Reminder</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Created By</th>
                     <th className="w-14 px-2 py-1.5"></th>
                 </tr>
             </thead>
             <tbody>
                 {entries.map((entry) => {
                     const isSystem = entry.createdBy === "System";
+                    // Resolve stored values (ObjectIds or display names) to display names
+                    const effectiveVB = entry._VBNumberDisplay || resolveVBNumber(entry.VBNumber);
+                    const effectiveSerial = entry._VBSerialNumberDisplay || resolveSerial(entry.VBSerialNumber);
+                    const effectiveShip = entry._VBShipmentNumberDisplay || resolveShip(entry.VBShipmentNumber);
+
+                    // Cascading by resolved display names
+                    const filteredCPOs = effectiveVB
+                        ? cpoOptions.filter(c => c.parentVBNumber === effectiveVB)
+                        : cpoOptions;
+                    const filteredShips = effectiveSerial
+                        ? shipOptions.filter(s => s.parentSerial === effectiveSerial)
+                        : effectiveVB
+                            ? shipOptions.filter(s => s.parentVBNumber === effectiveVB)
+                            : shipOptions;
+
                     return (
                         <tr key={entry._id} className={`group border-b border-border/50 hover:bg-muted/30 transition-colors ${isSystem ? "bg-muted/10" : ""}`}>
-                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground align-top">
+                            {/* VBNumber — searchable */}
+                            <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
+                                <SearchableSelect
+                                    options={poOptions}
+                                    value={effectiveVB}
+                                    onChange={(v) => onFieldChange(entry._id, "VBNumber", v, ["VBSerialNumber", "VBShipmentNumber"])}
+                                    placeholder="—"
+                                    searchPlaceholder="Search VB#..."
+                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
+                                    allowClear
+                                />
+                            </td>
+                            {/* VBSerialNumber — searchable, cascaded */}
+                            <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
+                                <SearchableSelect
+                                    options={filteredCPOs}
+                                    value={effectiveSerial}
+                                    onChange={(v) => onFieldChange(entry._id, "VBSerialNumber", v, ["VBShipmentNumber"])}
+                                    placeholder="—"
+                                    searchPlaceholder="Search Serial..."
+                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
+                                    allowClear
+                                />
+                            </td>
+                            {/* VBShipmentNumber — searchable, cascaded */}
+                            <td className="px-1 py-1 align-top" style={{ minWidth: 120 }}>
+                                <SearchableSelect
+                                    options={filteredShips}
+                                    value={effectiveShip}
+                                    onChange={(v) => onFieldChange(entry._id, "VBShipmentNumber", v)}
+                                    placeholder="—"
+                                    searchPlaceholder="Search Shipment..."
+                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
+                                    allowClear
+                                />
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {entry.date
                                     ? new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                                     : entry.timestamp
                                         ? new Date(entry.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                                         : "—"}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap align-top">
+                            <td className="px-2 py-2 whitespace-nowrap align-top">
                                 <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border ${TYPE_COLORS[entry.type] || "bg-muted text-muted-foreground border-border"}`}>
                                     {TYPE_ICONS[entry.type]}
                                     {entry.type}
                                 </span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground align-top">
+                            <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {entry.category || "—"}
                             </td>
-                            <td className={`px-3 py-2 align-top ${isSystem ? "italic text-muted-foreground" : ""}`} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            <td className={`px-2 py-2 align-top ${isSystem ? "italic text-muted-foreground" : ""}`} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                                 {entry.comments || "—"}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap align-top">
+                            <td className="px-2 py-2 whitespace-nowrap align-top">
                                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${entry.status === "In Progress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                                     : entry.status === "Closed" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                                         : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
@@ -147,14 +222,14 @@ function TimelineTable({
                                     {entry.status || "Open"}
                                 </span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground align-top">
+                            <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {entry.reminder ? (
                                     <span className="text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
                                         🔔 {new Date(entry.reminder).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                     </span>
                                 ) : "—"}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground align-top">
+                            <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {isSystem ? (
                                     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">
                                         <Bot className="h-3 w-3" /> System
@@ -197,6 +272,145 @@ export default function TimelineModal({
     const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
+
+    // ── Hierarchy data from store ──
+    const { purchaseOrders } = useUserDataStore();
+
+    // Build id→display maps for resolving stored ObjectIds to display names
+    const idToVBNumber = useMemo(() => {
+        const m: Record<string, string> = {};
+        (purchaseOrders || []).forEach((po: any) => {
+            const id = po._id?.toString() || "";
+            const display = po.VBNumber || po.vbpoNo || "";
+            if (id && display) { m[id] = display; m[display] = display; }
+        });
+        return m;
+    }, [purchaseOrders]);
+
+    const idToSerial = useMemo(() => {
+        const m: Record<string, string> = {};
+        (purchaseOrders || []).forEach((po: any) => {
+            if (po.customerPO && Array.isArray(po.customerPO)) {
+                po.customerPO.forEach((cpo: any) => {
+                    const id = cpo._id?.toString() || "";
+                    const display = cpo.VBSerialNumber || cpo.poNo || "";
+                    if (id && display) { m[id] = display; m[display] = display; }
+                });
+            }
+        });
+        return m;
+    }, [purchaseOrders]);
+
+    const idToShip = useMemo(() => {
+        const m: Record<string, string> = {};
+        (purchaseOrders || []).forEach((po: any) => {
+            if (po.customerPO && Array.isArray(po.customerPO)) {
+                po.customerPO.forEach((cpo: any) => {
+                    if (cpo.shipping && Array.isArray(cpo.shipping)) {
+                        cpo.shipping.forEach((ship: any) => {
+                            const id = ship._id?.toString() || "";
+                            const display = ship.svbid || ship.VBShipmentNumber || "";
+                            if (id && display) { m[id] = display; m[display] = display; }
+                        });
+                    }
+                });
+            }
+        });
+        return m;
+    }, [purchaseOrders]);
+
+    // Resolve any stored value (ObjectId or display name) to display name
+    const resolveVBNumber = useCallback((raw?: string) => raw ? (idToVBNumber[raw] || raw) : "", [idToVBNumber]);
+    const resolveSerial = useCallback((raw?: string) => raw ? (idToSerial[raw] || raw) : "", [idToSerial]);
+    const resolveShip = useCallback((raw?: string) => raw ? (idToShip[raw] || raw) : "", [idToShip]);
+
+    const poOptions = useMemo<POOption[]>(() => {
+        const seen = new Set<string>();
+        return (purchaseOrders || []).map((po: any) => {
+            const display = po.VBNumber || po.vbpoNo || "";
+            return { value: display, label: display };
+        }).filter((p: POOption) => {
+            if (!p.value || seen.has(p.value)) return false;
+            seen.add(p.value); return true;
+        }).sort((a: POOption, b: POOption) => a.label.localeCompare(b.label));
+    }, [purchaseOrders]);
+
+    const cpoOptions = useMemo<CPOOption[]>(() => {
+        const list: CPOOption[] = [];
+        (purchaseOrders || []).forEach((po: any) => {
+            const poDisplay = po.VBNumber || po.vbpoNo || "";
+            if (po.customerPO && Array.isArray(po.customerPO)) {
+                po.customerPO.forEach((cpo: any) => {
+                    const serial = cpo.VBSerialNumber || cpo.poNo || "";
+                    if (serial) list.push({ value: serial, label: serial, parentVBNumber: poDisplay });
+                });
+            }
+        });
+        // DEBUG: remove after fixing
+        console.log('[Timeline] CPO options:', list.map(c => `${c.value} → parent:${c.parentVBNumber}`));
+        console.log('[Timeline] PO options:', (purchaseOrders || []).map((po: any) => `${po.VBNumber || po.vbpoNo} (cpos: ${(po.customerPO || []).length})`));
+        return list;
+    }, [purchaseOrders]);
+
+    const shipOptions = useMemo<ShipOption[]>(() => {
+        const list: ShipOption[] = [];
+        (purchaseOrders || []).forEach((po: any) => {
+            const poDisplay = po.VBNumber || po.vbpoNo || "";
+            if (po.customerPO && Array.isArray(po.customerPO)) {
+                po.customerPO.forEach((cpo: any) => {
+                    const serialDisplay = cpo.VBSerialNumber || cpo.poNo || "";
+                    if (cpo.shipping && Array.isArray(cpo.shipping)) {
+                        cpo.shipping.forEach((ship: any) => {
+                            const shipDisplay = ship.svbid || ship.VBShipmentNumber || "";
+                            if (shipDisplay) list.push({ value: shipDisplay, label: shipDisplay, parentVBNumber: poDisplay, parentSerial: serialDisplay });
+                        });
+                    }
+                });
+            }
+        });
+        return list;
+    }, [purchaseOrders]);
+
+    // ── Inline field change handler ──
+    // Map raw field names to their enriched display counterparts
+    const DISPLAY_FIELD_MAP: Record<string, string> = {
+        VBNumber: "_VBNumberDisplay",
+        VBSerialNumber: "_VBSerialNumberDisplay",
+        VBShipmentNumber: "_VBShipmentNumberDisplay",
+    };
+
+    const handleFieldChange = useCallback(async (id: string, field: string, value: string, cascadeClear?: string[]) => {
+        // Optimistic update — also sync/clear the enriched _*Display fields
+        setEntries(prev => prev.map(e => {
+            if (e._id !== id) return e;
+            const updated: any = { ...e, [field]: value || undefined };
+            // Set the display field to match the new value (display name)
+            const displayField = DISPLAY_FIELD_MAP[field];
+            if (displayField) updated[displayField] = value || undefined;
+            // Clear cascaded fields AND their display counterparts
+            if (cascadeClear) cascadeClear.forEach(f => {
+                updated[f] = undefined;
+                const df = DISPLAY_FIELD_MAP[f];
+                if (df) updated[df] = undefined;
+            });
+            return updated;
+        }));
+
+        const body: Record<string, any> = { [field]: value || null };
+        if (cascadeClear) cascadeClear.forEach(f => { body[f] = null; });
+
+        try {
+            const res = await fetch(`/api/admin/timeline/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error();
+        } catch {
+            toast.error("Failed to update");
+            fetchEntries(); // revert
+        }
+    }, []);
 
     const fetchEntries = async () => {
         setLoading(true);
@@ -311,7 +525,7 @@ export default function TimelineModal({
     return (
         <>
             <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-                <DialogContent className="max-w-[1050px] h-[80vh] p-0 gap-0 flex flex-col overflow-hidden">
+                <DialogContent className="max-w-[1400px] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="px-5 pt-5 pb-3 border-b space-y-3">
                         <DialogHeader>
@@ -404,7 +618,7 @@ export default function TimelineModal({
                                     <span className="text-xs">No timeline entries yet. Click &quot;Add&quot; to create one.</span>
                                 </div>
                             ) : (
-                                <TimelineTable entries={displayEntries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} />
+                                <TimelineTable entries={displayEntries} resolveUser={resolveUser} onEdit={setEditingEntry} onDelete={handleDelete} poOptions={poOptions} cpoOptions={cpoOptions} shipOptions={shipOptions} onFieldChange={handleFieldChange} resolveVBNumber={resolveVBNumber} resolveSerial={resolveSerial} resolveShip={resolveShip} />
                             )}
                         </div>
                     </div>

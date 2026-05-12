@@ -1,27 +1,17 @@
 
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
-import VidaPO from '@/lib/models/VidaPO';
+import VBshipping from '@/lib/models/VBshipping';
 
 export async function GET() {
   try {
     await connectToDatabase();
 
-    const results = await VidaPO.aggregate([
-      { $unwind: "$customerPO" },
-      { $unwind: "$customerPO.shipping" },
-      { 
-        $match: { 
-          "customerPO.shipping.containerNo": { $exists: true, $ne: "" },
-          "customerPO.shipping.status": "IN_TRANSIT"
-        } 
-      },
-      { $group: { _id: "$customerPO.shipping.containerNo" } },
-      { $count: "count" }
-    ]);
+    const count = await VBshipping.countDocuments({
+      status: { $in: ['In Transit', 'IN_TRANSIT', 'in transit', 'in_transit', 'On Water'] },
+      containerNo: { $exists: true, $ne: '' },
+    });
 
-    const count = results.length > 0 ? results[0].count : 0;
-    
     return NextResponse.json({ count });
   } catch (error) {
     console.error("Failed to fetch live shipments count", error);

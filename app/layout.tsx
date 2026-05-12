@@ -72,7 +72,7 @@ export default async function RootLayout({
         >
           <ActiveThemeProvider initialTheme={activeThemeValue}>
             {children}
-            <Toaster position="top-center" richColors />
+            <Toaster position="bottom-right" richColors />
             <ServiceWorkerRegistration />
             <PWAInstallPrompt />
             <VersionUpdateBanner />

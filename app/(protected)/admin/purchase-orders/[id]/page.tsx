@@ -1912,15 +1912,15 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           <form onSubmit={handleEditPOSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="vbpoNo">VB PO #</Label>
+                <Label htmlFor="VBNumber">VB Number</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="vbpoNo"
+                    id="VBNumber"
                     className="pl-9"
-                    value={editPOData.vbpoNo || ""}
+                    value={(editPOData as any).VBNumber || editPOData.vbpoNo || ""}
                     onChange={(e) =>
-                      setEditPOData({ ...editPOData, vbpoNo: e.target.value })
+                      setEditPOData({ ...editPOData, VBNumber: e.target.value, vbpoNo: e.target.value })
                     }
                     required
                   />

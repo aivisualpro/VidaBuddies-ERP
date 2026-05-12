@@ -47,6 +47,11 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     const vbpoNo = originalDoc.vbpoNo || originalDoc.VBNumber;
 
+    // Keep vbpoNo in sync with VBNumber (legacy field)
+    if (data.VBNumber && !data.vbpoNo) {
+      data.vbpoNo = data.VBNumber;
+    }
+
     const updatedItem = await VidaPO.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,

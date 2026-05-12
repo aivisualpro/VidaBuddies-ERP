@@ -126,6 +126,7 @@ export interface IVidaPO extends Document {
 const VidaPOShippingSchema: Schema = new Schema({
   spoNo: { type: String },
   svbid: { type: String },
+  VBShipmentNumber: { type: String },
   supplier: { type: String },
   supplierLocation: { type: String },
   supplierPO: { type: String },
@@ -219,6 +220,7 @@ const VidaPOShippingSchema: Schema = new Schema({
 
 const VidaPOCustomerPOSchema: Schema = new Schema({
   poNo: { type: String },
+  VBSerialNumber: { type: String },
   customer: { type: String }, // references VidaCustomer ideally, but String for now as per prompt
   customerLocation: { type: String },
   customerPONo: { type: String },
