@@ -42,14 +42,6 @@ export default function LiveShipmentsPage() {
             const eta = ship.updatedETA || ship.ETA || "";
             let status = normalizeStatus(ship.status);
 
-            // Auto-flag: if ETA is in the past and status is still "In Transit", show as "Delivered"
-            if (status === 'In Transit' && eta) {
-              const etaDate = new Date(eta);
-              if (!isNaN(etaDate.getTime()) && etaDate.getTime() < Date.now()) {
-                status = 'Delivered';
-              }
-            }
-
             containers.push({
               id: po._id.toString(),
               shippingId: ship._id?.toString() || "",
