@@ -74,7 +74,7 @@ export async function syncInboundEmails() {
        // If it is related to a PO, log it in the CRM Email Records!
        if (poNo) {
            await EmailRecord.create({
-             vbpoNo: poNo,
+             VBNumber: poNo,
              from: fromText,
              to: toArray,
              cc: ccArray,

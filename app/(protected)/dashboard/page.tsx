@@ -91,7 +91,7 @@ export default function DashboardPage() {
                             lat, lng,
                             title: (lastRecord.last_event_code === 'DEPA' || ship.status === 'IN_TRANSIT' || ship.status === 'In Transit' || ship.status === 'On Water') ? `On Water (${lastRecord.vessel_names || 'Vessel'})` : (lastRecord.last_event_location || ship.vessellTrip || "Unknown Location"),
                             containerNo: ship.containerNo,
-                            vbid: po.vbpoNo,
+                            vbid: po.VBNumber,
                             status: ship.status,
                             origin: lastRecord.pol_name || ship.fromPort?.name || "N/A",
                             destination: lastRecord.pod_name || ship.toPort?.name || "N/A",

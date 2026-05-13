@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,7 @@ import { ViewToggle } from "@/components/admin/view-toggle";
 
 interface PurchaseOrder {
   _id: string;
-  vbpoNo: string;
-  VBNumber?: string;
+  VBNumber: string;
   orderType: string;
   category: string;
   date: string;
@@ -52,11 +52,28 @@ function normalizeStatus(raw: string): string {
   return 'pending';
 }
 
+const PO_FILTER_DEFAULTS = { search: "", orderType: "", category: "", shipStatus: "", archived: "" };
+
 export default function PurchaseOrdersPage() {
+  return (
+    <Suspense>
+      <PurchaseOrdersContent />
+    </Suspense>
+  );
+}
+
+function PurchaseOrdersContent() {
   const router = useRouter();
   
   // Connect to global store
   const { purchaseOrders, users: rawUsers, isLoading, refetchPurchaseOrders } = useUserDataStore();
+  
+  // URL-driven filters
+  const { filters, inputs, setFilter, resetFilters, hasActiveFilters } = useUrlFilters(
+    PO_FILTER_DEFAULTS,
+    ["search"],
+    300,
+  );
   
   // Current user role
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -85,12 +102,7 @@ export default function PurchaseOrdersPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PurchaseOrder | null>(null);
 
-  // Filters
-  const [filterOrderType, setFilterOrderType] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("");
-  const [filterShipStatus, setFilterShipStatus] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [showArchived, setShowArchived] = useState(false);
+  const showArchived = filters.archived === "true";
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; title?: string } | null>(null);
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
@@ -129,10 +141,11 @@ export default function PurchaseOrdersPage() {
       if (Array.isArray(items)) {
         const counts: Record<string, number> = {};
         items.forEach((t: any) => {
-          const key = t._VBNumberDisplay || t.VBNumber;
-          if (key) {
-            counts[key] = (counts[key] || 0) + 1;
-          }
+          // Index by both display name and raw ObjectId for reliable matching
+          const displayKey = t._VBNumberDisplay || t.VBNumber;
+          const rawKey = t.VBNumber;
+          if (displayKey) counts[displayKey] = (counts[displayKey] || 0) + 1;
+          if (rawKey && rawKey !== displayKey) counts[rawKey] = (counts[rawKey] || 0) + 1;
         });
         setTimelineCounts(counts);
       }
@@ -260,7 +273,10 @@ export default function PurchaseOrdersPage() {
     setEditingItem(item);
     // Ensure date is formatted for input
     const formattedDate = item.date ? new Date(item.date).toISOString().split('T')[0] : "";
-    setFormData({ ...item, date: formattedDate });
+    const cleanItem = { ...item, date: formattedDate };
+    // Strip deprecated field so it never gets sent back
+    delete (cleanItem as any).vbpoNo;
+    setFormData(cleanItem);
     setIsSheetOpen(true);
   };
 
@@ -412,7 +428,8 @@ export default function PurchaseOrdersPage() {
         });
         
         const vbNumber = row.original.VBNumber || row.original._id;
-        const invCount = invoiceCounts[vbNumber] || 0;
+        const poId = row.original._id;
+        const invCount = invoiceCounts[poId] || invoiceCounts[vbNumber] || 0;
         
         if (count === 0 && invCount === 0) return <span className="text-muted-foreground">-</span>;
         
@@ -476,7 +493,7 @@ export default function PurchaseOrdersPage() {
       cell: ({ row }) => {
         const vbNumber = row.original.VBNumber || row.original._id;
         const poId = row.original._id;
-        const count = timelineCounts[vbNumber] || 0;
+        const count = timelineCounts[vbNumber] || timelineCounts[poId] || 0;
         return (
           <button
             onClick={(e) => {
@@ -528,7 +545,8 @@ export default function PurchaseOrdersPage() {
       header: "Emails",
       cell: ({ row }) => {
         const vbNumber = row.original.VBNumber || row.original._id;
-        const count = emailCounts[vbNumber] || 0;
+        const poId = row.original._id;
+        const count = emailCounts[poId] || emailCounts[vbNumber] || 0;
         return (
           <button
             onClick={(e) => {
@@ -625,16 +643,16 @@ export default function PurchaseOrdersPage() {
     // Archive filter: hide archived unless toggled on
     if (!showArchived && po.isArchived) return false;
     if (showArchived && !po.isArchived) return false;
-    if (filterOrderType && po.orderType !== filterOrderType) return false;
-    if (filterCategory && po.category !== filterCategory) return false;
-    if (filterShipStatus) {
+    if (filters.orderType && po.orderType !== filters.orderType) return false;
+    if (filters.category && po.category !== filters.category) return false;
+    if (filters.shipStatus) {
       const hasStatus = po.customerPO?.some((cpo: any) =>
-        cpo.shipping?.some((ship: any) => normalizeStatus(ship.status || '') === filterShipStatus)
+        cpo.shipping?.some((ship: any) => normalizeStatus(ship.status || '') === filters.shipStatus)
       );
       if (!hasStatus) return false;
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
       const createdByName = users[po.createdBy?.toLowerCase()] || po.createdBy || '';
       const searchable = [
         po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName
@@ -644,7 +662,6 @@ export default function PurchaseOrdersPage() {
     return true;
   });
 
-  const hasActiveFilters = filterOrderType || filterCategory || filterShipStatus;
 
   const archivedCount = data.filter(po => po.isArchived).length;
 
@@ -685,32 +702,32 @@ export default function PurchaseOrdersPage() {
       <input
         type="text"
         placeholder="Search..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        value={inputs.search}
+        onChange={(e) => setFilter("search", e.target.value)}
         className="h-8 w-[160px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
       <select
-        value={filterOrderType}
-        onChange={(e) => setFilterOrderType(e.target.value)}
-        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterOrderType ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
+        value={filters.orderType}
+        onChange={(e) => setFilter("orderType", e.target.value)}
+        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filters.orderType ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
           }`}
       >
         <option value="">All Types</option>
         {orderTypes.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
       <select
-        value={filterCategory}
-        onChange={(e) => setFilterCategory(e.target.value)}
-        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterCategory ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
+        value={filters.category}
+        onChange={(e) => setFilter("category", e.target.value)}
+        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filters.category ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
           }`}
       >
         <option value="">All Categories</option>
         {categories.map(c => <option key={c} value={c}>{c}</option>)}
       </select>
       <select
-        value={filterShipStatus}
-        onChange={(e) => setFilterShipStatus(e.target.value)}
-        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterShipStatus ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
+        value={filters.shipStatus}
+        onChange={(e) => setFilter("shipStatus", e.target.value)}
+        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filters.shipStatus ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'
           }`}
       >
         <option value="">All Statuses</option>
@@ -721,7 +738,7 @@ export default function PurchaseOrdersPage() {
       </select>
       {hasActiveFilters && (
         <button
-          onClick={() => { setFilterOrderType(""); setFilterCategory(""); setFilterShipStatus(""); }}
+          onClick={() => resetFilters()}
           className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           Clear
@@ -729,7 +746,7 @@ export default function PurchaseOrdersPage() {
       )}
       <div className="h-5 w-px bg-border mx-1" />
       <button
-        onClick={() => setShowArchived(!showArchived)}
+        onClick={() => setFilter("archived", showArchived ? "" : "true")}
         className={`h-8 px-2.5 rounded-md border text-xs font-medium flex items-center gap-1.5 transition-colors ${
           showArchived
             ? 'border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400'

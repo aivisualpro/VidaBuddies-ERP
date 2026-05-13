@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useLayoutEffect } from "react";
+import { useEffect, useState, useMemo, useLayoutEffect, Suspense } from "react";
 import { toast } from "sonner";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { ActiveActionsGroupSidebar } from "@/components/admin/active-actions-sidebar";
@@ -22,6 +22,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 
 interface TimelineEntry {
   _id: string;
@@ -54,11 +55,21 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 
+const AA_FILTER_DEFAULTS = { search: "" };
+
 export default function ActiveActionsPage() {
+  return (
+    <Suspense>
+      <ActiveActionsContent />
+    </Suspense>
+  );
+}
+
+function ActiveActionsContent() {
   const { setActions, setLeftContent } = useHeaderActions();
+  const { filters, inputs, setFilter } = useUrlFilters(AA_FILTER_DEFAULTS, ["search"], 300);
   const [data, setData] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Sidebar filter state
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -146,8 +157,8 @@ export default function ActiveActionsPage() {
       result = result.filter((e) => e.VBShipmentNumber === filterVBShipment);
     }
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
       result = result.filter((e) =>
         [e.VBNumber, e.VBSerialNumber, e.VBShipmentNumber, e.comments, e.category, e.createdBy, e.type]
           .filter(Boolean)
@@ -158,7 +169,7 @@ export default function ActiveActionsPage() {
     }
 
     return result;
-  }, [data, filterType, filterStatus, filterVBNumber, filterVBSerial, filterVBShipment, searchQuery]);
+  }, [data, filterType, filterStatus, filterVBNumber, filterVBSerial, filterVBShipment, filters.search]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -184,8 +195,8 @@ export default function ActiveActionsPage() {
           <input
             type="text"
             placeholder="Search actions..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={inputs.search}
+            onChange={(e) => setFilter("search", e.target.value)}
             className="h-8 w-[220px] rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
@@ -194,7 +205,7 @@ export default function ActiveActionsPage() {
     setActions(headerContent);
     const timer = setTimeout(() => setActions(headerContent), 50);
     return () => { clearTimeout(timer); setActions(null); setLeftContent(null); };
-  }, [setActions, setLeftContent, searchQuery]);
+  }, [setActions, setLeftContent, inputs.search, setFilter]);
 
   // Status summary counts — must be before any early returns (React hooks rule)
   // Type counts for tabs

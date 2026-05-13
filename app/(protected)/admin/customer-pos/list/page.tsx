@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
@@ -33,13 +34,23 @@ interface CustomerPO {
   driveDocuments?: any[];
 }
 
+const CPO_FILTER_DEFAULTS = { search: "" };
+
 export default function CustomerPOsListPage() {
+  return (
+    <Suspense>
+      <CustomerPOsListContent />
+    </Suspense>
+  );
+}
+
+function CustomerPOsListContent() {
   const router = useRouter();
+  const { filters, inputs, setFilter } = useUrlFilters(CPO_FILTER_DEFAULTS, ["search"], 300);
   const [data, setData] = useState<CustomerPO[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CustomerPO | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState<{ refKind: "VBSerialNumber" | "VBNumber" | "VBShipmentNumber"; refId: string; display: string; parentRefId?: string } | null>(null);
@@ -182,15 +193,15 @@ export default function CustomerPOsListPage() {
         (item.VBNumber || 'Unlinked') === sidebarVBNumber
       );
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
       result = result.filter(item => {
         const searchable = [item.VBNumber, item.VBSerialNumber, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
     return result;
-  }, [data, searchQuery, sidebarVBNumber]);
+  }, [data, filters.search, sidebarVBNumber]);
 
   const columns: ColumnDef<CustomerPO>[] = [
     {
@@ -345,8 +356,8 @@ export default function CustomerPOsListPage() {
       <input
         type="text"
         placeholder="Search..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        value={inputs.search}
+        onChange={(e) => setFilter("search", e.target.value)}
         className="h-8 w-[160px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
     </div>

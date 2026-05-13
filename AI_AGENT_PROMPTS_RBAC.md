@@ -6,7 +6,7 @@ Feed each prompt to your AI coding agent **one at a time**. Run the app, click a
 
 ## Part A — Flaws in the current setup (from a deep-dive of your repo)
 
-Files I read: `lib/models/VidaAppRole.ts`, `app/(protected)/admin/settings/roles/page.tsx`, `app/(protected)/admin/settings/roles/[id]/page.tsx`, `app/api/admin/roles/route.ts`, `app/api/admin/roles/[id]/route.ts`, `components/app-sidebar.tsx`, `app/(protected)/layout.tsx`, `middleware.ts`, plus a sample of `/api/admin/*` routes (e.g. `app/api/admin/purchase-orders/route.ts`).
+Files I read: `lib/models/VidaAppRole.ts`, `app/(protected)/admin/settings/roles/page.tsx`, `app/(protected)/admin/settings/roles/[id]/page.tsx`, `app/api/admin/roles/route.ts`, `app/api/admin/roles/[id]/route.ts`, `components/app-sidebar.tsx`, `app/(protected)/layout.tsx`, `proxy.ts`, plus a sample of `/api/admin/*` routes (e.g. `app/api/admin/purchase-orders/route.ts`).
 
 **Critical / security**
 
@@ -53,7 +53,7 @@ DO THIS:
    - app/(protected)/admin/settings/roles/page.tsx
    - app/(protected)/admin/settings/roles/[id]/page.tsx (note SYSTEM_MODULES, MODULE_FIELDS, the gated 'Manage Fields' dialog)
    - app/api/admin/roles/route.ts and [id]/route.ts (note: no auth gate)
-   - middleware.ts
+   - proxy.ts
    - 3 sample API routes under app/api/admin/* and confirm none call any RBAC check
 
 2. Output a report covering:

@@ -103,7 +103,6 @@ interface CustomerPO {
 
 interface PurchaseOrder {
   _id: string;
-  vbpoNo: string;
   VBNumber: string;
   orderType: string;
   date: string;
@@ -412,7 +411,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const fetchEmailRecords = async (vbpoNo: string) => {
     try {
-      const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(vbpoNo)}`);
+      const res = await fetch(`/api/admin/emails?VBNumber=${encodeURIComponent(vbpoNo)}`);
       const data = await res.json();
       if (res.ok) setEmailRecords(data.emails || []);
     } catch { /* silent */ }
@@ -437,19 +436,19 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   }, [selectedSupplierForShipping]);
 
   useEffect(() => {
-    if (po?.vbpoNo) {
-      fetchEmailRecords(po.vbpoNo);
+    if (po?.VBNumber) {
+      fetchEmailRecords(po.VBNumber);
     }
-  }, [po?.vbpoNo]);
+  }, [po?.VBNumber]);
 
   // Listen for real-time email record updates from modals
   useEffect(() => {
     const handler = () => {
-      if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
+      if (po?.VBNumber) fetchEmailRecords(po.VBNumber);
     };
     window.addEventListener("vb-email-records-updated", handler);
     return () => window.removeEventListener("vb-email-records-updated", handler);
-  }, [po?.vbpoNo]);
+  }, [po?.VBNumber]);
 
   useEffect(() => {
     fetchPO();
@@ -625,7 +624,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           const shipData = po?.customerPO?.[cpoIdx]?.shipping?.[shipIdx];
           const svbid = shipData?.svbid;
           const cpoPoNo = po?.customerPO?.[cpoIdx]?.poNo;
-          const poNo = po?.vbpoNo;
+          const poNo = po?.VBNumber;
 
           setPO((currentPO) => {
             if (!currentPO) return currentPO;
@@ -771,7 +770,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold leading-none uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">{po.vbpoNo}</h1>
+          <h1 className="text-lg font-bold leading-none uppercase bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">{po.VBNumber}</h1>
           <span className="text-sm text-muted-foreground font-medium uppercase tracking-tight">{po.orderType}</span>
           <span className="text-sm text-gray-300">•</span>
           <span className="text-sm text-muted-foreground font-medium uppercase tracking-tight">{po.category}</span>
@@ -789,7 +788,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
             onClick={() => {
               toast("Delete this Purchase Order?", {
-                description: `"${po.vbpoNo}" will be permanently deleted. This cannot be undone.`,
+                description: `"${po.VBNumber}" will be permanently deleted. This cannot be undone.`,
                 action: {
                   label: "Delete",
                   onClick: async () => {
@@ -813,22 +812,24 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         )}
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
           setEditPOData({
-            ...po,
-            date: po.date ? new Date(po.date).toISOString().split('T')[0] : ""
+            VBNumber: po.VBNumber || "",
+            orderType: po.orderType || "",
+            category: po.category || "",
+            date: po.date ? new Date(po.date).toISOString().split('T')[0] : "",
           });
           setIsEditPOOpen(true);
         }}>
           <Pencil className="h-3.5 w-3.5 mr-2" />
           Edit
         </Button>
-        <Button variant="outline" size="sm" className="h-8" onClick={() => setTimelineOpen({ VBNumber: po?._id, title: `Timeline — ${po?.vbpoNo}` })}>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setTimelineOpen({ VBNumber: po?._id, title: `Timeline — ${po?.VBNumber}` })}>
           <Clock className="h-3.5 w-3.5 mr-2" />
           Timeline
         </Button>
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
           // Auto-generate next CPO serial number
           const existingCount = po?.customerPO?.length || 0;
-          const displayName = (po as any)?.VBNumber || po?.vbpoNo || 'VB';
+          const displayName = po?.VBNumber || 'VB';
           const nextPoNo = `${displayName}-${existingCount + 1}`;
           setAutoPoNo(nextPoNo);
           setIsAddCPOOpen(true);
@@ -989,7 +990,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                               e.stopPropagation();
                               // Pass shipping svbids as childFolders so they're pre-created on Drive
                               const shipFolders = (cpo.shipping || []).map((s: any) => s.svbid).filter(Boolean);
-                              setAttachmentsOpen({ poNumber: (po as any)?.VBNumber || po?.vbpoNo || '', spoNumber: cpo.poNo || undefined, childFolders: shipFolders });
+                              setAttachmentsOpen({ poNumber: po?.VBNumber || '', spoNumber: cpo.poNo || undefined, childFolders: shipFolders });
                             }}
                           >
                             <Paperclip className="h-3.5 w-3.5" />
@@ -1075,8 +1076,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
               {sortedShippings.length > 0 ? (
                 sortedShippings.map((ship: any, idx) => {
                   const isOpen = !!openShippings[ship._id || idx];
-                  const poLevelPath = po.vbpoNo?.trim();
-                  const cpoLevelPath = `${po.vbpoNo} / ${po?.customerPO?.[ship._cpoIdx]?.poNo}`;
+                  const poLevelPath = po.VBNumber?.trim();
+                  const cpoLevelPath = `${po.VBNumber} / ${po?.customerPO?.[ship._cpoIdx]?.poNo}`;
                   const shipSvbid = (ship.svbid || "").trim();
                   const hasInvoice = emailRecords.some(e => {
                     // Treat missing type as "Invoice" (default) for backwards compat with old records
@@ -1114,7 +1115,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           </div>
                           <div>
                             <p className="text-sm font-bold tracking-tight flex items-center gap-2">
-                              {ship.VBShipmentNumber || ship.svbid || po.vbpoNo}
+                              {ship.VBShipmentNumber || ship.svbid || po.VBNumber}
                               <span className="text-[10px] font-medium text-muted-foreground">{users[po.createdBy?.toLowerCase()] || po.createdBy || ''}</span>
                             </p>
                           </div>
@@ -1144,7 +1145,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           </span>
                           {/* Actions */}
                           <div className="flex items-center gap-0.5">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const cpo = po?.customerPO?.[ship._cpoIdx]; setAttachmentsOpen({ poNumber: (po as any)?.VBNumber || po?.vbpoNo || '', spoNumber: cpo?.poNo || '', shipNumber: ship.svbid || undefined }); }}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); const cpo = po?.customerPO?.[ship._cpoIdx]; setAttachmentsOpen({ poNumber: po?.VBNumber || '', spoNumber: cpo?.poNo || '', shipNumber: ship.svbid || undefined }); }}>
                               <Paperclip className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg" onClick={(e) => { e.stopPropagation(); setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: po?.customerPO?.[ship._cpoIdx]?._id, VBShipmentNumber: ship._id, title: `Timeline — ${ship.svbid || 'Shipping'}` }); }}>
@@ -1850,7 +1851,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         open={!!attachmentsOpen}
         onClose={() => {
           setAttachmentsOpen(null);
-          if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
+          if (po?.VBNumber) fetchEmailRecords(po.VBNumber);
         }}
         poNumber={attachmentsOpen?.poNumber || ''}
         onOpenLegacy={() => {
@@ -1866,7 +1867,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         open={!!legacyAttachmentsOpen}
         onClose={() => {
           setLegacyAttachmentsOpen(null);
-          if (po?.vbpoNo) fetchEmailRecords(po.vbpoNo);
+          if (po?.VBNumber) fetchEmailRecords(po.VBNumber);
         }}
         poNumber={legacyAttachmentsOpen?.poNumber || ''}
         spoNumber={legacyAttachmentsOpen?.spoNumber}
@@ -1918,9 +1919,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                   <Input
                     id="VBNumber"
                     className="pl-9"
-                    value={(editPOData as any).VBNumber || editPOData.vbpoNo || ""}
+                    value={editPOData.VBNumber || ""}
                     onChange={(e) =>
-                      setEditPOData({ ...editPOData, VBNumber: e.target.value, vbpoNo: e.target.value })
+                      setEditPOData({ ...editPOData, VBNumber: e.target.value })
                     }
                     required
                   />

@@ -131,7 +131,7 @@ export async function syncInboundEmails() {
         }
 
         await EmailRecord.create({
-          vbpoNo: poNo,
+          VBNumber: poNo,
           from: fromText,
           to: toArray,
           cc: ccArray,

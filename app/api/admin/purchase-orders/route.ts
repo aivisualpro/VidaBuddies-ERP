@@ -23,6 +23,9 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const data = await req.json();
 
+    // vbpoNo is deprecated — never store it on new documents
+    delete data.vbpoNo;
+
     // Auto-set createdBy from session
     const session = await getSession();
     if (session?.email) {

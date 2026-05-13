@@ -4,23 +4,39 @@ import EmailRecord from "@/lib/models/EmailRecord";
 import mongoose from "mongoose";
 
 /**
- * GET — List email records for a specific vbpoNo
- * Uses raw MongoDB to bypass Mongoose schema/model caching issues
+ * GET — List email records for a specific VBNumber (PO ObjectId)
+ * Accepts either ?VBNumber=... or legacy ?vbpoNo=... query param
  */
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
-    const vbpoNo = request.nextUrl.searchParams.get("vbpoNo");
+    const rawId = request.nextUrl.searchParams.get("VBNumber") || request.nextUrl.searchParams.get("vbpoNo");
 
-    if (!vbpoNo) {
-      return NextResponse.json({ error: "vbpoNo is required" }, { status: 400 });
+    if (!rawId) {
+      return NextResponse.json({ error: "VBNumber is required" }, { status: 400 });
+    }
+
+    // Query by ObjectId if it looks like one, otherwise resolve display name
+    let filter: any;
+    if (/^[a-f0-9]{24}$/i.test(rawId)) {
+      filter = { VBNumber: new mongoose.Types.ObjectId(rawId) };
+    } else {
+      // rawId is a display name like "VB300" — resolve to PO ObjectId
+      const VidaPO = (await import("@/lib/models/VidaPO")).default;
+      const po = await VidaPO.findOne({ VBNumber: rawId }, { _id: 1 }).lean();
+      if (po) {
+        filter = { VBNumber: po._id };
+      } else {
+        // Fallback: try matching as string (for legacy unresolved records)
+        filter = { VBNumber: rawId };
+      }
     }
 
     // Raw query ensures ALL fields (including 'reference') are returned
     const db = mongoose.connection.db;
     const emails = await db!
       .collection("emailrecords")
-      .find({ vbpoNo })
+      .find(filter)
       .sort({ sentAt: -1 })
       .toArray();
 

@@ -32,7 +32,7 @@ export function AddPurchaseOrderDialog({
       if (purchaseOrders && purchaseOrders.length > 0) {
         const numbers = purchaseOrders
           .map((item: any) => {
-            const val = item.VBNumber || item.vbpoNo || "";
+            const val = item.VBNumber || "";
             const match = val.match(/^VB(\d+)$/i);
             return match ? parseInt(match[1], 10) : 0;
           })

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -135,8 +136,19 @@ function ProductCombobox({ products, value, onChange }: { products: any[]; value
   );
 }
 
+const RR_FILTER_DEFAULTS = { search: "", warehouse: "all" };
+
 export default function ReleaseRequestsPage() {
+  return (
+    <Suspense>
+      <ReleaseRequestsContent />
+    </Suspense>
+  );
+}
+
+function ReleaseRequestsContent() {
   const router = useRouter();
+  const { filters, inputs, setFilter } = useUrlFilters(RR_FILTER_DEFAULTS, ["search"], 300);
   const { 
     releaseRequests: rawData, 
     products, 
@@ -155,10 +167,6 @@ export default function ReleaseRequestsPage() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ReleaseRequest | null>(null);
-  
-  // Search & filter states
-  const [globalSearch, setGlobalSearch] = useState("");
-  const [warehouseFilter, setWarehouseFilter] = useState<string>("all");
   
   // Search states for dropdowns
   const [carrierSearch, setCarrierSearch] = useState("");
@@ -314,9 +322,9 @@ export default function ReleaseRequestsPage() {
 
   // Filter data by warehouse
   const filteredData = useMemo(() => {
-    if (warehouseFilter === "all") return data;
-    return data.filter(d => d.warehouse?._id === warehouseFilter);
-  }, [data, warehouseFilter]);
+    if (filters.warehouse === "all") return data;
+    return data.filter(d => d.warehouse?._id === filters.warehouse);
+  }, [data, filters.warehouse]);
 
   // Custom global filter that searches across key fields
   const globalFilterFn = useCallback((row: any, _columnId: string, filterValue: string) => {
@@ -335,7 +343,7 @@ export default function ReleaseRequestsPage() {
 
   // Header extra: warehouse filter dropdown
   const headerExtra = (
-    <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+    <Select value={filters.warehouse} onValueChange={(v) => setFilter("warehouse", v)}>
       <SelectTrigger className="h-8 w-[180px] text-xs">
         <SelectValue placeholder="All Warehouses" />
       </SelectTrigger>
@@ -430,8 +438,8 @@ export default function ReleaseRequestsPage() {
         onRowClick={(item) => router.push(`/inventory/release-requests/${item._id}`)}
         title="Release Requests"
         showColumnToggle={false}
-        globalFilter={globalSearch}
-        onGlobalFilterChange={setGlobalSearch}
+        globalFilter={inputs.search}
+        onGlobalFilterChange={(v: string) => setFilter("search", v)}
         globalFilterFn={globalFilterFn}
         headerExtra={headerExtra}
       />

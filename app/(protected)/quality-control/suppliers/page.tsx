@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, Suspense } from "react";
 import Image from "next/image";
 import { useUserDataStore } from "@/store/useUserDataStore";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash, Hash, Factory, MapPin, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 
 import Link from "next/link";
 
@@ -52,7 +53,17 @@ import { Switch } from "@/components/ui/switch";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 
+const SUPPLIER_FILTER_DEFAULTS = { search: "" };
+
 export default function SuppliersPage() {
+  return (
+    <Suspense>
+      <SuppliersContent />
+    </Suspense>
+  );
+}
+
+function SuppliersContent() {
   const { 
     suppliers: data, 
     isLoading,
@@ -64,7 +75,7 @@ export default function SuppliersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { filters, inputs, setFilter } = useUrlFilters(SUPPLIER_FILTER_DEFAULTS, ["search"], 300);
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
   // Highlight row when coming back from details
@@ -85,15 +96,15 @@ export default function SuppliersPage() {
 
   // Filtered data
   const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return data;
-    const q = searchQuery.toLowerCase();
+    if (!filters.search.trim()) return data;
+    const q = filters.search.toLowerCase();
     return data.filter((s: any) =>
       s.name?.toLowerCase().includes(q) ||
       s.vbId?.toLowerCase().includes(q) ||
       s.portalEmail?.toLowerCase().includes(q) ||
       s.location?.some((l: any) => l.locationName?.toLowerCase().includes(q) || l.country?.toLowerCase().includes(q))
     );
-  }, [data, searchQuery]);
+  }, [data, filters.search]);
 
   const [formData, setFormData] = useState<Partial<Supplier>>({
     vbId: "",
@@ -434,8 +445,8 @@ export default function SuppliersPage() {
           data={filteredData}
           onAdd={openAddSheet}
           showColumnToggle={false}
-          globalFilter={searchQuery}
-          onGlobalFilterChange={setSearchQuery}
+          globalFilter={inputs.search}
+          onGlobalFilterChange={(v: string) => setFilter("search", v)}
           onRowClick={(row) => router.push(`/quality-control/suppliers/${row._id}`)}
           rowClassName={(row) => row._id === highlightId ? 'animate-highlight-row' : ''}
           rowDataId={(row) => row._id}

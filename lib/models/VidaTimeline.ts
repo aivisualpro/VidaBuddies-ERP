@@ -15,9 +15,9 @@ export interface IVidaTimeline extends Document {
 }
 
 const VidaTimelineSchema: Schema = new Schema({
-    VBNumber: { type: String },
-    VBSerialNumber: { type: String },
-    VBShipmentNumber: { type: String },
+    VBNumber: { type: Schema.Types.Mixed },
+    VBSerialNumber: { type: Schema.Types.Mixed },
+    VBShipmentNumber: { type: Schema.Types.Mixed },
     date: { type: Date },
     reminder: { type: Date },
     type: {
@@ -37,6 +37,8 @@ const VidaTimelineSchema: Schema = new Schema({
 VidaTimelineSchema.index({ VBNumber: 1, timestamp: -1 });
 VidaTimelineSchema.index({ VBSerialNumber: 1, timestamp: -1 });
 VidaTimelineSchema.index({ VBShipmentNumber: 1, timestamp: -1 });
+// Compound index for reminders query: status ∈ [Open, In Progress] + reminder ≤ date
+VidaTimelineSchema.index({ status: 1, reminder: 1 });
 
 const VidaTimeline: Model<IVidaTimeline> = mongoose.models.VidaTimeline || mongoose.model<IVidaTimeline>('VidaTimeline', VidaTimelineSchema);
 

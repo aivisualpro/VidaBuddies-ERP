@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       const pos = await VidaPO.find({
         "driveDocuments.0": { $exists: true },
       })
-        .select("VBNumber vbpoNo driveDocuments")
+        .select("VBNumber driveDocuments")
         .lean();
 
       // Fetch all CPOs that have driveDocuments
@@ -88,10 +88,10 @@ export async function GET(req: NextRequest) {
         .lean();
 
       // Build a map of PO _id -> VBNumber for label resolution
-      const allPOs = await VidaPO.find({}).select("VBNumber vbpoNo").lean();
+      const allPOs = await VidaPO.find({}).select("VBNumber").lean();
       const poNameMap: Record<string, string> = {};
       allPOs.forEach((p: any) => {
-        poNameMap[p._id.toString()] = p.VBNumber || p.vbpoNo || p._id.toString();
+        poNameMap[p._id.toString()] = p.VBNumber || p._id.toString();
       });
 
       // Group everything by PO VBNumber
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
       // PO-level documents
       for (const po of pos) {
         const poId = (po as any)._id.toString();
-        const poLabel = (po as any).VBNumber || (po as any).vbpoNo || poId;
+        const poLabel = (po as any).VBNumber || poId;
         ensureGroup(poId, poLabel);
         const poDocs = flattenDriveDocs((po as any).driveDocuments);
         if (poDocs.length > 0) {

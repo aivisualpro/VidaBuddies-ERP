@@ -14,12 +14,17 @@ import type { BellNotification } from "@/lib/notifications/types";
  */
 export async function GET() {
   try {
-    const session = await getSession();
+    console.time("[reminders] total");
+
+    // Parallelize session + DB connection — independent operations
+    const [session] = await Promise.all([
+      getSession(),
+      connectToDatabase(),
+    ]);
+
     if (!session?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    await connectToDatabase();
 
     // Only Super Admins can see reminders
     const user = await VidaUser.findOne(
@@ -28,6 +33,7 @@ export async function GET() {
     ).lean();
 
     if (!user || (user as any).AppRole !== "Super Admin") {
+      console.timeEnd("[reminders] total");
       return NextResponse.json([]);
     }
 
@@ -40,16 +46,16 @@ export async function GET() {
       23, 59, 59, 999
     );
 
-    // Query: Open or In Progress, with a reminder set, due today or overdue
-    const items = await VidaTimeline.find({
-      status: { $in: ["Open", "In Progress"] },
-      reminder: { $ne: null, $lte: endOfToday },
-    })
-      .sort({ reminder: 1 }) // overdue first
-      .lean();
-
-    // Enrich with display names
-    const lookups = await buildLookups();
+    // Parallelize the timeline query and lookups — they are independent
+    const [items, lookups] = await Promise.all([
+      VidaTimeline.find({
+        status: { $in: ["Open", "In Progress"] },
+        reminder: { $ne: null, $lte: endOfToday },
+      })
+        .sort({ reminder: 1 }) // overdue first
+        .lean(),
+      buildLookups(), // now cached with 60s TTL
+    ]);
 
     const notifications: BellNotification[] = items.map((item: any) => {
       const vbDisplay = item.VBNumber
@@ -82,6 +88,7 @@ export async function GET() {
       };
     });
 
+    console.timeEnd("[reminders] total");
     return NextResponse.json(notifications);
   } catch (error) {
     console.error("[Reminders API] Error:", error);

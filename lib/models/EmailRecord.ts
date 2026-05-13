@@ -8,7 +8,7 @@ export interface IEmailAttachment {
 }
 
 export interface IEmailRecord {
-  vbpoNo: string;
+  VBNumber: mongoose.Types.ObjectId | string;  // ObjectId ref → VidaPO._id
   folderPath: string;
   from: string;
   to: string[];
@@ -33,7 +33,7 @@ const EmailAttachmentSchema = new Schema({
 }, { _id: false });
 
 const EmailRecordSchema: Schema = new Schema({
-  vbpoNo: { type: String, required: true, index: true },
+  VBNumber: { type: Schema.Types.Mixed, required: true, index: true },
   folderPath: { type: String, default: '' },
   from: { type: String, default: '' },
   to: [{ type: String }],

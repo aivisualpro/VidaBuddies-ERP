@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
                 shipId: ship._id,
 
                 // VidaPO data
-                vbpoNo: po.vbpoNo,
+                vbpoNo: po.VBNumber,
                 orderType: po.orderType,
 
                 // CustomerPO data

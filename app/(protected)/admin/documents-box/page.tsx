@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, Suspense } from "react";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 
 interface DocFile {
   _id: string;
@@ -92,13 +93,23 @@ function getThumbnailUrl(file: DocFile): string {
   return `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
 }
 
+const DOCS_FILTER_DEFAULTS = { search: "" };
+
 export default function DocumentsBoxPage() {
+  return (
+    <Suspense>
+      <DocumentsBoxContent />
+    </Suspense>
+  );
+}
+
+function DocumentsBoxContent() {
   const router = useRouter();
   const { setLeftContent } = useHeaderActions();
+  const { filters, inputs, setFilter } = useUrlFilters(DOCS_FILTER_DEFAULTS, ["search"], 300);
   const [activeCategory, setActiveCategory] = useState("suppliers");
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [selectedEntity, setSelectedEntity] = useState<EntityItem | null>(null);
   const [selectedFile, setSelectedFile] = useState<DocFile | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -135,14 +146,14 @@ export default function DocumentsBoxPage() {
   }, [activeCategory]);
 
   const filteredEntities = useMemo(() => {
-    if (!search.trim()) return entities;
-    const q = search.toLowerCase();
+    if (!filters.search.trim()) return entities;
+    const q = filters.search.toLowerCase();
     return entities.filter(
       (e) =>
         e.entityName?.toLowerCase().includes(q) ||
         e.entityId?.toLowerCase().includes(q)
     );
-  }, [entities, search]);
+  }, [entities, filters.search]);
 
   const totalFiles = useMemo(() => {
     return entities.reduce(
@@ -276,8 +287,8 @@ export default function DocumentsBoxPage() {
             <Input
               placeholder={`Search ${activeCat.label.toLowerCase()}...`}
               className="h-8 pl-8 text-xs bg-muted/50 border-transparent"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={inputs.search}
+              onChange={(e) => setFilter("search", e.target.value)}
             />
           </div>
         </div>

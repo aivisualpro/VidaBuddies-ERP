@@ -4,10 +4,9 @@ import mongoose from "mongoose";
 
 /**
  * GET /api/admin/emails/counts
- * Returns email and invoice counts for ALL vbpoNos in a single aggregation query.
- * Replaces the N+1 per-PO fetch pattern on the list page.
+ * Returns email and invoice counts for ALL VBNumbers in a single aggregation query.
  *
- * Response: { counts: { [vbpoNo]: { total: number, invoices: number } } }
+ * Response: { counts: { [VBNumber_as_string]: { total: number, invoices: number } } }
  */
 export async function GET() {
   try {
@@ -17,7 +16,7 @@ export async function GET() {
     const pipeline = [
       {
         $group: {
-          _id: "$vbpoNo",
+          _id: "$VBNumber",
           total: { $sum: 1 },
           invoices: {
             $sum: { $cond: [{ $eq: ["$type", "Invoice"] }, 1, 0] },
@@ -34,7 +33,9 @@ export async function GET() {
     const counts: Record<string, { total: number; invoices: number }> = {};
     for (const r of results) {
       if (r._id) {
-        counts[r._id] = { total: r.total, invoices: r.invoices };
+        // Key by the string representation so frontend can match by PO _id
+        const key = r._id.toString();
+        counts[key] = { total: r.total, invoices: r.invoices };
       }
     }
 

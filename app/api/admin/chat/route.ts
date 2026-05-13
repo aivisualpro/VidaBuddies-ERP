@@ -11,26 +11,58 @@ import { getSession } from "@/lib/auth";
  */
 export async function GET() {
   try {
-    await connectToDatabase();
-    const session = await getSession();
+    console.time("[chat] total");
+
+    // Parallelize independent setup operations
+    const [, session] = await Promise.all([
+      connectToDatabase(),
+      getSession(),
+    ]);
+
     if (!session || !session.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get all active users for directory + @mentions
-    const users = await VidaUser.find({ isActive: true })
-      .select("name profilePicture isActive isOnWebsite email AppRole")
-      .lean();
+    // Parallelize both data queries — they are independent
+    const [users, rawConversations] = await Promise.all([
+      // Users for directory + @mentions
+      VidaUser.find({ isActive: true })
+        .select("_id name profilePicture isActive isOnWebsite email AppRole")
+        .lean(),
+      // Conversations this user participates in (no populate — manual denorm below)
+      VidaConversation.find({ participants: session.id })
+        .sort({ lastMessageAt: -1 })
+        .lean(),
+    ]);
 
-    // Get all conversations this user participates in
-    const conversations = await VidaConversation.find({
-      participants: session.id,
-    })
-      .populate("participants", "name profilePicture isActive email")
-      .populate("lastMessageBy", "name")
-      .sort({ lastMessageAt: -1 })
-      .lean();
+    // Manual denormalization: build a user map from the already-fetched users list
+    // instead of letting Mongoose .populate() fire separate DB queries.
+    const userMap = new Map<string, any>();
+    for (const u of users) {
+      userMap.set((u as any)._id.toString(), {
+        _id: (u as any)._id,
+        name: (u as any).name,
+        profilePicture: (u as any).profilePicture,
+        isActive: (u as any).isActive,
+        email: (u as any).email,
+      });
+    }
 
+    const conversations = rawConversations.map((convo: any) => ({
+      ...convo,
+      participants: (convo.participants || []).map((pid: any) => {
+        const id = pid?.toString?.() || pid;
+        return userMap.get(id) || { _id: pid, name: "Unknown" };
+      }),
+      lastMessageBy: convo.lastMessageBy
+        ? (() => {
+            const u = userMap.get(convo.lastMessageBy.toString());
+            return u ? { _id: u._id, name: u.name } : { _id: convo.lastMessageBy };
+          })()
+        : null,
+    }));
+
+    console.timeEnd("[chat] total");
     return NextResponse.json({
       currentUser: { id: session.id, name: session.name, email: session.email },
       users,

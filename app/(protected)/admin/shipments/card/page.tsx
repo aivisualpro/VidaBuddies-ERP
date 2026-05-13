@@ -115,7 +115,7 @@ export default function ShipmentsCardPage() {
   const poLookup = useMemo(() => {
     const map: Record<string, string> = {};
     (purchaseOrders || []).forEach((po: any) => {
-      if (po._id) map[po._id] = po.vbpoNo || po.VBNumber || po._id;
+      if (po._id) map[po._id] = po.VBNumber || po._id;
     });
     return map;
   }, [purchaseOrders]);

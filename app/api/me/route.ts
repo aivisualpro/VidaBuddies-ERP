@@ -10,12 +10,18 @@ import VidaUser from "@/lib/models/VidaUser";
  */
 export async function GET() {
   try {
-    const session = await getSession();
+    console.time("[me] total");
+
+    // Parallelize session decryption and DB connection — independent operations
+    const [session] = await Promise.all([
+      getSession(),
+      connectToDatabase(),
+    ]);
+
     if (!session?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await connectToDatabase();
     const user = await VidaUser.findOne(
       { email: session.email },
       { _id: 1, name: 1, email: 1, AppRole: 1, profilePicture: 1 }
@@ -25,6 +31,7 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    console.timeEnd("[me] total");
     return NextResponse.json({
       id: (user as any)._id.toString(),
       name: (user as any).name,

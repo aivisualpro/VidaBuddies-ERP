@@ -134,7 +134,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
     if (!vbpoNo) return;
     try {
       // First resolve the PO's ObjectId (vbpoNo might be VBNumber like "VB1")
-      const po = purchaseOrders.find((p) => p.vbpoNo === vbpoNo || p.VBNumber === vbpoNo);
+      const po = purchaseOrders.find((p: any) => p.VBNumber === vbpoNo || p._id === vbpoNo);
       const poId = po?._id || vbpoNo;
       
       const res = await fetch(`/api/admin/vb-shipping?VBNumber=${encodeURIComponent(poId)}`);
@@ -242,7 +242,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
           type: emailType,
           reference: isShipping ? reference : "",
           isShipping: emailType === "Invoice" ? isShipping : undefined,
-          vbpoNo,
+          VBNumber: vbpoNo,
           folderPath,
           fileIds: localAttachments.filter(
             (f) => f.mimeType !== "application/vnd.google-apps.folder"

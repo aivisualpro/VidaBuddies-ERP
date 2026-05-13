@@ -4,6 +4,7 @@ import { getDrive } from "@/lib/google-drive";
 import connectToDatabase from "@/lib/db";
 import EmailRecord from "@/lib/models/EmailRecord";
 import { getSession } from "@/lib/auth";
+import mongoose from "mongoose";
 
 /**
  * SMTP Transport — For Office365 with Basic Auth, ensure:
@@ -37,7 +38,8 @@ const transporter = nodemailer.createTransport({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { to, cc, subject, body, fileIds, vbpoNo, folderPath, htmlContentForAttachedPdf, pdfName, type, reference } = await request.json();
+    const { to, cc, subject, body, fileIds, vbpoNo, VBNumber: rawVBNumber, folderPath, htmlContentForAttachedPdf, pdfName, type, reference } = await request.json();
+    const vbRef = rawVBNumber || vbpoNo; // accept both, prefer VBNumber
 
     if (!to || !subject) {
       return NextResponse.json(
@@ -156,11 +158,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Save email record
-    if (vbpoNo) {
+    if (vbRef) {
       try {
         await connectToDatabase();
+        // Cast to ObjectId if it looks like one
+        let vbValue: any = vbRef;
+        if (typeof vbRef === "string" && /^[a-f0-9]{24}$/i.test(vbRef)) {
+          try { vbValue = new mongoose.Types.ObjectId(vbRef); } catch { /* keep string */ }
+        }
         await EmailRecord.create({
-          vbpoNo,
+          VBNumber: vbValue,
           folderPath: folderPath || "",
           from: fromAddress,
           to: toAddresses,

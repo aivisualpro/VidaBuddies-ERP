@@ -3,6 +3,14 @@ import connectToDatabase from "@/lib/db";
 import VBshipping from "@/lib/models/VBshipping";
 import mongoose from "mongoose";
 
+// Fields to EXCLUDE — shippingTrackingRecords and driveDocuments are huge
+// and no list-view consumer needs them.
+const LIST_PROJECTION = {
+  shippingTrackingRecords: 0,
+  driveDocuments: 0,
+  raw_json: 0,
+};
+
 /**
  * GET /api/admin/vb-shipping
  * Query params:
@@ -19,6 +27,7 @@ import mongoose from "mongoose";
  */
 export async function GET(req: Request) {
   try {
+    console.time("[vb-shipping] total");
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
     const VBNumber = searchParams.get("VBNumber");
@@ -43,7 +52,9 @@ export async function GET(req: Request) {
     }
     if (containerNo) filter.containerNo = containerNo;
 
-    const items = await VBshipping.find(filter).sort({ createdAt: -1 }).lean();
+    const items = await VBshipping.find(filter, LIST_PROJECTION)
+      .sort({ createdAt: -1 })
+      .lean();
 
     // ─── Denormalize: resolve ObjectIds → display names ───
     const db = mongoose.connection.db;
@@ -160,6 +171,7 @@ export async function GET(req: Request) {
         : [],
     }));
 
+    console.timeEnd("[vb-shipping] total");
     return NextResponse.json(enriched);
   } catch (error) {
     console.error("Failed to fetch VBshipping:", error);

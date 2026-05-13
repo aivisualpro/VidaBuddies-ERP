@@ -226,7 +226,7 @@ export function AttachmentsModal({
     if (!poNumber) return;
     setLoadingEmails(true);
     try {
-      const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(poNumber)}`);
+      const res = await fetch(`/api/admin/emails?VBNumber=${encodeURIComponent(poNumber)}`);
       const data = await res.json();
       if (res.ok) setEmailRecords(data.emails || []);
     } catch { /* silent */ } finally {

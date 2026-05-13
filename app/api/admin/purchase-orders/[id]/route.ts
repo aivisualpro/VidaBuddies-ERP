@@ -45,17 +45,43 @@ export async function PUT(req: Request, { params }: RouteParams) {
       );
     }
 
-    const vbpoNo = originalDoc.vbpoNo || originalDoc.VBNumber;
+    const vbNumberId = originalDoc._id; // ObjectId for timeline refs
 
-    // Keep vbpoNo in sync with VBNumber (legacy field)
-    if (data.VBNumber && !data.vbpoNo) {
-      data.vbpoNo = data.VBNumber;
+    // vbpoNo is deprecated — strip from incoming data AND remove from DB
+    delete data.vbpoNo;
+    // Also strip internal fields that shouldn't be sent back
+    delete data._id;
+    delete data.__v;
+
+    // Separate MongoDB update operators ($push, $pull, etc.) from plain fields
+    const updateOp: Record<string, any> = {};
+    const plainFields: Record<string, any> = {};
+    for (const key of Object.keys(data)) {
+      if (key.startsWith("$")) {
+        updateOp[key] = data[key];
+      } else {
+        plainFields[key] = data[key];
+      }
     }
 
-    const updatedItem = await VidaPO.findByIdAndUpdate(id, data, {
+    // Plain fields (including dot-notation) go into $set
+    if (Object.keys(plainFields).length > 0) {
+      updateOp.$set = plainFields;
+    }
+
+    // Remove deprecated vbpoNo if it exists on the document
+    if (originalDoc.toObject().hasOwnProperty("vbpoNo")) {
+      if (!updateOp.$unset) updateOp.$unset = {};
+      updateOp.$unset.vbpoNo = "";
+    }
+
+    const updatedItem = await VidaPO.findByIdAndUpdate(id, updateOp, {
       new: true,
       runValidators: true,
     });
+
+
+
 
     if (!updatedItem) {
       return NextResponse.json(
@@ -66,7 +92,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     // --- Auto-log changes to timeline ---
     try {
-      const logs: { comments: string; type: string; category?: string; poNo?: string; svbid?: string }[] = [];
+      const logs: { comments: string; type: string; category?: string; cpoId?: string; shipId?: string }[] = [];
 
       // Detect shipping status changes via dot notation (e.g. customerPO.0.shipping.1.status)
       for (const key of Object.keys(data)) {
@@ -85,8 +111,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
                 comments: `Shipping status changed from "${oldStatus}" to "${newStatus}"`,
                 type: "Shipping",
                 category: "Shipping",
-                poNo,
-                svbid,
+                cpoId: originalDoc.customerPO?.[Number(cpoIdx)]?._id?.toString(),
+                shipId: oldShip?._id?.toString(),
               });
             }
           } else if (oldShip) {
@@ -105,8 +131,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
                   ? `Changed ${label} from "${oldVal}" to "${newVal}"`
                   : `Set ${label} to "${newVal}"`,
                 type: "Notes",
-                poNo,
-                svbid,
+                cpoId: originalDoc.customerPO?.[Number(cpoIdx)]?._id?.toString(),
+                shipId: oldShip?._id?.toString(),
               });
             }
           }
@@ -125,7 +151,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
                 ? `Changed ${field} from "${oldVal}" to "${newVal}" on ${poNo}`
                 : `Set ${field} to "${newVal}" on ${poNo}`,
               type: "Notes",
-              poNo,
+              cpoId: originalDoc.customerPO?.[Number(cpoIdx)]?._id?.toString(),
             });
           }
         }
@@ -139,7 +165,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
             comments: `New Customer PO "${newCpo.poNo}" added`,
             type: "Action Required",
             category: "Customer PO Added",
-            poNo: newCpo.poNo,
+            cpoId: newCpo._id?.toString(),
           });
         }
       }
@@ -157,9 +183,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
         const { createTimelineLog } = await import("@/lib/timeline-logger");
         for (const log of logs) {
           await createTimelineLog({
-            VBNumber: vbpoNo,
-            VBSerialNumber: log.poNo,
-            VBShipmentNumber: log.svbid,
+            VBNumber: vbNumberId.toString(),
+            VBSerialNumber: log.cpoId,
+            VBShipmentNumber: log.shipId,
             type: log.type as any,
             category: log.category,
             comments: log.comments,
@@ -173,8 +199,16 @@ export async function PUT(req: Request, { params }: RouteParams) {
     }
 
     return NextResponse.json(updatedItem);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to update purchase order:", error);
+    // Duplicate VBNumber
+    if (error?.code === 11000) {
+      const dupVal = error?.keyValue?.VBNumber || "unknown";
+      return NextResponse.json(
+        { error: `VB Number "${dupVal}" already exists on another PO` },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: "Failed to update purchase order" },
       { status: 500 }

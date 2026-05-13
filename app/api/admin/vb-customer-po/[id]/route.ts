@@ -33,6 +33,18 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const { id } = await params;
     const data = await req.json();
 
+    // ObjectId fields: empty strings → null so Mongoose doesn't choke
+    const OID_FIELDS = ['VBNumber', 'customer', 'customerLocation'];
+    for (const f of OID_FIELDS) {
+      if (f in data && !data[f]) {
+        data[f] = null;
+      }
+    }
+
+    // Strip internal fields
+    delete data._id;
+    delete data.__v;
+
     const updated = await VBcustomerPO.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,

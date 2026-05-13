@@ -77,7 +77,7 @@ interface CustomerPO {
 
 interface PurchaseOrder {
   _id: string;
-  vbpoNo: string;
+  VBNumber: string;
   orderType: string;
   category: string;
   date: string;
@@ -509,9 +509,9 @@ function ShippingCard({
   onDelete: (id: string) => void;
   onEdit: (po: PurchaseOrder) => void;
   onViewDetails: () => void;
-  onOpenTimeline: (poId: string, vbpoNo: string) => void;
-  onOpenAttachments: (vbpoNo: string) => void;
-  onOpenEmails: (vbpoNo: string) => void;
+  onOpenTimeline: (poId: string, vbNumber: string) => void;
+  onOpenAttachments: (vbNumber: string) => void;
+  onOpenEmails: (vbNumber: string) => void;
   userRole: string;
 }) {
   const [showAll, setShowAll] = useState(false);
@@ -554,7 +554,7 @@ function ShippingCard({
               <Ship className={`h-4.5 w-4.5 ${statusCfg.color}`} />
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight leading-none">{po.vbpoNo || (po as any).VBNumber}</h3>
+              <h3 className="text-sm font-bold tracking-tight leading-none">{po.VBNumber}</h3>
               <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
                 {po.date ? new Date(po.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
               </p>
@@ -695,21 +695,21 @@ function ShippingCard({
                 <Pencil className="h-3 w-3" />
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); onOpenTimeline(po._id, po.vbpoNo); }}
+                onClick={(e) => { e.stopPropagation(); onOpenTimeline(po._id, po.VBNumber); }}
                 title="Timeline"
                 className="p-1 rounded-md text-muted-foreground hover:text-violet-500 hover:bg-violet-500/10 transition-colors"
               >
                 <Clock className="h-3 w-3" />
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); onOpenAttachments(po.vbpoNo); }}
+                onClick={(e) => { e.stopPropagation(); onOpenAttachments(po.VBNumber); }}
                 title="Attachments"
                 className="p-1 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
               >
                 <Paperclip className="h-3 w-3" />
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); onOpenEmails(po.vbpoNo); }}
+                onClick={(e) => { e.stopPropagation(); onOpenEmails(po.VBNumber); }}
                 title="Emails"
                 className="p-1 rounded-md text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
               >
@@ -895,7 +895,7 @@ export default function ShippingsPage() {
           cpo.customerPONo, cpo.poNo,
           ...(cpo.shipping || []).map((s: any) => [s.svbid, s.spoNo, s.carrier, s.containerNo].join(" ")),
         ].join(" ")).join(" ") || "";
-        const searchable = [po.vbpoNo, po.orderType, po.category, po.date, po.createdBy, createdByName, cpoSearchable].filter(Boolean).join(" ").toLowerCase();
+        const searchable = [po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName, cpoSearchable].filter(Boolean).join(" ").toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       return true;
@@ -913,7 +913,7 @@ export default function ShippingsPage() {
   const openEditDialog = useCallback((po: PurchaseOrder) => {
     setEditingPO(po);
     setEditFormData({
-      VBNumber: (po as any).VBNumber || po.vbpoNo,
+      VBNumber: po.VBNumber,
       orderType: po.orderType,
       category: po.category,
       date: po.date ? po.date.split("T")[0] : "",
@@ -1114,9 +1114,9 @@ export default function ShippingsPage() {
               onDelete={handleDelete}
               onEdit={openEditDialog}
               onViewDetails={() => router.push(`/admin/purchase-orders/${po._id}`)}
-              onOpenTimeline={(poId, vbpoNo) => setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbpoNo}` })}
-              onOpenAttachments={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo })}
-              onOpenEmails={(vbpoNo) => setAttachmentsOpen({ poNumber: vbpoNo, defaultTab: "emails" })}
+              onOpenTimeline={(poId, vbNumber) => setTimelineOpen({ VBNumber: poId, title: `Timeline — ${vbNumber}` })}
+              onOpenAttachments={(vbNumber) => setAttachmentsOpen({ poNumber: vbNumber })}
+              onOpenEmails={(vbNumber) => setAttachmentsOpen({ poNumber: vbNumber, defaultTab: "emails" })}
               userRole={userRole}
             />
           ))}
@@ -1146,7 +1146,7 @@ export default function ShippingsPage() {
                   <Input
                     id="edit-VBNumber"
                     className="pl-9"
-                    value={(editFormData as any).VBNumber || editFormData.vbpoNo || ""}
+                    value={editFormData.VBNumber || ""}
                     onChange={(e) => setEditFormData({ ...editFormData, VBNumber: e.target.value } as any)}
                     required
                   />

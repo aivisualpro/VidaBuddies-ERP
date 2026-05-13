@@ -38,7 +38,7 @@ export function clearRefCache(): void {
  * Resolve one refId to its human-readable display name.
  *
  * Resolution rules (same as `lib/timeline/lookups.ts`):
- *   VBNumber         → VidaPO.vbpoNo          || VidaPO.VBNumber
+ *   VBNumber         → VidaPO.VBNumber
  *   VBSerialNumber   → VBcustomerPO.VBSerialNumber || VBcustomerPO.poNo
  *   VBShipmentNumber → VBshipping.VBShipmentNumber || VBshipping.svbid
  *
@@ -56,8 +56,8 @@ export async function resolveRefDisplay(
   try {
     switch (kind) {
       case 'VBNumber': {
-        const doc = await VidaPO.findById(refId, { vbpoNo: 1, VBNumber: 1 }).lean();
-        if (doc) display = (doc as any).vbpoNo || (doc as any).VBNumber || refId;
+        const doc = await VidaPO.findById(refId, { VBNumber: 1 }).lean();
+        if (doc) display = (doc as any).VBNumber || refId;
         break;
       }
       case 'VBSerialNumber': {
@@ -118,12 +118,12 @@ export async function resolveRefsBatch(
 
     if (byKind.VBNumber.length) {
       tasks.push(
-        VidaPO.find({ _id: { $in: byKind.VBNumber } }, { vbpoNo: 1, VBNumber: 1 })
+        VidaPO.find({ _id: { $in: byKind.VBNumber } }, { VBNumber: 1 })
           .lean()
           .then((docs) => {
             for (const d of docs as any[]) {
               const id = d._id.toString();
-              _cache.set(cacheKey('VBNumber', id), d.vbpoNo || d.VBNumber || id);
+              _cache.set(cacheKey('VBNumber', id), d.VBNumber || id);
             }
             // Anything not found → fall back to raw id
             for (const id of byKind.VBNumber) {

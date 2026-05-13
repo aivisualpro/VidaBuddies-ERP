@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
@@ -73,14 +74,28 @@ const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
 };
 
+// Default export wraps in Suspense for useSearchParams
 export default function ShipmentsListPage() {
+  return (
+    <Suspense>
+      <ShipmentsListContent />
+    </Suspense>
+  );
+}
+
+const FILTER_DEFAULTS = { search: "", status: "" };
+
+function ShipmentsListContent() {
   const router = useRouter();
+  const { filters, inputs, setFilter, resetFilters, hasActiveFilters } = useUrlFilters(
+    FILTER_DEFAULTS,
+    ["search"],  // debounce search input
+    300,
+  );
   const [data, setData] = useState<ShipmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ShipmentRecord | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -199,18 +214,18 @@ export default function ShipmentsListPage() {
         result = result.filter(item => (item.VBSerialNumber || 'none') === sidebarVBSerial);
       }
     }
-    if (filterStatus) {
-      result = result.filter(item => normalizeStatus(item.status || '') === filterStatus);
+    if (filters.status) {
+      result = result.filter(item => normalizeStatus(item.status || '') === filters.status);
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
       result = result.filter(item => {
         const searchable = [item._displayVBNumber, item._displayVBSerialNumber, item.VBShipmentNumber, item._displaySupplier, item.carrier, item.containerNo, item.BOLNumber, item.quickNote].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
     return result;
-  }, [data, searchQuery, filterStatus, sidebarVBNumber, sidebarVBSerial]);
+  }, [data, filters.search, filters.status, sidebarVBNumber, sidebarVBSerial]);
 
   // Build status counts for filter chips
   const statusCounts = useMemo(() => {
@@ -379,14 +394,14 @@ export default function ShipmentsListPage() {
       <input
         type="text"
         placeholder="Search..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        value={inputs.search}
+        onChange={(e) => setFilter("search", e.target.value)}
         className="h-8 w-[160px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
       <select
-        value={filterStatus}
-        onChange={(e) => setFilterStatus(e.target.value)}
-        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterStatus ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'}`}
+        value={filters.status}
+        onChange={(e) => setFilter("status", e.target.value)}
+        className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filters.status ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'}`}
       >
         <option value="">All Statuses ({statusCounts.all})</option>
         <option value="ordered">Ordered ({statusCounts.ordered})</option>
@@ -395,9 +410,9 @@ export default function ShipmentsListPage() {
         <option value="delivered">Delivered ({statusCounts.delivered})</option>
         <option value="pending">Pending ({statusCounts.pending})</option>
       </select>
-      {filterStatus && (
+      {hasActiveFilters && (
         <button
-          onClick={() => setFilterStatus("")}
+          onClick={() => resetFilters()}
           className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           Clear

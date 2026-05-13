@@ -117,8 +117,13 @@ export const useUserDataStore = create<UserDataState>((set, get) => ({
   },
 
   refetchPurchaseOrders: async () => {
-    const data = await fetch("/api/admin/purchase-orders").then(r => r.json());
-    set({ purchaseOrders: data });
+    try {
+      const res = await fetch("/api/admin/init");
+      const data = await res.json();
+      set({ purchaseOrders: data.purchaseOrders || [] });
+    } catch {
+      console.warn("Failed to refetch purchase orders");
+    }
   },
   refetchReleaseRequests: async () => {
     const data = await fetch("/api/admin/release-requests").then(r => r.json());

@@ -142,19 +142,33 @@ function TimelineTable({
             <tbody>
                 {entries.map((entry) => {
                     const isSystem = entry.createdBy === "System";
-                    // Resolve stored values (ObjectIds or display names) to display names
-                    const effectiveVB = entry._VBNumberDisplay || resolveVBNumber(entry.VBNumber);
-                    const effectiveSerial = entry._VBSerialNumberDisplay || resolveSerial(entry.VBSerialNumber);
-                    const effectiveShip = entry._VBShipmentNumberDisplay || resolveShip(entry.VBShipmentNumber);
+                    // Raw ObjectId strings for matching dropdown option values
+                    const rawVB = entry.VBNumber?.toString() || "";
+                    const rawSerial = entry.VBSerialNumber?.toString() || "";
+                    const rawShip = entry.VBShipmentNumber?.toString() || "";
 
-                    // Cascading by resolved display names
-                    const filteredCPOs = effectiveVB
-                        ? cpoOptions.filter(c => c.parentVBNumber === effectiveVB)
+                    // Resolved display names for cascading filters
+                    const displayVB = entry._VBNumberDisplay || resolveVBNumber(rawVB);
+                    const displaySerial = entry._VBSerialNumberDisplay || resolveSerial(rawSerial);
+
+                    // Cascading by ObjectId references (also handle display-string VBNumbers)
+                    // rawVB may be an ObjectId or a display name; resolve to ObjectId for matching
+                    const isObjectId = rawVB && poOptions.some(p => p.value === rawVB);
+                    const resolvedVBId = isObjectId
+                        ? rawVB
+                        : rawVB ? (poOptions.find(p => p.label === rawVB)?.value || rawVB) : "";
+                    let filteredCPOs = resolvedVBId
+                        ? cpoOptions.filter(c => c.parentVBNumber === resolvedVBId || c.parentVBNumber === rawVB)
                         : cpoOptions;
-                    const filteredShips = effectiveSerial
-                        ? shipOptions.filter(s => s.parentSerial === effectiveSerial)
-                        : effectiveVB
-                            ? shipOptions.filter(s => s.parentVBNumber === effectiveVB)
+                    // Fallback: if no CPOs matched by parent and rawVB looks like a display name,
+                    // show CPOs whose label matches or starts with the display name
+                    if (filteredCPOs.length === 0 && rawVB && !isObjectId) {
+                        filteredCPOs = cpoOptions.filter(c => c.label === rawVB || c.label.startsWith(rawVB + "-"));
+                    }
+                    const filteredShips = rawSerial
+                        ? shipOptions.filter(s => s.parentSerial === rawSerial)
+                        : resolvedVBId
+                            ? shipOptions.filter(s => s.parentVBNumber === resolvedVBId || s.parentVBNumber === rawVB)
                             : shipOptions;
 
                     return (
@@ -163,7 +177,7 @@ function TimelineTable({
                             <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
                                 <SearchableSelect
                                     options={poOptions}
-                                    value={effectiveVB}
+                                    value={rawVB}
                                     onChange={(v) => onFieldChange(entry._id, "VBNumber", v, ["VBSerialNumber", "VBShipmentNumber"])}
                                     placeholder="—"
                                     searchPlaceholder="Search VB#..."
@@ -175,7 +189,7 @@ function TimelineTable({
                             <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
                                 <SearchableSelect
                                     options={filteredCPOs}
-                                    value={effectiveSerial}
+                                    value={rawSerial}
                                     onChange={(v) => onFieldChange(entry._id, "VBSerialNumber", v, ["VBShipmentNumber"])}
                                     placeholder="—"
                                     searchPlaceholder="Search Serial..."
@@ -187,7 +201,7 @@ function TimelineTable({
                             <td className="px-1 py-1 align-top" style={{ minWidth: 120 }}>
                                 <SearchableSelect
                                     options={filteredShips}
-                                    value={effectiveShip}
+                                    value={rawShip}
                                     onChange={(v) => onFieldChange(entry._id, "VBShipmentNumber", v)}
                                     placeholder="—"
                                     searchPlaceholder="Search Shipment..."
@@ -273,22 +287,46 @@ export default function TimelineModal({
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
 
-    // ── Hierarchy data from store ──
+    // ── Hierarchy data from store + standalone collections ──
     const { purchaseOrders } = useUserDataStore();
 
-    // Build id→display maps for resolving stored ObjectIds to display names
-    const idToVBNumber = useMemo(() => {
+    // Fetch standalone CPOs and shippings from separate collections
+    const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
+    const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!open) return;
+        fetchHierarchy();
+    }, [open]);
+
+    const fetchHierarchy = () => {
+        Promise.all([
+            fetch("/api/admin/vb-customer-po").then(r => r.json()).catch(() => []),
+            fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []),
+        ]).then(([cpos, ships]) => {
+            setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
+            setStandaloneShips(Array.isArray(ships) ? ships : []);
+        });
+    };
+
+    // Build PO id→display map
+    const poIdToDisplay = useMemo(() => {
         const m: Record<string, string> = {};
         (purchaseOrders || []).forEach((po: any) => {
             const id = po._id?.toString() || "";
-            const display = po.VBNumber || po.vbpoNo || "";
+            const display = po.VBNumber || "";
             if (id && display) { m[id] = display; m[display] = display; }
         });
         return m;
     }, [purchaseOrders]);
 
+    // Resolve any stored value (ObjectId or display name) to display name
+    const resolveVBNumber = useCallback((raw?: string) => raw ? (poIdToDisplay[raw] || raw) : "", [poIdToDisplay]);
+
+    // Build id→display maps for serials (from BOTH embedded and standalone)
     const idToSerial = useMemo(() => {
         const m: Record<string, string> = {};
+        // From embedded
         (purchaseOrders || []).forEach((po: any) => {
             if (po.customerPO && Array.isArray(po.customerPO)) {
                 po.customerPO.forEach((cpo: any) => {
@@ -298,11 +336,18 @@ export default function TimelineModal({
                 });
             }
         });
+        // From standalone
+        standaloneCPOs.forEach((cpo: any) => {
+            const id = cpo._id?.toString() || "";
+            const display = cpo.VBSerialNumber || cpo.poNo || "";
+            if (id && display) { m[id] = display; m[display] = display; }
+        });
         return m;
-    }, [purchaseOrders]);
+    }, [purchaseOrders, standaloneCPOs]);
 
     const idToShip = useMemo(() => {
         const m: Record<string, string> = {};
+        // From embedded
         (purchaseOrders || []).forEach((po: any) => {
             if (po.customerPO && Array.isArray(po.customerPO)) {
                 po.customerPO.forEach((cpo: any) => {
@@ -316,60 +361,90 @@ export default function TimelineModal({
                 });
             }
         });
+        // From standalone
+        standaloneShips.forEach((ship: any) => {
+            const id = ship._id?.toString() || "";
+            const display = ship.svbid || ship.VBShipmentNumber || "";
+            if (id && display) { m[id] = display; m[display] = display; }
+        });
         return m;
-    }, [purchaseOrders]);
+    }, [purchaseOrders, standaloneShips]);
 
-    // Resolve any stored value (ObjectId or display name) to display name
-    const resolveVBNumber = useCallback((raw?: string) => raw ? (idToVBNumber[raw] || raw) : "", [idToVBNumber]);
     const resolveSerial = useCallback((raw?: string) => raw ? (idToSerial[raw] || raw) : "", [idToSerial]);
     const resolveShip = useCallback((raw?: string) => raw ? (idToShip[raw] || raw) : "", [idToShip]);
 
+    // PO options (from store)
     const poOptions = useMemo<POOption[]>(() => {
         const seen = new Set<string>();
         return (purchaseOrders || []).map((po: any) => {
-            const display = po.VBNumber || po.vbpoNo || "";
-            return { value: display, label: display };
+            const display = po.VBNumber || "";
+            return { value: po._id?.toString() || display, label: display };
         }).filter((p: POOption) => {
             if (!p.value || seen.has(p.value)) return false;
             seen.add(p.value); return true;
         }).sort((a: POOption, b: POOption) => a.label.localeCompare(b.label));
     }, [purchaseOrders]);
 
+    // CPO options: merge embedded + standalone, deduplicated by display name
     const cpoOptions = useMemo<CPOOption[]>(() => {
+        const seen = new Set<string>();
         const list: CPOOption[] = [];
+        const addCPO = (cpoId: string, serialDisplay: string, parentVBId: string) => {
+            if (!cpoId || seen.has(cpoId)) return;
+            seen.add(cpoId);
+            list.push({ value: cpoId, label: serialDisplay, parentVBNumber: parentVBId });
+        };
+        // From embedded PO.customerPO
         (purchaseOrders || []).forEach((po: any) => {
-            const poDisplay = po.VBNumber || po.vbpoNo || "";
+            const poId = po._id?.toString() || "";
             if (po.customerPO && Array.isArray(po.customerPO)) {
                 po.customerPO.forEach((cpo: any) => {
-                    const serial = cpo.VBSerialNumber || cpo.poNo || "";
-                    if (serial) list.push({ value: serial, label: serial, parentVBNumber: poDisplay });
+                    addCPO(cpo._id?.toString() || "", cpo.VBSerialNumber || cpo.poNo || "", poId);
                 });
             }
         });
-        // DEBUG: remove after fixing
-        console.log('[Timeline] CPO options:', list.map(c => `${c.value} → parent:${c.parentVBNumber}`));
-        console.log('[Timeline] PO options:', (purchaseOrders || []).map((po: any) => `${po.VBNumber || po.vbpoNo} (cpos: ${(po.customerPO || []).length})`));
-        return list;
-    }, [purchaseOrders]);
+        // From standalone vbcustomerpos collection
+        standaloneCPOs.forEach((cpo: any) => {
+            const poId = cpo.VBNumber?.toString() || "";
+            addCPO(cpo._id?.toString() || "", cpo.VBSerialNumber || cpo.poNo || "", poId);
+        });
+        return list.filter(c => c.value && c.label);
+    }, [purchaseOrders, standaloneCPOs]);
 
+    // Ship options: merge embedded + standalone, deduplicated
     const shipOptions = useMemo<ShipOption[]>(() => {
+        const seen = new Set<string>();
         const list: ShipOption[] = [];
+        const addShip = (shipId: string, shipDisplay: string, parentVBId: string, parentSerialId: string) => {
+            if (!shipId || seen.has(shipId)) return;
+            seen.add(shipId);
+            list.push({ value: shipId, label: shipDisplay, parentVBNumber: parentVBId, parentSerial: parentSerialId });
+        };
+        // From embedded
         (purchaseOrders || []).forEach((po: any) => {
-            const poDisplay = po.VBNumber || po.vbpoNo || "";
+            const poId = po._id?.toString() || "";
             if (po.customerPO && Array.isArray(po.customerPO)) {
                 po.customerPO.forEach((cpo: any) => {
-                    const serialDisplay = cpo.VBSerialNumber || cpo.poNo || "";
+                    const cpoId = cpo._id?.toString() || "";
                     if (cpo.shipping && Array.isArray(cpo.shipping)) {
                         cpo.shipping.forEach((ship: any) => {
-                            const shipDisplay = ship.svbid || ship.VBShipmentNumber || "";
-                            if (shipDisplay) list.push({ value: shipDisplay, label: shipDisplay, parentVBNumber: poDisplay, parentSerial: serialDisplay });
+                            addShip(ship._id?.toString() || "", ship.svbid || ship.VBShipmentNumber || "", poId, cpoId);
                         });
                     }
                 });
             }
         });
-        return list;
-    }, [purchaseOrders]);
+        // From standalone vbshippings
+        standaloneShips.forEach((ship: any) => {
+            const shipId = ship._id?.toString() || "";
+            const shipDisplay = ship.svbid || ship.VBShipmentNumber || "";
+            const cpoId = ship.VBSerialNumber?.toString() || ship.VBNumber?.toString() || "";
+            const matchingCPO = standaloneCPOs.find((c: any) => c._id?.toString() === cpoId);
+            const parentVBId = matchingCPO ? (matchingCPO.VBNumber?.toString() || "") : "";
+            addShip(shipId, shipDisplay, parentVBId, cpoId);
+        });
+        return list.filter(s => s.value && s.label);
+    }, [purchaseOrders, standaloneShips, standaloneCPOs, poIdToDisplay, idToSerial]);
 
     // ── Inline field change handler ──
     // Map raw field names to their enriched display counterparts
@@ -386,7 +461,15 @@ export default function TimelineModal({
             const updated: any = { ...e, [field]: value || undefined };
             // Set the display field to match the new value (display name)
             const displayField = DISPLAY_FIELD_MAP[field];
-            if (displayField) updated[displayField] = value || undefined;
+            if (displayField) {
+                let displayValue = value;
+                if (value) {
+                    if (field === "VBNumber") displayValue = resolveVBNumber(value);
+                    else if (field === "VBSerialNumber") displayValue = resolveSerial(value);
+                    else if (field === "VBShipmentNumber") displayValue = resolveShip(value);
+                }
+                updated[displayField] = displayValue || undefined;
+            }
             // Clear cascaded fields AND their display counterparts
             if (cascadeClear) cascadeClear.forEach(f => {
                 updated[f] = undefined;
@@ -410,7 +493,7 @@ export default function TimelineModal({
             toast.error("Failed to update");
             fetchEntries(); // revert
         }
-    }, []);
+    }, [resolveVBNumber, resolveSerial, resolveShip]);
 
     const fetchEntries = async () => {
         setLoading(true);
@@ -507,9 +590,9 @@ export default function TimelineModal({
         if (sidebarSelection === "all") return searchFiltered;
         if (sidebarSelection.startsWith("ship:")) {
             const shipId = sidebarSelection.slice(5);
-            return searchFiltered.filter((e) => e.VBShipmentNumber === shipId);
+            return searchFiltered.filter((e) => e.VBShipmentNumber?.toString() === shipId);
         }
-        return searchFiltered.filter((e) => e.VBSerialNumber === sidebarSelection);
+        return searchFiltered.filter((e) => e.VBSerialNumber?.toString() === sidebarSelection);
     }, [searchFiltered, sidebarSelection]);
 
     const resolveUser = (email?: string) => {
