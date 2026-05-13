@@ -41,7 +41,8 @@ import {
   Boxes,
 } from "lucide-react";
 import { format } from "date-fns";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useProducts } from "@/hooks/queries/useProducts";
 
 interface WarehouseContact {
   name: string;
@@ -96,7 +97,14 @@ export default function WarehouseDetailPage() {
     isPrimary: false,
   });
 
-  const { purchaseOrders, releaseRequests, products: storeProducts } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const { data: storeProducts = [] } = useProducts();
+
+  // Release requests — fetch directly until a dedicated hook is created
+  const [releaseRequests, setReleaseRequests] = React.useState<any[]>([]);
+  React.useEffect(() => {
+    fetch('/api/admin/release-requests').then(r => r.json()).then(d => { if (Array.isArray(d)) setReleaseRequests(d); }).catch(() => {});
+  }, []);
 
   const inventoryTransactions = React.useMemo(() => {
     if (!data) return [];

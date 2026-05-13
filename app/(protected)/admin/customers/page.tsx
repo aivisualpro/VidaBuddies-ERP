@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,11 +51,8 @@ import { TablePageSkeleton } from "@/components/skeletons";
 
 
 export default function CustomersPage() {
-  const { 
-    customers: data, 
-    isLoading,
-    refetchCustomers
-  } = useUserDataStore();
+  const { data = [], isLoading } = useCustomers();
+  const queryClient = useQueryClient();
   const router = useRouter();
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -85,7 +83,7 @@ export default function CustomersPage() {
 
       toast.success(editingItem ? "Customer updated" : "Customer created");
       setIsSheetOpen(false);
-      refetchCustomers();
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -99,7 +97,7 @@ export default function CustomersPage() {
       });
       if (!response.ok) throw new Error("Failed to delete");
       toast.success("Customer deleted");
-      refetchCustomers();
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
     } catch (error) {
       toast.error("Failed to delete customer");
     }

@@ -6,6 +6,7 @@ import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
 import { getSession } from "@/lib/auth";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Force dynamic to ensure fresh data
 export const dynamic = "force-dynamic";

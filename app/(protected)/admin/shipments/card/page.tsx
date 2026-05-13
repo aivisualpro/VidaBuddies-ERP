@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo, useLayoutEffect } from "react";
+import { useEffect, useState, useMemo, useLayoutEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-pane
 import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
 interface ShipmentRecord {
   _id: string;
@@ -77,13 +78,24 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   pending: { label: "Pending", color: "text-zinc-500 dark:text-zinc-400", bg: "bg-zinc-500/10", border: "border-zinc-500/30", dotColor: "bg-zinc-400", icon: AlertCircle },
 };
 
+const SHIP_CARD_FILTER_DEFAULTS = { search: "", status: "all" };
+
 export default function ShipmentsCardPage() {
+  return (
+    <Suspense>
+      <ShipmentsCardContent />
+    </Suspense>
+  );
+}
+
+function ShipmentsCardContent() {
   const router = useRouter();
   const { setActions, setLeftContent } = useHeaderActions();
+  const { filters, inputs, setFilter } = useUrlFilters(SHIP_CARD_FILTER_DEFAULTS, ["search"], 300);
   const [data, setData] = useState<ShipmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const searchQuery = filters.search;
+  const statusFilter = filters.status;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ShipmentRecord | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
@@ -109,7 +121,7 @@ export default function ShipmentsCardPage() {
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
 
-  const { purchaseOrders } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
 
   // Build lookup maps to resolve ObjectIDs → display names
   const poLookup = useMemo(() => {
@@ -227,8 +239,8 @@ export default function ShipmentsCardPage() {
           <input
             type="text"
             placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={inputs.search}
+            onChange={(e) => setFilter("search", e.target.value)}
             className="h-8 w-[180px] rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
@@ -240,7 +252,7 @@ export default function ShipmentsCardPage() {
     setActions(headerContent);
     const timer = setTimeout(() => setActions(headerContent), 50);
     return () => { clearTimeout(timer); setActions(null); setLeftContent(null); };
-  }, [setActions, setLeftContent, searchQuery]);
+  }, [setActions, setLeftContent, inputs.search]);
 
   if (loading) return <TablePageSkeleton />;
 
@@ -272,7 +284,7 @@ export default function ShipmentsCardPage() {
           return (
             <button
               key={p.key}
-              onClick={() => setStatusFilter(p.key)}
+              onClick={() => setFilter("status", p.key)}
               className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all duration-200 ${
                 isActive
                   ? `${cfg.bg || 'bg-primary/10'} ${cfg.color || 'text-primary'} ${cfg.border || 'border-primary'} shadow-sm`

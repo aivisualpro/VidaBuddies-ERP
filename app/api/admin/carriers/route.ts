@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaCarrier from "@/lib/models/VidaCarrier";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Force dynamic to ensure fresh data
 export const dynamic = "force-dynamic";

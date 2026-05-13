@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useCategories } from "@/hooks/queries/useCategories";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,11 +156,9 @@ function SortableSubcategoryRow({
 
 
 export default function CategoriesPage() {
-  const { 
-    categories: data, 
-    isLoading,
-    refetchCategories
-  } = useUserDataStore();
+  const { data = [], isLoading } = useCategories();
+  const queryClient = useQueryClient();
+  const refetchCategories = () => queryClient.invalidateQueries({ queryKey: ["categories"] });
   
   // Edit/Add Sheet State
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -226,7 +225,9 @@ export default function CategoriesPage() {
 
   const handleStatusToggle = async (item: Category, checked: boolean) => {
     // Optimistic update
-    useUserDataStore.setState({ categories: data.map(c => c._id === item._id ? { ...c, isOnWebsite: checked } : c) });
+    queryClient.setQueryData(["categories"], (old: any[] = []) =>
+      old.map((c: any) => c._id === item._id ? { ...c, isOnWebsite: checked } : c)
+    );
     
     try {
        const response = await fetch(`/api/admin/categories/${item._id}`, {
@@ -250,7 +251,9 @@ export default function CategoriesPage() {
     const updatedCategory = { ...category, subcategories: newSubcategories };
 
     // Optimistic update
-    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
+    queryClient.setQueryData(["categories"], (old: any[] = []) =>
+      old.map((c: any) => c._id === category._id ? updatedCategory : c)
+    );
     setViewingItem(updatedCategory);
 
     try {
@@ -402,7 +405,9 @@ export default function CategoriesPage() {
     newSubcategories[subIndex] = { ...newSubcategories[subIndex], icon: url };
     const updatedCategory = { ...category, subcategories: newSubcategories };
     
-    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
+    queryClient.setQueryData(["categories"], (old: any[] = []) =>
+      old.map((c: any) => c._id === category._id ? updatedCategory : c)
+    );
     setViewingItem(updatedCategory);
 
     try {
@@ -424,7 +429,9 @@ export default function CategoriesPage() {
     newSubcategories[subIndex] = { ...newSubcategories[subIndex], subcategory: name };
     const updatedCategory = { ...category, subcategories: newSubcategories };
     
-    useUserDataStore.setState({ categories: data.map(c => c._id === category._id ? updatedCategory : c) });
+    queryClient.setQueryData(["categories"], (old: any[] = []) =>
+      old.map((c: any) => c._id === category._id ? updatedCategory : c)
+    );
     setViewingItem(updatedCategory);
 
     try {
@@ -452,7 +459,9 @@ export default function CategoriesPage() {
         subcategories: [...(viewingItem.subcategories || []), newSub] 
      };
 
-     useUserDataStore.setState({ categories: data.map(c => c._id === viewingItem._id ? updatedCategory : c) });
+     queryClient.setQueryData(["categories"], (old: any[] = []) =>
+       old.map((c: any) => c._id === viewingItem._id ? updatedCategory : c)
+     );
      setViewingItem(updatedCategory);
 
      try {

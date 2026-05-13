@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VBshipping from "@/lib/models/VBshipping";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -50,6 +51,8 @@ export async function PUT(req: Request, { params }: RouteParams) {
     if (!updated) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    broadcastMutation("vb-shipping", "update", id);
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error("Failed to update VBshipping:", error);
@@ -68,6 +71,8 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     if (!deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    broadcastMutation("vb-shipping", "delete", id);
+
     return NextResponse.json({ message: "Deleted successfully" });
   } catch (error) {
     console.error("Failed to delete VBshipping:", error);

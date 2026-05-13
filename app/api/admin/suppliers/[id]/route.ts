@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import VidaSupplier from "@/lib/models/VidaSupplier";
 import { encryptPassword, decryptPassword } from "@/lib/encryption";
 import mongoose from "mongoose";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -53,6 +54,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updatedItem.portalPassword = decryptPassword(updatedItem.portalPassword as string);
     }
     
+    broadcastMutation("suppliers", "update", id);
+
+    
     return NextResponse.json(updatedItem);
   } catch (error) {
     console.error("Error updating supplier:", error);
@@ -77,6 +81,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!supplier) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    broadcastMutation("suppliers", "delete", id);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting supplier:", error);

@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWAInstallPrompt } from "@/components/pwa/install-prompt";
 import { VersionUpdateBanner } from "@/components/pwa/version-update-banner";
+import { QueryProvider } from "./providers";
 
 import { Poppins } from "next/font/google";
 
@@ -71,11 +72,13 @@ export default async function RootLayout({
           enableColorScheme
         >
           <ActiveThemeProvider initialTheme={activeThemeValue}>
+            <QueryProvider>
             {children}
-            <Toaster position="bottom-right" richColors />
+            <Toaster position="bottom-right" richColors duration={1500} />
             <ServiceWorkerRegistration />
             <PWAInstallPrompt />
             <VersionUpdateBanner />
+            </QueryProvider>
           </ActiveThemeProvider>
         </ThemeProvider>
       </body>

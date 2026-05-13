@@ -118,6 +118,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(authResponse);
     }
 
+    // ── 5. Workspace-wide CRUD invalidation channel: private-workspace-* ──
+    if (channelName.startsWith("private-workspace-")) {
+      // All authenticated users can subscribe — no further checks needed
+      const authResponse = pusher.authorizeChannel(socketId, channelName);
+      return NextResponse.json(authResponse);
+    }
+
     // ── Unknown channel pattern — deny ──
     return NextResponse.json(
       { error: "Channel not authorized for this user" },

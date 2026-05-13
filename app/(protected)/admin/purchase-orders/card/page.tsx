@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo, useLayoutEffect, useCallback } from "react";
+import { useEffect, useState, useMemo, useLayoutEffect, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useUrlFilters } from "@/hooks/use-url-filters";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useUsers } from "@/hooks/queries/useUsers";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useQueryClient } from "@tanstack/react-query";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -785,17 +791,37 @@ function StatusSummaryPills({
 
 /* ─────────────────────── Main Page ─────────────────────── */
 
+const PO_CARD_FILTER_DEFAULTS = {
+  search: "",
+  orderType: "",
+  category: "",
+  shipStatus: "",
+  archived: "",
+  status: "all",
+};
+
 export default function ShippingsPage() {
+  return (
+    <Suspense>
+      <ShippingsPageContent />
+    </Suspense>
+  );
+}
+
+function ShippingsPageContent() {
   const router = useRouter();
-  const {
-    purchaseOrders,
-    users: rawUsers,
-    customers: rawCustomers,
-    products: rawProducts,
-    suppliers: rawSuppliers,
-    isLoading,
-    refetchPurchaseOrders,
-  } = useUserDataStore();
+  const { filters, inputs, setFilter, resetFilters, hasActiveFilters } = useUrlFilters(
+    PO_CARD_FILTER_DEFAULTS,
+    ["search"],
+    300,
+  );
+  const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
+  const { data: rawUsers = [] } = useUsers();
+  const { data: rawCustomers = [] } = useCustomers();
+  const { data: rawProducts = [] } = useProducts();
+  const { data: rawSuppliers = [] } = useSuppliers();
+  const queryClient = useQueryClient();
+  const refetchPurchaseOrders = () => queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
   const { setActions, setLeftContent } = useHeaderActions();
 
   const [userRole, setUserRole] = useState<string>("");
@@ -860,13 +886,13 @@ export default function ShippingsPage() {
     return { supplierMap: sm, supplierLocationMap: slm };
   }, [rawSuppliers]);
 
-  // Filters
-  const [filterOrderType, setFilterOrderType] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("");
-  const [filterShipStatus, setFilterShipStatus] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [showArchived, setShowArchived] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Derived from URL filters
+  const filterOrderType = filters.orderType;
+  const filterCategory = filters.category;
+  const filterShipStatus = filters.shipStatus;
+  const searchQuery = filters.search;
+  const showArchived = filters.archived === "true";
+  const statusFilter = filters.status;
 
   const orderTypes = useMemo(() => [...new Set(data.map((d) => d.orderType).filter(Boolean))].sort(), [data]);
   const categories = useMemo(() => [...new Set(data.map((d) => d.category).filter(Boolean))].sort(), [data]);
@@ -902,7 +928,7 @@ export default function ShippingsPage() {
     });
   }, [data, userRole, showArchived, filterOrderType, filterCategory, filterShipStatus, statusFilter, searchQuery, users]);
 
-  const hasActiveFilters = filterOrderType || filterCategory || filterShipStatus;
+  const hasActiveDropdowns = filterOrderType || filterCategory || filterShipStatus;
   const archivedCount = data.filter((po) => po.isArchived).length;
 
   // ── Edit dialog state ──
@@ -1005,14 +1031,14 @@ export default function ShippingsPage() {
           <input
             type="text"
             placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={inputs.search}
+            onChange={(e) => setFilter("search", e.target.value)}
             className="h-8 w-[160px] rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <select
           value={filterOrderType}
-          onChange={(e) => setFilterOrderType(e.target.value)}
+          onChange={(e) => setFilter("orderType", e.target.value)}
           className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterOrderType ? "border-primary text-primary font-medium" : "border-input text-muted-foreground"}`}
         >
           <option value="">All Types</option>
@@ -1020,7 +1046,7 @@ export default function ShippingsPage() {
         </select>
         <select
           value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
+          onChange={(e) => setFilter("category", e.target.value)}
           className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterCategory ? "border-primary text-primary font-medium" : "border-input text-muted-foreground"}`}
         >
           <option value="">All Categories</option>
@@ -1028,7 +1054,7 @@ export default function ShippingsPage() {
         </select>
         <select
           value={filterShipStatus}
-          onChange={(e) => setFilterShipStatus(e.target.value)}
+          onChange={(e) => setFilter("shipStatus", e.target.value)}
           className={`h-8 rounded-md border px-2 text-xs bg-background transition-colors ${filterShipStatus ? "border-primary text-primary font-medium" : "border-input text-muted-foreground"}`}
         >
           <option value="">All Statuses</option>
@@ -1038,15 +1064,15 @@ export default function ShippingsPage() {
           <option value="in transit">In Transit</option>
           <option value="delivered">Delivered</option>
         </select>
-        {hasActiveFilters && (
-          <button onClick={() => { setFilterOrderType(""); setFilterCategory(""); setFilterShipStatus(""); }}
+        {hasActiveDropdowns && (
+          <button onClick={() => { setFilter("orderType", ""); setFilter("category", ""); setFilter("shipStatus", ""); }}
             className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
             <X className="h-3 w-3" /> Clear
           </button>
         )}
         <div className="h-5 w-px bg-border mx-1" />
         <button
-          onClick={() => setShowArchived(!showArchived)}
+          onClick={() => setFilter("archived", showArchived ? "" : "true")}
           className={`h-8 px-2.5 rounded-md border text-xs font-medium flex items-center gap-1.5 transition-colors ${
             showArchived ? "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400" : "border-input text-muted-foreground hover:text-foreground hover:bg-muted"
           }`}
@@ -1070,7 +1096,7 @@ export default function ShippingsPage() {
     }, 50);
 
     return () => { clearTimeout(timer); setActions(null); setLeftContent(null); };
-  }, [setActions, setLeftContent, searchQuery, filterOrderType, filterCategory, filterShipStatus, showArchived, orderTypes, categories, archivedCount, hasActiveFilters]);
+  }, [setActions, setLeftContent, inputs.search, filterOrderType, filterCategory, filterShipStatus, showArchived, orderTypes, categories, archivedCount, hasActiveDropdowns]);
 
   if (isLoading) return <TablePageSkeleton />;
 
@@ -1085,7 +1111,7 @@ export default function ShippingsPage() {
           return true;
         })}
         activeFilter={statusFilter}
-        onFilterChange={setStatusFilter}
+        onFilterChange={(v: string) => setFilter("status", v)}
       />
 
       {/* Cards Grid */}

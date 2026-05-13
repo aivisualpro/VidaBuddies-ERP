@@ -16,7 +16,8 @@ import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-pane
 import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 
 interface ShipmentRecord {
@@ -124,8 +125,9 @@ function ShipmentsListContent() {
     setTrackingContainer(cn);
   };
 
-  const { suppliers: storeSuppliers, purchaseOrders } = useUserDataStore();
-  const suppliers = storeSuppliers || [];
+  const { data: storeSuppliers = [] } = useSuppliers();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const suppliers = storeSuppliers;
 
   /** Resolve display names — now returned directly from denormalized API */
   const resolveShipNames = (ship: any) => ({

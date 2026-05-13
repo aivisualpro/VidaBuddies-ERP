@@ -14,7 +14,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useQueryClient } from "@tanstack/react-query";
+import { purchaseOrderKeys } from "@/hooks/queries/usePurchaseOrders";
 
 /* ──────────────────────────────────────────────────────────────
  * Shared UOM options — single source of truth
@@ -69,8 +73,10 @@ export function AddCustomerPODialog({
   onSaved,
   existingCPOs = [],
 }: AddCustomerPODialogProps) {
-  const { purchaseOrders, customers, warehouses, refetchPurchaseOrders } =
-    useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const { data: customers = [] } = useCustomers();
+  const { data: warehouses = [] } = useWarehouses();
+  const queryClient = useQueryClient();
 
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedVBPO, setSelectedVBPO] = useState("");
@@ -271,7 +277,7 @@ export function AddCustomerPODialog({
         );
         if (!res.ok) throw new Error("Failed");
         toast.success("Customer PO added");
-        refetchPurchaseOrders();
+        queryClient.invalidateQueries({ queryKey: purchaseOrderKeys.all });
       }
 
       onSaved?.();

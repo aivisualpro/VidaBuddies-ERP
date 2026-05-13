@@ -322,8 +322,8 @@ export function LiveShipmentsTable({ containers }: { containers: ContainerInfo[]
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.from_port_name || "-"}</TableCell>
-                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.to_port_name || "-"}</TableCell>
+                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.from_port_name || container.rawShipData?.portOfLading || "-"}</TableCell>
+                    <TableCell className="p-1 align-middle whitespace-normal break-words">{data?.to_port_name || container.rawShipData?.portOfEntryShipTo || "-"}</TableCell>
                     <TableCell className="p-1 align-middle whitespace-normal break-words">
                       {container.updatedETA ? new Date(container.updatedETA).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "-"}
                     </TableCell>

@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, Fragment } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import React, { useEffect, useState, useMemo, Fragment, Suspense } from "react";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +17,7 @@ import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { toast } from "sonner";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 
 const EditableCell = ({ value, isExpanded, onSave, className = "", type = "text" }: any) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -64,21 +70,30 @@ const EditableCell = ({ value, isExpanded, onSave, className = "", type = "text"
   );
 };
 
+const ANDRES_FILTER_DEFAULTS = { search: "" };
+
 export default function AndresTrackerPage() {
+  return (
+    <Suspense>
+      <AndresTrackerContent />
+    </Suspense>
+  );
+}
+
+function AndresTrackerContent() {
   const router = useRouter();
   const { setLeftContent, setRightContent } = useHeaderActions();
-  const [globalSearch, setGlobalSearch] = useState("");
+  const { filters, inputs, setFilter } = useUrlFilters(ANDRES_FILTER_DEFAULTS, ["search"], 300);
+  const globalSearch = filters.search;
   const [isAddPOOpen, setIsAddPOOpen] = useState(false);
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
-  const { 
-    purchaseOrders, 
-    isLoading, 
-    products: storeProducts,
-    customers: storeCustomers,
-    suppliers: storeSuppliers,
-    warehouses: storeWarehouses,
-    refetchPurchaseOrders
-  } = useUserDataStore();
+  const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
+  const { data: storeProducts = [] } = useProducts();
+  const { data: storeCustomers = [] } = useCustomers();
+  const { data: storeSuppliers = [] } = useSuppliers();
+  const { data: storeWarehouses = [] } = useWarehouses();
+  const queryClient = useQueryClient();
+  const refetchPurchaseOrders = () => queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
 
   const handleInlineUpdate = async (poId: string, fieldType: 'shipping' | 'cpo' | 'po', entityId1: string, entityId2: string, field: string, newValue: string) => {
     const po = purchaseOrders.find((p: any) => p._id === poId);
@@ -378,10 +393,24 @@ export default function AndresTrackerPage() {
       });
     }
 
+    // Build set of CPO IDs that have at least 1 in-transit shipping
+    const cposWithInTransit = new Set<string>();
+    standaloneShips.forEach((ship: any) => {
+      const s = (ship.status || "").toLowerCase().trim();
+      if (s === "in transit" || s === "in_transit" || s === "on water") {
+        const cpoId = ship.VBSerialNumber?.toString();
+        if (cpoId) cposWithInTransit.add(cpoId);
+      }
+    });
+
     let flatList: any[] = [];
     
     (purchaseOrders || []).filter(po => !po.isArchived).forEach(po => {
       (po.customerPO || []).forEach((cpo: any) => {
+         // Only include CPOs that have at least 1 in-transit shipping
+         const cpoId = cpo._id?.toString();
+         if (!cpoId || !cposWithInTransit.has(cpoId)) return;
+
          const cname = customerMap.get(cpo.customer) || cpo.customer || "-";
          flatList.push({
             ...cpo,
@@ -427,7 +456,7 @@ export default function AndresTrackerPage() {
     });
 
     return flatList;
-  }, [purchaseOrders, storeCustomers, cpoSort, globalSearch]);
+  }, [purchaseOrders, storeCustomers, cpoSort, globalSearch, standaloneShips]);
 
   const toggleCpoSort = (key: typeof cpoSort.key) => {
     setCpoSort(prev => ({
@@ -519,7 +548,8 @@ export default function AndresTrackerPage() {
           <Input 
             placeholder="Search all columns..." 
             className="pl-9 bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 h-9 w-full"
-            onChange={(e) => setGlobalSearch(e.target.value)}
+            value={inputs.search}
+            onChange={(e) => setFilter("search", e.target.value)}
           />
         </div>
     );
@@ -527,7 +557,7 @@ export default function AndresTrackerPage() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [setLeftContent, setRightContent, router]);
+  }, [setLeftContent, setRightContent, router, inputs.search]);
 
   return (
     <div className="max-w-[2000px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">

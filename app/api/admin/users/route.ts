@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     const body = await req.json();
     const newItem = await VidaUser.create(body);
+    broadcastMutation("users", "create", newItem._id?.toString());
     return NextResponse.json(newItem);
   } catch (error) {
     console.error("Error creating user:", error);

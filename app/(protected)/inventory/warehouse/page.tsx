@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +40,9 @@ interface Warehouse {
 
 export default function WarehousePage() {
   const router = useRouter();
-  const { 
-    warehouses: data, 
-    isLoading,
-    refetchWarehouses
-  } = useUserDataStore();
+  const { data = [], isLoading } = useWarehouses();
+  const queryClient = useQueryClient();
+  const refetchWarehouses = () => queryClient.invalidateQueries({ queryKey: ["warehouses"] });
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Warehouse | null>(null);

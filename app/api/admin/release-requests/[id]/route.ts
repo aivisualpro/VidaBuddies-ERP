@@ -5,6 +5,7 @@ import VidaProduct from "@/lib/models/VidaProduct";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Ensure all populated models are registered (prevents tree-shaking in production)
 const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser };
@@ -63,6 +64,8 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    broadcastMutation("release-requests", "update", id);
+
     return NextResponse.json(updated);
   } catch (error: any) {
     console.error("Release Request PUT Error:", error);
@@ -82,6 +85,8 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    broadcastMutation("release-requests", "delete", id);
+
     return NextResponse.json({ message: "Deleted successfully" });
   } catch (error: any) {
     console.error("Release Request DELETE Error:", error);

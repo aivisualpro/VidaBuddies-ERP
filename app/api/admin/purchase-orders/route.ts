@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaPO from "@/lib/models/VidaPO";
 import { getSession } from "@/lib/auth";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 export async function GET() {
   try {
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
     }
 
     const newItem = await VidaPO.create(data);
+    broadcastMutation("purchase-orders", "create", newItem._id?.toString());
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     console.error("Failed to create purchase order:", error);

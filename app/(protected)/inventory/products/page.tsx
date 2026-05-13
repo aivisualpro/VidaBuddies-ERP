@@ -2,7 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useCategories } from "@/hooks/queries/useCategories";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,15 +62,18 @@ interface Category {
 export default function ProductsPage() {
   const router = useRouter();
   
-  const { 
-    products: data, 
-    categories, 
-    isLoading,
-    refetchProducts,
-    purchaseOrders,
-    releaseRequests,
-    warehouses
-  } = useUserDataStore();
+  const { data = [], isLoading } = useProducts();
+  const { data: categories = [] } = useCategories();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const { data: warehouses = [] } = useWarehouses();
+  const queryClient = useQueryClient();
+  const refetchProducts = () => queryClient.invalidateQueries({ queryKey: ["products"] });
+
+  // releaseRequests — fetch via a dedicated state until a hook is created
+  const [releaseRequests, setReleaseRequests] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/release-requests').then(r => r.json()).then(d => { if (Array.isArray(d)) setReleaseRequests(d); }).catch(() => {});
+  }, []);
 
   const whMap = useMemo(() => {
     const map = new Map<string, any>();

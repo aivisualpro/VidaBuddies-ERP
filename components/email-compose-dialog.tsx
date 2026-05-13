@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import {
   Dialog,
   DialogContent,
@@ -125,7 +125,7 @@ export function EmailComposeDialog({ open, onClose, attachments, vbpoNo, folderP
   const [isShipping, setIsShipping] = useState(true);
   const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([]);
   
-  const { purchaseOrders } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
   
   // Fetch available shipping references from API (legacy embedded data is gone)
   const [availableReferences, setAvailableReferences] = useState<string[]>([]);

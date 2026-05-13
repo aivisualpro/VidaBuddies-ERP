@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useMemo, Suspense } from "react";
 import Image from "next/image";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,11 +65,9 @@ export default function SuppliersPage() {
 }
 
 function SuppliersContent() {
-  const { 
-    suppliers: data, 
-    isLoading,
-    refetchSuppliers
-  } = useUserDataStore();
+  const { data = [], isLoading } = useSuppliers();
+  const queryClient = useQueryClient();
+  const refetchSuppliers = () => queryClient.invalidateQueries({ queryKey: ["suppliers"] });
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Supplier | null>(null);

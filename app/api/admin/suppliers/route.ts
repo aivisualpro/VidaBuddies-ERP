@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import VidaSupplier from "@/lib/models/VidaSupplier";
 import crypto from "crypto";
 import { encryptPassword, decryptPassword } from "@/lib/encryption";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 function generateVbId(): string {
   return `VB-${crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 5)}`;
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     const newItem = await VidaSupplier.create(body);
+    broadcastMutation("suppliers", "create", newItem._id?.toString());
     return NextResponse.json(newItem);
   } catch (error: any) {
     console.error("Error creating supplier:", error);

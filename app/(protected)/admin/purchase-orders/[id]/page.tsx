@@ -54,7 +54,15 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePurchaseOrder } from "@/hooks/queries/usePurchaseOrder";
+import { useUpdatePO, useDeletePO } from "@/hooks/queries/usePurchaseOrderMutations";
+import { purchaseOrderKeys, usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useUsers } from "@/hooks/queries/useUsers";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
 
 const UOM_OPTIONS = [
   { value: "EA", label: "EA (Each)" },
@@ -191,8 +199,6 @@ function ProductMultiSelect({ products, initialSelected }: { products: Record<st
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [po, setPO] = useState<PurchaseOrder | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedSupplierForShipping, setSelectedSupplierForShipping] = useState<string>("");
   const [selectedCustomerForCPO, setSelectedCustomerForCPO] = useState<string>("");
   const [selectedLocationForCPO, setSelectedLocationForCPO] = useState<string>("");
@@ -200,16 +206,60 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [selectedUOMForCPO, setSelectedUOMForCPO] = useState<string>("");
   const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
 
-  // ─── Pull ALL reference data from global Zustand store (already loaded at app init) ───
-  const {
-    refetchPurchaseOrders,
-    purchaseOrders: allPurchaseOrders,
-    users: rawStoreUsers,
-    customers: storeCustomers,
-    suppliers: storeSuppliers,
-    products: storeProducts,
-    warehouses: storeWarehouses,
-  } = useUserDataStore();
+  // ─── Reference data from TanStack Query hooks ───
+  const { data: rawStoreUsers = [] } = useUsers();
+  const { data: storeCustomers = [] } = useCustomers();
+  const { data: storeSuppliers = [] } = useSuppliers();
+  const { data: storeProducts = [] } = useProducts();
+  const { data: storeWarehouses = [] } = useWarehouses();
+
+  // ─── TanStack Query: 3 parallel queries replace the old fetchPO() ───
+  const queryClient = useQueryClient();
+  const updatePOMutation = useUpdatePO();
+  const deletePOMutation = useDeletePO();
+
+  const { data: poBase, isLoading: poLoading } = usePurchaseOrder(id);
+  const { data: cpoList = [] } = useQuery<any[]>({
+    queryKey: ["customer-pos", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/vb-customer-po?VBNumber=${id}`);
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!id,
+  });
+  const { data: shipList = [] } = useQuery<any[]>({
+    queryKey: ["shippings", { VBNumber: id }],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/vb-shipping?VBNumber=${id}`);
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!id,
+  });
+
+  // Assemble the composite PO object (same logic as old fetchPO)
+  const po = useMemo<PurchaseOrder | null>(() => {
+    if (!poBase) return null;
+    const assembledCPOs = (cpoList as any[]).map((cpo: any) => {
+      const cpoId = cpo._id?.toString();
+      const cpoShippings = (shipList as any[]).filter(
+        (s: any) => s.VBSerialNumber?.toString() === cpoId
+      );
+      return { ...cpo, shipping: cpoShippings };
+    });
+    return { ...poBase, customerPO: assembledCPOs };
+  }, [poBase, cpoList, shipList]);
+
+  const loading = poLoading;
+
+  /** Invalidate all 3 detail queries — replaces the old fetchPO() */
+  const invalidateDetail = () => {
+    queryClient.invalidateQueries({ queryKey: purchaseOrderKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: ["customer-pos", id] });
+    queryClient.invalidateQueries({ queryKey: ["shippings", { VBNumber: id }] });
+  };
+
+  // VB Number dropdown options from TanStack Query
+  const { data: allPurchaseOrders = [] } = usePurchaseOrders();
 
   // Derive lookup maps from store data (zero API calls)
   const users = useMemo(() => {
@@ -376,38 +426,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }
   }, [addingShippingToCPO, editingShipping, po]);
 
-  const fetchPO = async () => {
-    try {
-      // Fire all 3 requests in parallel — id is already known from the URL
-      const [poRes, cpoRes, shipRes] = await Promise.all([
-        fetch(`/api/admin/purchase-orders/${id}`),
-        fetch(`/api/admin/vb-customer-po?VBNumber=${id}`),
-        fetch(`/api/admin/vb-shipping?VBNumber=${id}`),
-      ]);
 
-      if (!poRes.ok) throw new Error("Failed to fetch purchase order");
-      const [poData, cpoList, shipList] = await Promise.all([
-        poRes.json(),
-        cpoRes.ok ? cpoRes.json() : [],
-        shipRes.ok ? shipRes.json() : [],
-      ]);
-
-      // Assemble into the legacy shape: po.customerPO[].shipping[]
-      const assembledCPOs = (cpoList as any[]).map((cpo: any) => {
-        const cpoId = cpo._id?.toString();
-        const cpoShippings = (shipList as any[]).filter(
-          (s: any) => s.VBSerialNumber?.toString() === cpoId
-        );
-        return { ...cpo, shipping: cpoShippings };
-      });
-
-      setPO({ ...poData, customerPO: assembledCPOs });
-    } catch (error) {
-      toast.error("Error loading purchase order details");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchEmailRecords = async (vbpoNo: string) => {
     try {
@@ -441,7 +460,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }
   }, [po?.VBNumber]);
 
-  // Listen for real-time email record updates from modals
   useEffect(() => {
     const handler = () => {
       if (po?.VBNumber) fetchEmailRecords(po.VBNumber);
@@ -449,10 +467,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     window.addEventListener("vb-email-records-updated", handler);
     return () => window.removeEventListener("vb-email-records-updated", handler);
   }, [po?.VBNumber]);
-
-  useEffect(() => {
-    fetchPO();
-  }, [id]);
 
   // Auto-select single location when customer changes
   useEffect(() => {
@@ -497,20 +511,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   });
 
   const updateShippingField = async (cpoIdx: number, shipIdx: number, field: string, value: any) => {
-    // Optimistic Update
     if (!po) return;
 
     const ship = po.customerPO[cpoIdx]?.shipping?.[shipIdx];
     if (!ship?._id) return;
-
-    const newPO = { ...po };
-    if (newPO.customerPO[cpoIdx]?.shipping?.[shipIdx]) {
-      newPO.customerPO[cpoIdx].shipping![shipIdx] = {
-        ...newPO.customerPO[cpoIdx].shipping![shipIdx],
-        [field]: value
-      };
-    }
-    setPO(newPO);
 
     try {
       const response = await fetch(`/api/admin/vb-shipping/${ship._id}`, {
@@ -520,9 +524,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       });
 
       if (!response.ok) throw new Error("Update failed");
+      invalidateDetail();
     } catch (error) {
       toast.error("Failed to update");
-      fetchPO();
+      invalidateDetail();
     }
   };
 
@@ -537,17 +542,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       action: {
         label: "Delete",
         onClick: async () => {
-          setPO((currentPO) => {
-            if (!currentPO) return currentPO;
-            const newCPOs = [...currentPO.customerPO];
-            const realIdx = newCPOs.findIndex(c => c._id === cpoId);
-            if (realIdx !== -1) {
-              newCPOs.splice(realIdx, 1);
-              return { ...currentPO, customerPO: newCPOs };
-            }
-            return currentPO;
-          });
-
           try {
             const response = await fetch(`/api/admin/vb-customer-po/${cpoId}`, {
               method: 'DELETE',
@@ -555,10 +549,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
             if (!response.ok) throw new Error("Failed to delete");
             toast.success("Customer PO deleted");
-            fetchPO();
+            invalidateDetail();
           } catch (e) {
             toast.error("Error deleting Customer PO");
-            fetchPO();
+            invalidateDetail();
           }
         }
       }
@@ -601,7 +595,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       toast.success(editingCPO ? "Customer PO Updated" : "Customer PO Added");
       setIsAddCPOOpen(false);
       setEditingCPO(null);
-      fetchPO();
+      invalidateDetail();
     } catch (e) {
       toast.error("Error saving Customer PO");
     } finally {
@@ -626,20 +620,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           const cpoPoNo = po?.customerPO?.[cpoIdx]?.poNo;
           const poNo = po?.VBNumber;
 
-          setPO((currentPO) => {
-            if (!currentPO) return currentPO;
-            const newCPOs = [...currentPO.customerPO];
-
-            if (newCPOs[cpoIdx]?.shipping) {
-              const targetShipIdx = newCPOs[cpoIdx].shipping.findIndex((s: any) => s._id === shipId);
-              if (targetShipIdx !== -1) {
-                newCPOs[cpoIdx].shipping.splice(targetShipIdx, 1);
-                return { ...currentPO, customerPO: newCPOs };
-              }
-            }
-
-            return currentPO;
-          });
 
           try {
             const response = await fetch(`/api/admin/vb-shipping/${shipId}`, {
@@ -669,10 +649,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             }
 
             toast.success("Shipping deleted");
-            fetchPO();
+            invalidateDetail();
           } catch (e) {
             toast.error("Error deleting shipping");
-            fetchPO();
+            invalidateDetail();
           }
         }
       }
@@ -730,7 +710,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       setAddingShippingToCPO(null);
       setEditingShipping(null);
       setSelectedLocationForShipping("");
-      fetchPO();
+      invalidateDetail();
     } catch (e) {
       toast.error("Error saving shipping");
     } finally {
@@ -743,16 +723,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     if (!editPOData || !po) return;
     setActionLoading(true);
     try {
-      const response = await fetch(`/api/admin/purchase-orders/${po._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editPOData),
-      });
-      if (!response.ok) throw new Error("Failed to edit PO");
+      await updatePOMutation.mutateAsync({ id: po._id, data: editPOData });
       toast.success("Purchase Order updated successfully");
       setIsEditPOOpen(false);
-      fetchPO();
-      refetchPurchaseOrders();
+      invalidateDetail();
     } catch (e) {
       toast.error("Failed to update extra PO fields");
     } finally {
@@ -793,13 +767,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                   label: "Delete",
                   onClick: async () => {
                     try {
-                      const res = await fetch(`/api/admin/purchase-orders/${po._id}`, { method: "DELETE" });
-                      if (!res.ok) throw new Error("Failed to delete");
-                      toast.success("Purchase Order deleted");
-                      refetchPurchaseOrders();
+                      await deletePOMutation.mutateAsync(po._id);
                       router.push("/admin/purchase-orders");
                     } catch {
-                      toast.error("Failed to delete Purchase Order");
+                      // error toast handled by mutation hook
                     }
                   },
                 },
@@ -844,7 +815,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [po, users, setLeftContent, setRightContent, router]);
+  }, [po?._id, po?.VBNumber, po?.orderType, po?.category, po?.customerPO?.length, setLeftContent, setRightContent, router]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "-";

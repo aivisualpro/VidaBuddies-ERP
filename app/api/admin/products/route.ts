@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaProduct from "@/lib/models/VidaProduct";
 import crypto from "crypto";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 function generateVbId(): string {
   return `VB-${crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 5)}`;
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const newItem = await VidaProduct.create(body);
+    broadcastMutation("products", "create", newItem._id?.toString());
     return NextResponse.json(newItem);
   } catch (error: any) {
     console.error("Error creating product:", error);

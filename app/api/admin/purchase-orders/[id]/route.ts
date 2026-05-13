@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaPO from "@/lib/models/VidaPO";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -198,6 +199,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
       console.error("Timeline auto-log failed (non-blocking):", logErr);
     }
 
+    broadcastMutation("purchase-orders", "update", id);
     return NextResponse.json(updatedItem);
   } catch (error: any) {
     console.error("Failed to update purchase order:", error);
@@ -229,6 +231,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       );
     }
 
+    broadcastMutation("purchase-orders", "delete", id);
     return NextResponse.json({ message: "Purchase Order deleted successfully" });
   } catch (error) {
     console.error("Failed to delete purchase order:", error);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -26,6 +27,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!updatedItem) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    broadcastMutation("warehouses", "update", id);
+
     return NextResponse.json(updatedItem);
   } catch (error) {
     console.error("Error updating warehouse:", error);
@@ -41,6 +44,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!deletedItem) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    broadcastMutation("warehouses", "delete", id);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting warehouse:", error);

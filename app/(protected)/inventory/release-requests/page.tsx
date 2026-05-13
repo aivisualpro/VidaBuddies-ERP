@@ -41,7 +41,12 @@ import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check, Eye } from "lucide-react";
 import { format } from "date-fns";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { useUsers } from "@/hooks/queries/useUsers";
+import { useCarriers } from "@/hooks/queries/useCarriers";
+import { useQueryClient } from "@tanstack/react-query";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 
@@ -149,17 +154,26 @@ export default function ReleaseRequestsPage() {
 function ReleaseRequestsContent() {
   const router = useRouter();
   const { filters, inputs, setFilter } = useUrlFilters(RR_FILTER_DEFAULTS, ["search"], 300);
-  const { 
-    releaseRequests: rawData, 
-    products, 
-    warehouses, 
-    customers, 
-    users, 
-    carriers, 
-    isLoading,
-    refetchReleaseRequests,
-    refetchCarriers
-  } = useUserDataStore();
+  const { data: products = [] } = useProducts();
+  const { data: warehouses = [] } = useWarehouses();
+  const { data: customers = [] } = useCustomers();
+  const { data: users = [] } = useUsers();
+  const { data: carriers = [] } = useCarriers();
+  const queryClient = useQueryClient();
+
+  // Release requests — own fetch
+  const [rawData, setRawData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const fetchReleaseRequests = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/release-requests');
+      const d = await res.json();
+      if (Array.isArray(d)) setRawData(d);
+    } catch {} finally { setIsLoading(false); }
+  }, []);
+  useEffect(() => { fetchReleaseRequests(); }, [fetchReleaseRequests]);
+  const refetchReleaseRequests = fetchReleaseRequests;
+  const refetchCarriers = () => queryClient.invalidateQueries({ queryKey: ["carriers"] });
 
   const data = useMemo(() => {
     return [...rawData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

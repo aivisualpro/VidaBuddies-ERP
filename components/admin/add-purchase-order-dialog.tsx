@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, Calendar } from "lucide-react";
 import { toast } from "sonner";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useCreatePO } from "@/hooks/queries/usePurchaseOrderMutations";
 
 export function AddPurchaseOrderDialog({
   open,
@@ -16,7 +17,8 @@ export function AddPurchaseOrderDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { purchaseOrders, refetchPurchaseOrders } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const createPO = useCreatePO();
   const [formData, setFormData] = useState({
     VBNumber: "",
     orderType: "",
@@ -55,17 +57,8 @@ export function AddPurchaseOrderDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch("/api/admin/purchase-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) throw new Error("Failed to save");
-
-      toast.success("Purchase Order created");
+      const response = await createPO.mutateAsync(formData);
       onOpenChange(false);
-      refetchPurchaseOrders();
     } catch (error) {
       toast.error("An error occurred");
     }

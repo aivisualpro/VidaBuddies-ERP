@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { IconPlus, IconDeviceFloppy, IconEdit, IconTrash } from "@tabler/icons-react";
 import { toast } from "sonner";
-import { useUserDataStore } from "@/store/useUserDataStore"; 
+import { useProducts } from "@/hooks/queries/useProducts";
 
 export default function QuoteBuilderPage() {
   const { setActions } = useHeaderActions();
@@ -22,7 +22,7 @@ export default function QuoteBuilderPage() {
   const [isSaving, setIsSaving] = useState(false);
   
   // Data stores for dropdowns
-  const { products } = useUserDataStore();
+  const { data: products = [] } = useProducts();
 
   const INIT_QUOTE = {
     quoteNumber: "",

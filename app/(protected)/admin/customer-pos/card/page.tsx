@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo, useLayoutEffect } from "react";
+import { useEffect, useState, useMemo, useLayoutEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,8 @@ import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
 interface CustomerPO {
   _id: string;
@@ -39,19 +41,31 @@ interface CustomerPO {
   createdAt?: string;
 }
 
+const CPO_CARD_FILTER_DEFAULTS = { search: "" };
+
 export default function CustomerPOsCardPage() {
+  return (
+    <Suspense>
+      <CustomerPOsCardContent />
+    </Suspense>
+  );
+}
+
+function CustomerPOsCardContent() {
   const router = useRouter();
   const { setActions, setLeftContent } = useHeaderActions();
+  const { filters, inputs, setFilter } = useUrlFilters(CPO_CARD_FILTER_DEFAULTS, ["search"], 300);
   const [data, setData] = useState<CustomerPO[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = filters.search;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CustomerPO | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
 
-  const { customers: storeCustomers, purchaseOrders } = useUserDataStore();
-  const customers = storeCustomers || [];
+  const { data: storeCustomers = [] } = useCustomers();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const customers = storeCustomers;
 
   // Resolve location ObjectId → display name
   const locationMap = useMemo(() => {
@@ -147,8 +161,8 @@ export default function CustomerPOsCardPage() {
           <input
             type="text"
             placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={inputs.search}
+            onChange={(e) => setFilter("search", e.target.value)}
             className="h-8 w-[180px] rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
@@ -161,7 +175,7 @@ export default function CustomerPOsCardPage() {
 
     const timer = setTimeout(() => setActions(headerContent), 50);
     return () => { clearTimeout(timer); setActions(null); setLeftContent(null); };
-  }, [setActions, setLeftContent, searchQuery]);
+  }, [setActions, setLeftContent, inputs.search]);
 
   if (loading) return <TablePageSkeleton />;
 

@@ -3,8 +3,11 @@
 import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useUrlFilters } from "@/hooks/use-url-filters";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useUsers } from "@/hooks/queries/useUsers";
+import { usePurchaseOrders, purchaseOrderKeys } from "@/hooks/queries/usePurchaseOrders";
+import { useCreatePO, useUpdatePO, useDeletePO } from "@/hooks/queries/usePurchaseOrderMutations";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,9 +67,16 @@ export default function PurchaseOrdersPage() {
 
 function PurchaseOrdersContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   
-  // Connect to global store
-  const { purchaseOrders, users: rawUsers, isLoading, refetchPurchaseOrders } = useUserDataStore();
+  // TanStack Query — purchase orders
+  const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
+  const createPO = useCreatePO();
+  const updatePO = useUpdatePO();
+  const deletePO = useDeletePO();
+  
+  // TanStack Query — users lookup (not yet a separate page migration)
+  const { data: rawUsers = [] } = useUsers();
   
   // URL-driven filters
   const { filters, inputs, setFilter, resetFilters, hasActiveFilters } = useUrlFilters(
@@ -193,22 +203,13 @@ function PurchaseOrdersContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingItem
-        ? `/api/admin/purchase-orders/${editingItem._id}`
-        : "/api/admin/purchase-orders";
-      const method = editingItem ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) throw new Error("Failed to save");
-
-      toast.success(editingItem ? "Purchase Order updated" : "Purchase Order created");
+      if (editingItem) {
+        await updatePO.mutateAsync({ id: editingItem._id, data: formData });
+        toast.success("Purchase Order updated");
+      } else {
+        await createPO.mutateAsync(formData);
+      }
       setIsSheetOpen(false);
-      refetchPurchaseOrders();
     } catch (error) {
       toast.error("An error occurred");
     }
@@ -216,13 +217,7 @@ function PurchaseOrdersContent() {
 
   const updateFieldInline = async (id: string, field: string, value: string) => {
     try {
-      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value }),
-      });
-      if (!response.ok) throw new Error("Failed");
-      refetchPurchaseOrders();
+      await updatePO.mutateAsync({ id, data: { [field]: value } });
       toast.success(`Updated ${field}`);
     } catch {
       toast.error(`Failed to update ${field}`);
@@ -232,14 +227,9 @@ function PurchaseOrdersContent() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this purchase order?")) return;
     try {
-      const response = await fetch(`/api/admin/purchase-orders/${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) throw new Error("Failed to delete");
-      toast.success("Purchase Order deleted");
-      refetchPurchaseOrders();
+      await deletePO.mutateAsync(id);
     } catch (error) {
-      toast.error("Failed to delete purchase order");
+      // error toast is handled by the mutation hook
     }
   };
 
@@ -667,31 +657,19 @@ function PurchaseOrdersContent() {
 
   const toggleArchive = async (poId: string, archive: boolean) => {
     try {
-      const res = await fetch(`/api/admin/purchase-orders/${poId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isArchived: archive }),
-      });
-      if (!res.ok) throw new Error('Failed');
+      await updatePO.mutateAsync({ id: poId, data: { isArchived: archive } });
       toast.success(archive ? 'Purchase Order archived' : 'Purchase Order restored');
-      refetchPurchaseOrders();
     } catch {
-      toast.error('Failed to update archive status');
+      // error toast handled by mutation hook
     }
   };
 
   const toggleNigalu = async (poId: string, nigalu: boolean) => {
     try {
-      const res = await fetch(`/api/admin/purchase-orders/${poId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isNigalu: nigalu }),
-      });
-      if (!res.ok) throw new Error('Failed');
+      await updatePO.mutateAsync({ id: poId, data: { isNigalu: nigalu } });
       toast.success(nigalu ? 'Marked as NIGALU' : 'Removed NIGALU flag');
-      refetchPurchaseOrders();
     } catch {
-      toast.error('Failed to update NIGALU status');
+      // error toast handled by mutation hook
     }
   };
 
@@ -765,9 +743,15 @@ function PurchaseOrdersContent() {
     prefetchedIds.current.add(row._id);
     // Prefetch the Next.js page bundle
     router.prefetch(`/admin/purchase-orders/${row._id}`);
-    // Prefetch the data APIs into browser cache
-    fetch(`/api/admin/purchase-orders/${row._id}`).catch(() => {});
-    fetch(`/api/admin/vb-customer-po?VBNumber=${row._id}`).catch(() => {});
+    // Prefetch the data into TanStack Query cache
+    queryClient.prefetchQuery({
+      queryKey: purchaseOrderKeys.detail(row._id),
+      queryFn: () => fetch(`/api/admin/purchase-orders/${row._id}`).then(r => r.json()),
+    });
+    queryClient.prefetchQuery({
+      queryKey: ["customer-pos", row._id],
+      queryFn: () => fetch(`/api/admin/vb-customer-po?VBNumber=${row._id}`).then(r => r.json()),
+    });
   };
 
   return (

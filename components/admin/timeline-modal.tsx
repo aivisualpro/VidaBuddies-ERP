@@ -25,7 +25,7 @@ import {
     Package,
     Anchor,
 } from "lucide-react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
 interface TimelineEntry {
     _id: string;
@@ -288,7 +288,7 @@ export default function TimelineModal({
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
 
     // ── Hierarchy data from store + standalone collections ──
-    const { purchaseOrders } = useUserDataStore();
+    const { data: purchaseOrders = [] } = usePurchaseOrders();
 
     // Fetch standalone CPOs and shippings from separate collections
     const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import {
   Dialog,
   DialogContent,
@@ -22,8 +23,9 @@ import { FileText, FlaskConical, ExternalLink, Loader2, Plus, Search, Trash2, Ed
 export default function SupplierSpecsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { setActions, setLeftContent } = useHeaderActions();
-  const { products, suppliers } = useUserDataStore();
-  const supplier = useMemo(() => suppliers.find(s => s._id === id), [suppliers, id]);
+  const { data: products = [] } = useProducts();
+  const { data: suppliers = [] } = useSuppliers();
+  const supplier = useMemo(() => suppliers.find((s: any) => s._id === id), [suppliers, id]);
   
   const [specs, setSpecs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

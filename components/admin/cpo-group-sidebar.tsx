@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search, Layers, Ship } from "lucide-react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
 interface CPOGroupSidebarProps {
   data: { VBNumber?: string }[];
@@ -16,7 +16,7 @@ export function CPOGroupSidebar({
   onSelect,
 }: CPOGroupSidebarProps) {
   const [search, setSearch] = useState("");
-  const { purchaseOrders } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
 
   // Build a map: VidaPO _id → VBNumber display name (e.g. "VB300")
   const poDisplayMap = useMemo(() => {

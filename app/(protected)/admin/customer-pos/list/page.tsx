@@ -13,7 +13,8 @@ import { ViewToggle } from "@/components/admin/view-toggle";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useCustomers } from "@/hooks/queries/useCustomers";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 
 interface CustomerPO {
@@ -59,8 +60,9 @@ function CustomerPOsListContent() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
 
-  const { customers: storeCustomers, purchaseOrders } = useUserDataStore();
-  const customers = storeCustomers || [];
+  const { data: storeCustomers = [] } = useCustomers();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const customers = storeCustomers;
 
   // Resolve location ObjectId → display name
   const locationMap = useMemo(() => {

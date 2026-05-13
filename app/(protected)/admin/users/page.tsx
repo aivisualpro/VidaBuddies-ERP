@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 
 import { useEffect, useState, useMemo } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useUsers } from "@/hooks/queries/useUsers";
+import { useQueryClient } from "@tanstack/react-query";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { UserForm } from "@/components/admin/user-form";
 import { Button } from "@/components/ui/button";
@@ -51,11 +52,9 @@ interface User {
 }
 
 export default function UsersPage() {
-  const { 
-    users: rawUsers, 
-    isLoading,
-    refetchUsers
-  } = useUserDataStore();
+  const { data: rawUsers = [], isLoading } = useUsers();
+  const queryClient = useQueryClient();
+  const refetchUsers = () => queryClient.invalidateQueries({ queryKey: ["users"] });
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<User | null>(null);
@@ -209,9 +208,9 @@ export default function UsersPage() {
               onCheckedChange={async (checked) => {
                  try {
                     // Optimistic update
-                    useUserDataStore.setState({ users: rawUsers.map(u => 
-                      u._id === row.original._id ? { ...u, isActive: checked } : u
-                    )});
+                    queryClient.setQueryData(["users"], (old: any[] = []) =>
+                      old.map((u: any) => u._id === row.original._id ? { ...u, isActive: checked } : u)
+                    );
 
                     const response = await fetch(`/api/admin/users/${row.original._id}`, {
                        method: "PUT",

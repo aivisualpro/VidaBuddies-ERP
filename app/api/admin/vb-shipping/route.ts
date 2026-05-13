@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VBshipping from "@/lib/models/VBshipping";
 import mongoose from "mongoose";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Fields to EXCLUDE — shippingTrackingRecords and driveDocuments are huge
 // and no list-view consumer needs them.
@@ -52,7 +53,11 @@ export async function GET(req: Request) {
     }
     if (containerNo) filter.containerNo = containerNo;
 
-    const items = await VBshipping.find(filter, LIST_PROJECTION)
+    // Live Shipments page needs tracking records; other consumers don't
+    const includeTracking = searchParams.get("includeTracking") === "1";
+    const projection = includeTracking ? { driveDocuments: 0 } : LIST_PROJECTION;
+
+    const items = await VBshipping.find(filter, projection)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -92,13 +97,13 @@ export async function GET(req: Request) {
         : [],
       supIds.size > 0
         ? db!.collection("vidasuppliers").find(
-            { _id: { $in: [...supIds].map(id => new mongoose.Types.ObjectId(id)) } },
+            { _id: { $in: [...supIds].filter(id => /^[a-f\d]{24}$/i.test(id)).map(id => new mongoose.Types.ObjectId(id)) } },
             { projection: { name: 1, vbId: 1, location: 1 } }
           ).toArray()
         : [],
       prodIds.size > 0
         ? db!.collection("vidaproducts").find(
-            { _id: { $in: [...prodIds].map(id => new mongoose.Types.ObjectId(id)) } },
+            { _id: { $in: [...prodIds].filter(id => /^[a-f\d]{24}$/i.test(id)).map(id => new mongoose.Types.ObjectId(id)) } },
             { projection: { name: 1, vbId: 1 } }
           ).toArray()
         : [],
@@ -199,6 +204,7 @@ export async function POST(req: Request) {
     }
 
     const newItem = await VBshipping.create(data);
+    broadcastMutation("vb-shipping", "create", newItem._id?.toString());
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     console.error("Failed to create VBshipping:", error);

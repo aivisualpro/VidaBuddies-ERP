@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { ProductMultiSelect } from "@/components/admin/product-multi-select";
 import { toast } from "sonner";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useProducts } from "@/hooks/queries/useProducts";
 
 interface AddShippingDialogProps {
   open: boolean;
@@ -27,7 +29,9 @@ interface AddShippingDialogProps {
 }
 
 export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded", editingData, onSaved, presetVBNumber, presetVBSerial }: AddShippingDialogProps) {
-  const { purchaseOrders, suppliers, products: pList } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const { data: suppliers = [] } = useSuppliers();
+  const { data: pList = [] } = useProducts();
   const [actionLoading, setActionLoading] = useState(false);
 
   const [selectedVBPO, setSelectedVBPO] = useState("");

@@ -8,7 +8,9 @@ import connectToDatabase from "@/lib/db";
 import VidaUser from "@/lib/models/VidaUser";
 import VidaAppRole from "@/lib/models/VidaAppRole";
 import { redirect } from "next/navigation";
-import { StoreInitializer } from "@/store/StoreInitializer";
+import { RealtimeInvalidator } from "@/components/RealtimeInvalidator";
+import { GlobalProgressBar } from "@/components/GlobalProgressBar";
+
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -57,6 +59,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <HeaderActionsProvider>
+      <GlobalProgressBar />
       <SidebarProvider
         defaultOpen={defaultOpen}
         className="h-screen overflow-hidden"
@@ -66,7 +69,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           } as React.CSSProperties
         }
       >
-        <StoreInitializer isSupplier={session?.role === "Supplier"} />
+
+        <RealtimeInvalidator />
         <AppSidebar variant="inset" isSupplierProp={session?.role === "Supplier"} initialPermissions={initialPermissions} initialIsAdmin={isSuperAdmin} />
         <SidebarInset className="flex flex-col h-full w-full overflow-hidden bg-background">
           <SiteHeader />

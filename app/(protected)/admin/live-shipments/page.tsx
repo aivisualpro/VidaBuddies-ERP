@@ -23,7 +23,7 @@ export default function LiveShipmentsPage() {
   useEffect(() => {
     async function fetchShipments() {
       try {
-        const res = await fetch("/api/admin/vb-shipping");
+        const res = await fetch("/api/admin/vb-shipping?includeTracking=1");
         const items = await res.json();
         if (!Array.isArray(items)) { setContainers([]); return; }
 

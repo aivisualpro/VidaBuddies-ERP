@@ -23,20 +23,13 @@ interface UseUrlFiltersReturn<T extends Defaults> {
 /**
  * Multi-field URL filter hook.
  *
+ * All returned callbacks (setFilter, setFilters, resetFilters) are
+ * **referentially stable** — safe to use in useEffect / useLayoutEffect deps.
+ *
  * @param defaults        – object of `{ paramName: defaultValue }`.
  *                          Empty/default values are stripped from the URL.
  * @param debounceKeys    – array of keys to debounce (e.g. ["search"]).
  * @param debounceMs      – debounce delay for those keys (default 300ms).
- *
- * Example:
- * ```ts
- * const { filters, inputs, setFilter, resetFilters, hasActiveFilters } =
- *   useUrlFilters(
- *     { search: "", status: "", orderType: "" },
- *     ["search"],
- *     300,
- *   );
- * ```
  */
 export function useUrlFilters<T extends Defaults>(
   defaults: T,
@@ -47,10 +40,14 @@ export function useUrlFilters<T extends Defaults>(
   const router = useRouter();
   const pathname = usePathname();
 
-  const keys = useMemo(() => Object.keys(defaults) as (keyof T & string)[], [defaults]);
-  const debounceSet = useMemo(() => new Set(debounceKeys), [debounceKeys]);
+  // ── Stable key lists (serialize to avoid reference issues from call-site arrays) ──
+  const keysStr = Object.keys(defaults).sort().join(",");
+  const keys = useMemo(() => keysStr.split(",") as (keyof T & string)[], [keysStr]);
 
-  // Read current filter values from the URL
+  const debounceStr = [...debounceKeys].sort().join(",");
+  const debounceSet = useMemo(() => new Set(debounceStr ? debounceStr.split(",") : []), [debounceStr]);
+
+  // ── Read current filter values from the URL ──
   const filters = useMemo(() => {
     const result = { ...defaults };
     for (const key of keys) {
@@ -60,7 +57,7 @@ export function useUrlFilters<T extends Defaults>(
     return result;
   }, [searchParams, keys, defaults]);
 
-  // Local input state for debounced fields (updates immediately on keystrokes)
+  // ── Local input state for debounced fields ──
   const [localInputs, setLocalInputs] = useState<Partial<T>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,56 +75,52 @@ export function useUrlFilters<T extends Defaults>(
     return result;
   }, [filters, localInputs]);
 
-  // Push a patch to the URL
-  const pushToUrl = useCallback(
-    (patch: Partial<T>) => {
-      const params = new URLSearchParams(searchParams.toString());
-      for (const [k, v] of Object.entries(patch)) {
-        if (v === defaults[k as keyof T] || v === "" || v === null || v === undefined) {
-          params.delete(k);
-        } else {
-          params.set(k, v as string);
-        }
-      }
-      const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    },
-    [searchParams, router, pathname, defaults]
-  );
+  // ── Refs for mutable values so callbacks stay stable ──
+  const ref = useRef({ searchParams, router, pathname, defaults, debounceSet, debounceMs });
+  ref.current = { searchParams, router, pathname, defaults, debounceSet, debounceMs };
 
-  const setFilter = useCallback(
-    (key: keyof T & string, value: string) => {
-      if (debounceSet.has(key)) {
-        // Update local input immediately for responsive UI
-        setLocalInputs((prev) => ({ ...prev, [key]: value }));
-        // Debounce the URL push
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => {
-          pushToUrl({ [key]: value } as Partial<T>);
-        }, debounceMs);
+  // ── Stable callbacks (never change identity) ──
+
+  const pushToUrl = useCallback((patch: Partial<T>) => {
+    const { searchParams: sp, defaults: d, router: r, pathname: p } = ref.current;
+    const params = new URLSearchParams(sp.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === d[k as keyof T] || v === "" || v === null || v === undefined) {
+        params.delete(k);
       } else {
-        pushToUrl({ [key]: value } as Partial<T>);
+        params.set(k, v as string);
       }
-    },
-    [debounceSet, debounceMs, pushToUrl]
-  );
+    }
+    const qs = params.toString();
+    r.replace(`${p}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, []);
 
-  const setFilters = useCallback(
-    (patch: Partial<T>) => {
-      pushToUrl(patch);
-    },
-    [pushToUrl]
-  );
+  const setFilter = useCallback((key: keyof T & string, value: string) => {
+    if (ref.current.debounceSet.has(key)) {
+      setLocalInputs((prev) => ({ ...prev, [key]: value }));
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        pushToUrl({ [key]: value } as Partial<T>);
+      }, ref.current.debounceMs);
+    } else {
+      pushToUrl({ [key]: value } as Partial<T>);
+    }
+  }, [pushToUrl]);
+
+  const setFilters = useCallback((patch: Partial<T>) => {
+    pushToUrl(patch);
+  }, [pushToUrl]);
 
   const resetFilters = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const { searchParams: sp, router: r, pathname: p } = ref.current;
+    const params = new URLSearchParams(sp.toString());
     for (const key of keys) {
       params.delete(key);
     }
     setLocalInputs({});
     const qs = params.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [keys, searchParams, router, pathname]);
+    r.replace(`${p}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [keys]);
 
   const hasActiveFilters = useMemo(
     () => keys.some((k) => filters[k] !== defaults[k]),

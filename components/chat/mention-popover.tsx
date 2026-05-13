@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Package, FileCheck, Ship, User } from "lucide-react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
 /* ─── Types ─── */
 
@@ -49,7 +49,7 @@ export function MentionPopover({
   onSelectMention,
   onClose,
 }: MentionPopoverProps) {
-  const { purchaseOrders } = useUserDataStore();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
   const [activeTab, setActiveTab] = useState<"all" | "vb" | "serial" | "ship">("all");
   const [serials, setSerials] = useState(_serialCache || []);
   const [ships, setShips] = useState(_shipCache || []);

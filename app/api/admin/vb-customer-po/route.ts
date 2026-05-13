@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VBcustomerPO from "@/lib/models/VBcustomerPO";
+import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 /**
  * GET /api/admin/vb-customer-po
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const data = await req.json();
     const newItem = await VBcustomerPO.create(data);
+    broadcastMutation("vb-customer-po", "create", newItem._id?.toString());
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     console.error("Failed to create VBcustomerPO:", error);

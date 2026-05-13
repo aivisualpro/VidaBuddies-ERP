@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ShipmentMapWrapper from "@/components/dashboard/shipment-map-wrapper";
@@ -9,7 +9,7 @@ import { Ship, Package, CheckCircle, Clock } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
 export default function DashboardPage() {
-  const { purchaseOrders: data, isLoading } = useUserDataStore();
+  const { data = [], isLoading } = usePurchaseOrders();
 
   const statsData = useMemo(() => {
     let total = 0, delivered = 0, inTransit = 0, pending = 0;

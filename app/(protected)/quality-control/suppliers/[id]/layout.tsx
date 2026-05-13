@@ -26,7 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useUserDataStore } from "@/store/useUserDataStore";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SupplierLocation {
   vbId: string;
@@ -44,7 +44,8 @@ export default function AppAdminSupplierLayout({ children, params }: { children:
   const pathname = usePathname();
   const { id } = use(params);
   const router = useRouter();
-  const { refetchSuppliers } = useUserDataStore();
+  const queryClient = useQueryClient();
+  const refetchSuppliers = () => queryClient.invalidateQueries({ queryKey: ["suppliers"] });
   const activeTab = pathname.includes("/supply-survey") ? "supply-survey" : pathname.includes("/survey") ? "survey" : pathname.includes("/documents") ? "documents" : pathname.includes("/history") ? "history" : pathname.includes("/specs") ? "specs" : "dashboard";
 
   // Delete check
