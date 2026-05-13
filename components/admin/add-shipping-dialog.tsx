@@ -317,7 +317,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                 {mode === "standalone" && (
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="space-y-1">
-                      <Label className="text-xs">VB Number</Label>
+                      <Label className="text-xs">VB #</Label>
                       <SearchableSelect
                         options={vbpoOptions}
                         value={selectedVBPO}
@@ -328,7 +328,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">VB Number Serial</Label>
+                      <Label className="text-xs">Contract #</Label>
                       <SearchableSelect
                         options={filteredStandaloneCPOs.map((cpo: any) => ({
                           value: cpo._id,
@@ -346,7 +346,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
 
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-xs">VB Shipment Number</Label>
+                    <Label className="text-xs">Shipment #</Label>
                     <Input
                       name="svbid"
                       className="text-sm"

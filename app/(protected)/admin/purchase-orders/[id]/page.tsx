@@ -1351,7 +1351,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
             {/* Row 1: PO # (Internal) | Customer PO # */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>VB Serial Number</Label>
+                <Label>Contract #</Label>
                 <Input name="VBSerialNumber" defaultValue={editingCPO?.data?.VBSerialNumber || editingCPO?.data?.poNo || autoPoNo} required />
               </div>
               <div className="space-y-1">
@@ -1528,27 +1528,27 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       {/* VB Number / VB Serial Number / VB Shipment Number */}
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="space-y-1">
-                          <Label className="text-xs">VB Number</Label>
+                          <Label className="text-xs">VB #</Label>
                           <SearchableSelect
                             options={vbNumberOptions}
                             value={shipVBNumber}
                             onChange={(v) => { setShipVBNumber(v); setShipVBSerial(""); setAutoSvbid(""); }}
-                            placeholder="Select VB Number..."
-                            searchPlaceholder="Search VB Number..."
+                            placeholder="Select VB #..."
+                            searchPlaceholder="Search VB #..."
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">VB Serial Number</Label>
+                          <Label className="text-xs">Contract #</Label>
                           <SearchableSelect
                             options={shipCPOs.map((cpo: any) => ({ value: cpo._id, label: `${cpo.VBSerialNumber || cpo._id}${cpo.customerPONo ? ` (${cpo.customerPONo})` : ''}` }))}
                             value={shipVBSerial}
                             onChange={(v) => { setShipVBSerial(v); setAutoSvbid(""); }}
-                            placeholder={shipVBNumber ? "Select VB Serial..." : "Select VB Number first"}
+                            placeholder={shipVBNumber ? "Select Contract..." : "Select VB # first"}
                             searchPlaceholder="Search VB Serial..."
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">VB Shipment Number</Label>
+                          <Label className="text-xs">Shipment #</Label>
                           <Input
                             name="svbid"
                             className="text-sm"
@@ -1884,7 +1884,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           <form onSubmit={handleEditPOSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="VBNumber">VB Number</Label>
+                <Label htmlFor="VBNumber">VB #</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input

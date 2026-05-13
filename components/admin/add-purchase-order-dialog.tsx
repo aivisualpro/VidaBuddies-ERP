@@ -76,7 +76,7 @@ export function AddPurchaseOrderDialog({
         <form onSubmit={handleSubmit} className="grid gap-6 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="VBNumber">VB Number</Label>
+              <Label htmlFor="VBNumber">VB #</Label>
               <div className="relative">
                 <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input

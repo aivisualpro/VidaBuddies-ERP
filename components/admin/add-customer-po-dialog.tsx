@@ -314,7 +314,7 @@ export function AddCustomerPODialog({
           {/* Row 1: VB Number (PO) + VB Serial Number */}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label>VB Number (from Purchase Orders)</Label>
+              <Label>VB # (from Purchase Orders)</Label>
               <SearchableSelect
                 options={vbpoOptions}
                 value={selectedVBPO}
@@ -324,7 +324,7 @@ export function AddCustomerPODialog({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>VB Serial Number</Label>
+              <Label>Contract #</Label>
               <Input
                 value={poNo}
                 onChange={(e) => setPoNo(e.target.value)}

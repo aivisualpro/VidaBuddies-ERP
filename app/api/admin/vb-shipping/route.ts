@@ -92,7 +92,7 @@ export async function GET(req: Request) {
       cpoIds.size > 0
         ? db!.collection("vbcustomerpos").find(
             { _id: { $in: [...cpoIds].map(id => new mongoose.Types.ObjectId(id)) } },
-            { projection: { VBSerialNumber: 1 } }
+            { projection: { VBSerialNumber: 1, customer: 1, customerPONo: 1, warehouse: 1 } }
           ).toArray()
         : [],
       supIds.size > 0
@@ -114,7 +114,20 @@ export async function GET(req: Request) {
     for (const po of posDocs) poMap.set(po._id.toString(), po.VBNumber || po._id.toString());
 
     const cpoMap = new Map<string, string>();
-    for (const cpo of cpoDocs) cpoMap.set(cpo._id.toString(), (cpo as any).VBSerialNumber || cpo._id.toString());
+    const cpoCustomerIds = new Set<string>();
+    const cpoDetailMap = new Map<string, { customer?: string; customerPONo?: string; warehouse?: string }>();
+    for (const cpo of cpoDocs) {
+      const id = cpo._id.toString();
+      cpoMap.set(id, (cpo as any).VBSerialNumber || id);
+      const detail: any = {};
+      if ((cpo as any).customer) {
+        detail.customer = (cpo as any).customer.toString();
+        cpoCustomerIds.add(detail.customer);
+      }
+      if ((cpo as any).customerPONo) detail.customerPONo = (cpo as any).customerPONo;
+      if ((cpo as any).warehouse) detail.warehouse = (cpo as any).warehouse;
+      cpoDetailMap.set(id, detail);
+    }
 
     const supMap = new Map<string, string>();
     const locMap = new Map<string, string>();
@@ -164,17 +177,34 @@ export async function GET(req: Request) {
     const prodMap = new Map<string, string>();
     for (const prod of prodDocs) prodMap.set(prod._id.toString(), prod.name || prod.vbId || prod._id.toString());
 
+    // Resolve customer ObjectIds → names
+    const customerMap = new Map<string, string>();
+    if (cpoCustomerIds.size > 0) {
+      const custDocs = await db!.collection("vidacustomers").find(
+        { _id: { $in: [...cpoCustomerIds].filter(id => /^[a-f\d]{24}$/i.test(id)).map(id => new mongoose.Types.ObjectId(id)) } },
+        { projection: { name: 1, vbId: 1 } }
+      ).toArray();
+      for (const c of custDocs) customerMap.set(c._id.toString(), c.name || c.vbId || c._id.toString());
+    }
+
     // Attach _display fields
-    const enriched = items.map((item: any) => ({
-      ...item,
-      _displayVBNumber: item.VBNumber ? poMap.get(item.VBNumber.toString()) || item.VBNumber.toString() : '',
-      _displayVBSerialNumber: item.VBSerialNumber ? cpoMap.get(item.VBSerialNumber.toString()) || item.VBSerialNumber.toString() : '',
-      _displaySupplier: item.supplier ? supMap.get(item.supplier.toString()) || item.supplier.toString() : '',
-      _displaySupplierLocation: item.supplierLocation ? locMap.get(item.supplierLocation.toString()) || item.supplierLocation.toString() : '',
-      _displayProducts: Array.isArray(item.products)
-        ? item.products.map((p: any) => prodMap.get(p.toString()) || p.toString())
-        : [],
-    }));
+    const enriched = items.map((item: any) => {
+      const cpoId = item.VBSerialNumber ? item.VBSerialNumber.toString() : '';
+      const cpoDetail = cpoId ? cpoDetailMap.get(cpoId) : undefined;
+      return {
+        ...item,
+        _displayVBNumber: item.VBNumber ? poMap.get(item.VBNumber.toString()) || item.VBNumber.toString() : '',
+        _displayVBSerialNumber: cpoId ? cpoMap.get(cpoId) || cpoId : '',
+        _displaySupplier: item.supplier ? supMap.get(item.supplier.toString()) || item.supplier.toString() : '',
+        _displaySupplierLocation: item.supplierLocation ? locMap.get(item.supplierLocation.toString()) || item.supplierLocation.toString() : '',
+        _displayProducts: Array.isArray(item.products)
+          ? item.products.map((p: any) => prodMap.get(p.toString()) || p.toString())
+          : [],
+        _displayCustomer: cpoDetail?.customer ? customerMap.get(cpoDetail.customer) || cpoDetail.customer : '',
+        _displayCustomerPONo: cpoDetail?.customerPONo || '',
+        _displayWarehouse: cpoDetail?.warehouse || '',
+      };
+    });
 
     console.timeEnd("[vb-shipping] total");
     return NextResponse.json(enriched);

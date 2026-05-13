@@ -19,6 +19,7 @@ import TimelineModal from "@/components/admin/timeline-modal";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
+import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 
 interface ShipmentRecord {
   _id: string;
@@ -99,6 +100,7 @@ function ShipmentsListContent() {
   const [editingItem, setEditingItem] = useState<ShipmentRecord | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
+  const [sidebarShipment, setSidebarShipment] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
   const [trackingRawJson, setTrackingRawJson] = useState<any>(null);
@@ -109,6 +111,7 @@ function ShipmentsListContent() {
   const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [editingCPO, setEditingCPO] = useState<Record<string, any> | null>(null);
 
   const openTracking = (item: ShipmentRecord) => {
     const cn = item.containerNo;
@@ -214,6 +217,9 @@ function ShipmentsListContent() {
       result = result.filter(item => (item.VBNumber || 'Unlinked') === sidebarVBNumber);
       if (sidebarVBSerial) {
         result = result.filter(item => (item.VBSerialNumber || 'none') === sidebarVBSerial);
+        if (sidebarShipment) {
+          result = result.filter(item => (item.VBShipmentNumber || item.svbid || 'none') === sidebarShipment);
+        }
       }
     }
     if (filters.status) {
@@ -222,12 +228,12 @@ function ShipmentsListContent() {
     if (filters.search) {
       const q = filters.search.toLowerCase();
       result = result.filter(item => {
-        const searchable = [item._displayVBNumber, item._displayVBSerialNumber, item.VBShipmentNumber, item._displaySupplier, item.carrier, item.containerNo, item.BOLNumber, item.quickNote].filter(Boolean).join(' ').toLowerCase();
+        const searchable = [item._displayVBNumber, item._displayVBSerialNumber, item.VBShipmentNumber, item._displaySupplier, item.carrier, item.containerNo, item.BOLNumber, item.quickNote, (item as any)._displayCustomer, (item as any)._displayCustomerPONo, (item as any)._displayWarehouse, item.portOfLading, item.portOfEntryShipTo, item.svbid].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
     return result;
-  }, [data, filters.search, filters.status, sidebarVBNumber, sidebarVBSerial]);
+  }, [data, filters.search, filters.status, sidebarVBNumber, sidebarVBSerial, sidebarShipment]);
 
   // Build status counts for filter chips
   const statusCounts = useMemo(() => {
@@ -241,22 +247,6 @@ function ShipmentsListContent() {
   }, [data]);
 
   const columns: ColumnDef<ShipmentRecord>[] = [
-    {
-      id: "VBShipmentNumber",
-      header: "VB Shipment Number",
-      cell: ({ row }) => {
-        const label = row.original.VBShipmentNumber || row.original.svbid || "-";
-        if (label === "-") return "-";
-        return (
-          <button
-            onClick={(e) => { e.stopPropagation(); setDetailShipment(row.original); }}
-            className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
-          >
-            {label}
-          </button>
-        );
-      },
-    },
     {
       accessorKey: "status",
       header: "Status",
@@ -279,6 +269,47 @@ function ShipmentsListContent() {
           </select>
         );
       },
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      cell: ({ row }) => (row.original as any)._displayCustomer || "-",
+    },
+    {
+      id: "customerPONo",
+      header: "Customer PO #",
+      cell: ({ row }) => {
+        const val = (row.original as any)._displayCustomerPONo;
+        if (!val) return "-";
+        const cpoId = row.original.VBSerialNumber;
+        return (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (!cpoId) return;
+              try {
+                const res = await fetch(`/api/admin/vb-customer-po/${cpoId}`);
+                if (res.ok) {
+                  const cpoData = await res.json();
+                  setEditingCPO(cpoData);
+                } else {
+                  toast.error("Failed to load Customer PO");
+                }
+              } catch {
+                toast.error("Failed to load Customer PO");
+              }
+            }}
+            className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
+          >
+            {val}
+          </button>
+        );
+      },
+    },
+    {
+      id: "warehouse",
+      header: "Warehouse",
+      cell: ({ row }) => (row.original as any)._displayWarehouse || "-",
     },
     {
       accessorKey: "supplier",
@@ -429,13 +460,15 @@ function ShipmentsListContent() {
         data={data}
         activeVBNumber={sidebarVBNumber}
         activeVBSerial={sidebarVBSerial}
-        onSelect={(vb, ser) => { setSidebarVBNumber(vb); setSidebarVBSerial(ser); }}
+        activeShipment={sidebarShipment}
+        onSelect={(vb, ser, ship) => { setSidebarVBNumber(vb); setSidebarVBSerial(ser); setSidebarShipment(ship); }}
       />
       <div className="flex-1 min-w-0">
         <SimpleDataTable
           columns={columns}
           data={filteredData}
           onAdd={openAdd}
+          onRowClick={(row) => setDetailShipment(row)}
           showColumnToggle={false}
           headerExtra={headerFilters}
         />
@@ -536,6 +569,14 @@ function ShipmentsListContent() {
           users={allUsers}
         />
       )}
+
+      {/* Customer PO Edit Dialog */}
+      <AddCustomerPODialog
+        open={!!editingCPO}
+        onClose={() => setEditingCPO(null)}
+        editingData={editingCPO}
+        onSaved={fetchData}
+      />
     </div>
   );
 }

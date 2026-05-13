@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
     Dialog,
     DialogContent,
@@ -24,6 +25,7 @@ import {
     Bot,
     Package,
     Anchor,
+    Bell,
 } from "lucide-react";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
@@ -95,6 +97,88 @@ interface POOption { value: string; label: string; }
 interface CPOOption { value: string; label: string; parentVBNumber: string; }
 interface ShipOption { value: string; label: string; parentVBNumber: string; parentSerial: string; }
 
+// ---- Inline Reminder Cell ----
+function ReminderCell({
+    entryId,
+    reminder,
+    onFieldChange,
+}: {
+    entryId: string;
+    reminder?: string;
+    onFieldChange: (id: string, field: string, value: string, cascadeClear?: string[]) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const [dateValue, setDateValue] = useState("");
+
+    // Sync local state when popover opens
+    React.useEffect(() => {
+        if (open) {
+            setDateValue(reminder ? new Date(reminder).toISOString().split("T")[0] : "");
+        }
+    }, [open, reminder]);
+
+    const handleSave = () => {
+        if (dateValue) {
+            onFieldChange(entryId, "reminder", dateValue);
+        }
+        setOpen(false);
+    };
+
+    const handleClear = () => {
+        onFieldChange(entryId, "reminder", "");
+        setOpen(false);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                {reminder ? (
+                    <button className="text-amber-600 dark:text-amber-400 flex items-center gap-1 hover:bg-amber-500/10 rounded px-1.5 py-0.5 transition-colors text-[10px] font-medium">
+                        <Bell className="h-3 w-3" />
+                        {new Date(reminder).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </button>
+                ) : (
+                    <button
+                        className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+                        title="Set reminder"
+                    >
+                        <Bell className="h-3 w-3" />
+                    </button>
+                )}
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56 p-3 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Bell className="h-3.5 w-3.5 text-amber-500" />
+                    Set Reminder
+                </div>
+                <input
+                    type="date"
+                    value={dateValue}
+                    onChange={(e) => setDateValue(e.target.value)}
+                    className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleSave}
+                        disabled={!dateValue}
+                        className="flex-1 h-7 text-[11px] font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Set
+                    </button>
+                    {reminder && (
+                        <button
+                            onClick={handleClear}
+                            className="h-7 px-2.5 text-[11px] font-medium rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                            Clear
+                        </button>
+                    )}
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 // ---- Table rows ----
 function TimelineTable({
     entries,
@@ -126,9 +210,6 @@ function TimelineTable({
         <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
                 <tr className="border-b">
-                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">VBNumber</th>
-                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Serial #</th>
-                    <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Shipment #</th>
                     <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Date</th>
                     <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Type</th>
                     <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Category</th>
@@ -173,42 +254,6 @@ function TimelineTable({
 
                     return (
                         <tr key={entry._id} className={`group border-b border-border/50 hover:bg-muted/30 transition-colors ${isSystem ? "bg-muted/10" : ""}`}>
-                            {/* VBNumber — searchable */}
-                            <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
-                                <SearchableSelect
-                                    options={poOptions}
-                                    value={rawVB}
-                                    onChange={(v) => onFieldChange(entry._id, "VBNumber", v, ["VBSerialNumber", "VBShipmentNumber"])}
-                                    placeholder="—"
-                                    searchPlaceholder="Search VB#..."
-                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
-                                    allowClear
-                                />
-                            </td>
-                            {/* VBSerialNumber — searchable, cascaded */}
-                            <td className="px-1 py-1 align-top" style={{ minWidth: 110 }}>
-                                <SearchableSelect
-                                    options={filteredCPOs}
-                                    value={rawSerial}
-                                    onChange={(v) => onFieldChange(entry._id, "VBSerialNumber", v, ["VBShipmentNumber"])}
-                                    placeholder="—"
-                                    searchPlaceholder="Search Serial..."
-                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
-                                    allowClear
-                                />
-                            </td>
-                            {/* VBShipmentNumber — searchable, cascaded */}
-                            <td className="px-1 py-1 align-top" style={{ minWidth: 120 }}>
-                                <SearchableSelect
-                                    options={filteredShips}
-                                    value={rawShip}
-                                    onChange={(v) => onFieldChange(entry._id, "VBShipmentNumber", v)}
-                                    placeholder="—"
-                                    searchPlaceholder="Search Shipment..."
-                                    className="h-6 text-[10px] px-1.5 min-w-[100px]"
-                                    allowClear
-                                />
-                            </td>
                             <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {entry.date
                                     ? new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -236,12 +281,12 @@ function TimelineTable({
                                     {entry.status || "Open"}
                                 </span>
                             </td>
-                            <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
-                                {entry.reminder ? (
-                                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
-                                        🔔 {new Date(entry.reminder).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                    </span>
-                                ) : "—"}
+                            <td className="px-2 py-2 whitespace-nowrap align-top">
+                                <ReminderCell
+                                    entryId={entry._id}
+                                    reminder={entry.reminder}
+                                    onFieldChange={onFieldChange}
+                                />
                             </td>
                             <td className="px-2 py-2 whitespace-nowrap text-muted-foreground align-top">
                                 {isSystem ? (
@@ -286,6 +331,8 @@ export default function TimelineModal({
     const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
+    const [statusFilter, setStatusFilter] = useState<string>("Open");
+    const [typeFilter, setTypeFilter] = useState<string>("");
 
     // ── Hierarchy data from store + standalone collections ──
     const { data: purchaseOrders = [] } = usePurchaseOrders();
@@ -512,7 +559,7 @@ export default function TimelineModal({
     };
 
     useEffect(() => {
-        if (open) { fetchEntries(); setShowAddDialog(false); setSearch(""); setSidebarSelection("all"); }
+        if (open) { fetchEntries(); setShowAddDialog(false); setSearch(""); setSidebarSelection("all"); setStatusFilter("Open"); setTypeFilter(""); }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, VBNumber, VBSerialNumber, VBShipmentNumber]);
 
@@ -527,9 +574,18 @@ export default function TimelineModal({
         }
     };
 
-    // Filter by search
+    // Filter by status, type, then search
     const searchFiltered = useMemo(() => {
         let result = entries;
+        // Status filter
+        if (statusFilter) {
+            result = result.filter((e) => (e.status || "Open") === statusFilter);
+        }
+        // Type filter
+        if (typeFilter) {
+            result = result.filter((e) => e.type === typeFilter);
+        }
+        // Search
         if (search) {
             const q = search.toLowerCase();
             result = result.filter((e) =>
@@ -546,7 +602,22 @@ export default function TimelineModal({
             const dateB = new Date(b.date || b.timestamp).getTime();
             return dateB - dateA;
         });
-    }, [entries, search]);
+    }, [entries, search, statusFilter, typeFilter]);
+
+    // Status counts (computed from all entries, before status filter)
+    const statusCounts = useMemo(() => {
+        const c: Record<string, number> = { All: 0, Open: 0, "In Progress": 0, Closed: 0 };
+        let pool = entries;
+        // Apply type filter to counts so they stay contextual
+        if (typeFilter) pool = pool.filter((e) => e.type === typeFilter);
+        pool.forEach((e) => {
+            c.All++;
+            const s = e.status || "Open";
+            if (s in c) c[s]++;
+            else c[s] = (c[s] || 0) + 1;
+        });
+        return c;
+    }, [entries, typeFilter]);
 
     // Build sidebar tree
     const sidebarTree = useMemo(() => {
@@ -610,28 +681,63 @@ export default function TimelineModal({
             <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
                 <DialogContent className="max-w-[1400px] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
                     {/* Header */}
-                    <div className="px-5 pt-5 pb-3 border-b space-y-3">
-                        <DialogHeader>
-                            <DialogTitle className="text-base flex items-center gap-2">
-                                <Clock className="h-4 w-4 text-primary" />
-                                {displayTitle}
-                            </DialogTitle>
-                            <DialogDescription className="sr-only">View and manage timeline entries for this purchase order</DialogDescription>
-                        </DialogHeader>
-                        <div className="flex items-center gap-2">
-                            <div className="relative flex-1">
+                    <div className="px-5 pr-12 pt-4 pb-3 border-b space-y-2">
+                        {/* Row 1: Title + Search + Type + Add */}
+                        <div className="flex items-center gap-3">
+                            <DialogHeader className="flex-shrink-0">
+                                <DialogTitle className="text-base flex items-center gap-2 whitespace-nowrap">
+                                    <Clock className="h-4 w-4 text-primary" />
+                                    {displayTitle}
+                                </DialogTitle>
+                                <DialogDescription className="sr-only">View and manage timeline entries for this purchase order</DialogDescription>
+                            </DialogHeader>
+                            <div className="flex-1" />
+                            <div className="relative">
                                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                                 <input
                                     type="text"
-                                    placeholder="Search timeline..."
+                                    placeholder="Search..."
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
-                                    className="h-7 w-full pl-8 pr-3 rounded-md border border-input bg-background text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    className="h-7 w-[180px] pl-8 pr-3 rounded-md border border-input bg-background text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 />
                             </div>
+                            <select
+                                value={typeFilter}
+                                onChange={(e) => setTypeFilter(e.target.value)}
+                                className={`h-7 rounded-md border px-2 text-xs bg-background transition-colors ${typeFilter ? 'border-primary text-primary font-medium' : 'border-input text-muted-foreground'}`}
+                            >
+                                <option value="">All Types</option>
+                                {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
                             <Button size="sm" className="h-7 px-3 text-xs" onClick={() => setShowAddDialog(true)}>
                                 <Plus className="h-3 w-3 mr-1" /> Add
                             </Button>
+                        </div>
+                        {/* Row 2: Status filter tabs */}
+                        <div className="flex items-center gap-1">
+                            {(["Open", "In Progress", "Closed", ""] as const).map((status) => {
+                                const label = status || "All";
+                                const count = status ? (statusCounts[status] || 0) : statusCounts.All;
+                                const isActive = statusFilter === status;
+                                return (
+                                    <button
+                                        key={label}
+                                        onClick={() => setStatusFilter(status)}
+                                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${
+                                            isActive
+                                                ? status === "Open" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30"
+                                                : status === "In Progress" ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30"
+                                                : status === "Closed" ? "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 ring-1 ring-zinc-500/30"
+                                                : "bg-primary/10 text-primary ring-1 ring-primary/30"
+                                                : "text-muted-foreground hover:bg-muted/50"
+                                        }`}
+                                    >
+                                        {label}
+                                        <span className={`text-[10px] tabular-nums px-1 py-0 rounded-full ${isActive ? 'bg-background/60' : 'bg-muted'}`}>{count}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

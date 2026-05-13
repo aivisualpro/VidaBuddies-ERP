@@ -1166,7 +1166,7 @@ function ShippingsPageContent() {
           <form onSubmit={handleEditSubmit} className="grid gap-5 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="edit-VBNumber">VB Number</Label>
+                <Label htmlFor="edit-VBNumber">VB #</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input

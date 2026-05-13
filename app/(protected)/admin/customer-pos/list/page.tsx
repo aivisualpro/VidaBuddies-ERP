@@ -198,7 +198,10 @@ function CustomerPOsListContent() {
     if (filters.search) {
       const q = filters.search.toLowerCase();
       result = result.filter(item => {
-        const searchable = [item.VBNumber, item.VBSerialNumber, item.customer, item.customerPONo, item.warehouse].filter(Boolean).join(' ').toLowerCase();
+        const customerName = customers.find((c: any) => c._id === item.customer)?.name || '';
+        const locName = locationMap[item.customerLocation || ''] || '';
+        const poDisplay = poDisplayMap[item.VBNumber || ''] || '';
+        const searchable = [poDisplay, item.VBNumber, item.VBSerialNumber, customerName, item.customer, locName, item.customerPONo, item.warehouse, item.UOM, formatDate(item.customerPODate), formatDate(item.requestedDeliveryDate)].filter(Boolean).join(' ').toLowerCase();
         return searchable.includes(q);
       });
     }
@@ -208,12 +211,12 @@ function CustomerPOsListContent() {
   const columns: ColumnDef<CustomerPO>[] = [
     {
       id: "VBNumber",
-      header: "VB Number",
+      header: "VB #",
       cell: ({ row }) => poDisplayMap[row.original.VBNumber || ""] || row.original.VBNumber || "-",
     },
     {
       accessorKey: "poNo",
-      header: "VB Serial Number",
+      header: "Contract #",
       cell: ({ row }) => row.original.VBSerialNumber || "-",
     },
     {

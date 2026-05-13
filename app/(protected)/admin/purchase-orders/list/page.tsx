@@ -273,7 +273,7 @@ function PurchaseOrdersContent() {
   const columns: ColumnDef<PurchaseOrder>[] = [
     {
       id: "VBNumber",
-      header: "VB Number",
+      header: "VB #",
       cell: ({ row }) => row.original.VBNumber || "—",
     },
     {
@@ -645,7 +645,8 @@ function PurchaseOrdersContent() {
       const q = filters.search.toLowerCase();
       const createdByName = users[po.createdBy?.toLowerCase()] || po.createdBy || '';
       const searchable = [
-        po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName
+        po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName,
+        po.isNigalu ? 'NIGALU' : '', po.isArchived ? 'Archived' : ''
       ].filter(Boolean).join(' ').toLowerCase();
       if (!searchable.includes(q)) return false;
     }
@@ -775,7 +776,7 @@ function PurchaseOrdersContent() {
           <form onSubmit={handleSubmit} className="grid gap-6 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="VBNumber">VB Number</Label>
+                <Label htmlFor="VBNumber">VB #</Label>
                 <div className="relative">
                   <ShoppingCart className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
