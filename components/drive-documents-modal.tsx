@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -81,7 +85,7 @@ function kindColor(kind: string) {
 }
 
 function thumbUrl(fileId: string) {
-  return `https://lh3.googleusercontent.com/d/${fileId}=w400`;
+  return `/api/admin/drive/thumbnail?fileId=${fileId}`;
 }
 
 /* ─── Component ─── */
@@ -92,12 +96,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<DocRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeFileName, setMergeFileName] = useState("");
   const [merging, setMerging] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
@@ -184,14 +190,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
     return true;
   });
 
-  const selCount = selectedIds.size;
+  const selCount = selectedIds.length;
   const toggleSelect = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
   // Helper: get selected doc records with their source item info
@@ -199,36 +203,40 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
     return filteredDocs.filter((_, idx) => {
       const d = filteredDocs[idx].doc;
       const cardId = `${d.driveFileId}-${idx}`;
-      return selectedIds.has(cardId);
+      return selectedIds.includes(cardId);
     });
   };
 
   /* ─── Delete handler ─── */
   const handleDelete = async () => {
     if (selCount === 0) return;
-    if (!confirm(`Delete ${selCount} file(s)? This cannot be undone.`)) return;
+    setDeleteConfirmOpen(false);
     setDeleting(true);
     try {
       // Group by source item (collection + recordId)
-      const bySource = new Map<string, { collection: string; recordId: string; fileIds: string[] }>();
-      for (const selId of selectedIds) {
+      const bySource = new Map<string, { collection: string; recordId: string; driveFileIds: string[] }>();
+      for (const selId of [...selectedIds]) {
         const idx = filteredDocs.findIndex((_, i) => `${filteredDocs[i].doc.driveFileId}-${i}` === selId);
         if (idx < 0) continue;
         const item = items.find(it => it.docs.includes(filteredDocs[idx].doc));
         if (!item) continue;
         const key = `${item.collection}:${item.id}`;
-        if (!bySource.has(key)) bySource.set(key, { collection: item.collection, recordId: item.id, fileIds: [] });
-        bySource.get(key)!.fileIds.push(filteredDocs[idx].doc.driveFileId);
+        if (!bySource.has(key)) bySource.set(key, { collection: item.collection, recordId: item.id, driveFileIds: [] });
+        bySource.get(key)!.driveFileIds.push(filteredDocs[idx].doc.driveFileId);
       }
       for (const [, src] of bySource) {
-        await fetch("/api/admin/drive-documents", {
+        const res = await fetch("/api/admin/drive-documents", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(src),
         });
+        if (!res.ok) {
+          const data = await res.json();
+          console.error("[Delete] API error:", data);
+        }
       }
       toast.success(`${selCount} file(s) deleted`);
-      setSelectedIds(new Set());
+      setSelectedIds([]);
       fetchDocs();
     } catch { toast.error("Delete failed"); }
     finally { setDeleting(false); }
@@ -245,19 +253,20 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
     if (!mergeFileName.trim()) { toast.error("Filename is required"); return; }
     setMerging(true);
     try {
-      // Build cardId -> driveFileId map and find source item
+      // Build fileIds in selection order (preserves user's numbered order)
       const fileIds: string[] = [];
       let sourceItem: SidebarItem | undefined;
-      filteredDocs.forEach((item, idx) => {
-        const cardId = `${item.doc.driveFileId}-${idx}`;
-        if (selectedIds.has(cardId) && item.doc.driveFileId) {
+      for (const selId of selectedIds) {
+        const idx = filteredDocs.findIndex((item, i) => `${item.doc.driveFileId}-${i}` === selId);
+        if (idx < 0) continue;
+        const item = filteredDocs[idx];
+        if (item.doc.driveFileId) {
           fileIds.push(item.doc.driveFileId);
-          // Use first selected doc's source for saving merged file
           if (!sourceItem) {
             sourceItem = items.find(it => it.docs.includes(item.doc));
           }
         }
-      });
+      }
 
       if (fileIds.length < 2) {
         toast.error("Need at least 2 files with valid IDs to merge");
@@ -299,7 +308,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
           console.warn("[Merge] No target item or uploaded data:", { targetItem: !!targetItem, uploaded: !!data.uploaded });
         }
         toast.success("Documents merged successfully");
-        setSelectedIds(new Set());
+        setSelectedIds([]);
         setMergeDialogOpen(false);
         fetchDocs();
       } else {
@@ -343,8 +352,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   const [emailAttachments, setEmailAttachments] = useState<{ id: string; name: string; mimeType: string; size: string }[]>([]);
 
   /* ─── Upload handler ─── */
-  const handleUpload = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0 || !selectedItem) return;
+  const handleUpload = async (fileList: FileList | null, targetItem?: SidebarItem | null) => {
+    const uploadTarget = targetItem || selectedItem;
+    if (!fileList || fileList.length === 0 || !uploadTarget) return;
     const files = Array.from(fileList);
     const total = files.length;
     setUploading(true);
@@ -379,7 +389,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
         await fetch("/api/admin/drive-documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ collection: selectedItem.collection, recordId: selectedItem.id, document: docRecord }),
+          body: JSON.stringify({ collection: uploadTarget.collection, recordId: uploadTarget.id, document: docRecord }),
         });
         successCount++;
         setUploadCompleted(prev => prev + 1);
@@ -393,6 +403,25 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
     if (successCount > 0) toast.success(`${successCount} file(s) uploaded`);
     fetchDocs();
     setTimeout(() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }, 4000);
+  };
+
+  /* ─── Drag & Drop handler ─── */
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    if (e.dataTransfer.files.length) {
+      // If no item is selected, auto-select the first PO item
+      const dropTarget = selectedItem || items.find(i => i.kind === "VBNumber") || items[0];
+      if (!dropTarget) {
+        toast.error("No target available for upload");
+        return;
+      }
+      if (!selectedItem) {
+        setSelected(dropTarget.id);
+      }
+      handleUpload(e.dataTransfer.files, dropTarget);
+    }
   };
 
   // Sidebar grouping
@@ -483,7 +512,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
             webkitdirectory="" className="hidden" onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }} />
 
           {/* BODY */}
-          <div className="flex flex-1 min-h-0 overflow-hidden">
+          <div
+            className={cn("flex flex-1 min-h-0 overflow-hidden relative", dragOver && "bg-primary/5")}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
 
             {/* Sidebar */}
             <div className="w-[200px] border-r bg-muted/10 flex flex-col shrink-0 overflow-y-auto">
@@ -584,51 +618,6 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   ))}
                 </div>
               )}
-              {/* Upload Progress - inside content */}
-              {uploadFiles.length > 0 && (
-                <div className="border-b border-border/40 bg-gradient-to-b from-primary/[0.02] to-transparent shrink-0">
-                  <div className="px-4 pt-3 pb-2.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {uploading ? (
-                          <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center"><CloudUpload className="h-3.5 w-3.5 text-primary animate-pulse" /></div>
-                        ) : uploadFiles.some(f => f.status === "error") ? (
-                          <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center"><AlertCircle className="h-3.5 w-3.5 text-amber-500" /></div>
-                        ) : (
-                          <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center"><CheckCircle className="h-3.5 w-3.5 text-emerald-500" /></div>
-                        )}
-                        <div>
-                          <p className="text-xs font-bold leading-none">
-                            {uploading ? "Uploading..." : uploadFiles.some(f => f.status === "error") ? "Completed with errors" : "Upload Complete!"}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
-                            {uploadCompleted}/{uploadTotal} files
-                            {uploadStartTime > 0 && ` • ${Math.round((Date.now() - uploadStartTime) / 1000)}s`}
-                          </p>
-                        </div>
-                      </div>
-                      {!uploading && (
-                        <button onClick={() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
-                      )}
-                    </div>
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary to-primary/60"
-                        style={{ width: `${uploadTotal > 0 ? (uploadCompleted / uploadTotal) * 100 : 0}%` }} />
-                    </div>
-                    <div className="max-h-[100px] overflow-y-auto space-y-0.5">
-                      {uploadFiles.map((f, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[11px] py-0.5">
-                          {f.status === "done" ? <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" /> :
-                           f.status === "uploading" ? <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" /> :
-                           f.status === "error" ? <XCircle className="h-3 w-3 text-destructive shrink-0" /> :
-                           <div className="h-3 w-3 rounded-full border border-border/60 shrink-0" />}
-                          <span className={cn("truncate", f.status === "done" ? "text-muted-foreground" : f.status === "error" ? "text-destructive" : "text-foreground font-medium")}>{f.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Email History */}
               {showEmailHistory ? (
@@ -712,16 +701,40 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                 {loading ? (
                   <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
                 ) : visibleDocs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <div className="h-20 w-20 rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 flex items-center justify-center"><Paperclip className="h-8 w-8 text-primary/30" /></div>
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      {selectedItem ? `No documents in ${selectedItem.label}` : "No documents found"}
-                    </p>
-                    {selectedItem && (
-                      <Button size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                        <Upload className="h-3.5 w-3.5" /> Upload Files
-                      </Button>
-                    )}
+                  <div className="flex flex-col items-center justify-center py-20 gap-5">
+                    <div className="relative">
+                      <div className="h-24 w-24 rounded-2xl border-2 border-dashed border-primary/25 bg-gradient-to-br from-primary/10 to-primary/[0.03] flex items-center justify-center transition-all">
+                        <CloudUpload className="h-10 w-10 text-primary/40" />
+                      </div>
+                      <div className="absolute -bottom-1.5 -right-1.5 h-7 w-7 rounded-full bg-primary/15 border-2 border-background flex items-center justify-center shadow-sm">
+                        <Upload className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                    </div>
+                    <div className="text-center space-y-1.5">
+                      <p className="text-sm font-semibold">
+                        {selectedItem ? `No documents in ${selectedItem.label}` : "No documents found"}
+                      </p>
+                      <p className="text-xs text-muted-foreground max-w-[300px]">
+                        {selectedItem
+                          ? "Drag & drop files here, or click below to browse."
+                          : "Select a record from the sidebar, then drag & drop files to upload."}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedItem && (
+                        <Button size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                          <Upload className="h-3.5 w-3.5" /> Upload Files
+                        </Button>
+                      )}
+                      {selectedItem && (
+                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
+                          toast.info("Please allow the browser prompt to upload folder structure");
+                          folderInputRef.current?.click();
+                        }} disabled={uploading}>
+                          <FolderOpen className="h-3.5 w-3.5" /> Browse Folder
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
@@ -729,7 +742,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                       const d = item.doc;
                       const cardId = `${d.driveFileId}-${idx}`;
                       const isPreviewing = previewFile?.driveFileId === d.driveFileId;
-                      const isSelected = selectedIds.has(cardId);
+                      const selIndex = selectedIds.indexOf(cardId);
+                      const isSelected = selIndex >= 0;
                       return (
                         <div key={cardId}
                           className={cn(
@@ -742,10 +756,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                           <div className="bg-zinc-900 dark:bg-zinc-800 px-3 py-2 flex items-center gap-2">
                             <button
                               onClick={(e) => toggleSelect(cardId, e)}
-                              className={cn("h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0",
+                              className={cn("h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 text-[10px] font-black",
                                 isSelected ? "bg-primary border-primary text-primary-foreground" : "border-white/40 text-transparent hover:border-white hover:text-white/60")}
                             >
-                              <Check className="h-3 w-3" />
+                              {isSelected ? selIndex + 1 : ""}                            
                             </button>
                             <p className="text-xs font-semibold text-white truncate flex-1" title={d.documentName}>{d.documentName}</p>
                           </div>
@@ -837,16 +851,119 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                           {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({selCount})
                         </Button>
                       )}
-                      <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDelete} disabled={deleting}>
+                      <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
                         {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete ({selCount})
                       </Button>
-                      <button onClick={() => setSelectedIds(new Set())} className="text-[10px] font-bold text-muted-foreground hover:text-foreground ml-1">Clear</button>
+                      <button onClick={() => setSelectedIds([])} className="text-[10px] font-bold text-muted-foreground hover:text-foreground ml-1">Clear</button>
                     </>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* ═══ Upload Progress Floating Popup ═══ */}
+            {uploadFiles.length > 0 && (
+              <div className="absolute bottom-4 right-4 z-40 w-[320px] rounded-xl border border-border/60 bg-background/95 backdrop-blur-xl shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    {uploading ? (
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <CloudUpload className="h-4 w-4 text-primary animate-pulse" />
+                      </div>
+                    ) : uploadFiles.some(f => f.status === "error") ? (
+                      <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                        <AlertCircle className="h-4 w-4 text-amber-500" />
+                      </div>
+                    ) : (
+                      <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-bold leading-none">
+                        {uploading ? "Uploading..." : uploadFiles.some(f => f.status === "error") ? "Completed with errors" : "Upload Complete!"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                        {uploadCompleted}/{uploadTotal} files
+                        {uploadStartTime > 0 && ` • ${Math.round((Date.now() - uploadStartTime) / 1000)}s`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-primary tabular-nums">
+                      {uploadTotal > 0 ? Math.round((uploadCompleted / uploadTotal) * 100) : 0}%
+                    </span>
+                    {!uploading && (
+                      <button
+                        onClick={() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }}
+                        className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div className="px-4 pb-2">
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all duration-700 ease-out",
+                        uploading ? "bg-gradient-to-r from-primary to-primary/60" :
+                        uploadFiles.some(f => f.status === "error") ? "bg-gradient-to-r from-amber-500 to-amber-400" :
+                        "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                      )}
+                      style={{ width: `${uploadTotal > 0 ? (uploadCompleted / uploadTotal) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+                {/* File list */}
+                <div className="max-h-[140px] overflow-y-auto px-4 pb-3 space-y-0.5">
+                  {uploadFiles.map((f, i) => (
+                    <div key={i} className={cn(
+                      "flex items-center gap-2 text-[11px] py-0.5 px-1.5 rounded",
+                      f.status === "uploading" && "bg-primary/5"
+                    )}>
+                      {f.status === "done" ? <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" /> :
+                       f.status === "uploading" ? <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" /> :
+                       f.status === "error" ? <XCircle className="h-3 w-3 text-destructive shrink-0" /> :
+                       <div className="h-3 w-3 rounded-full border-[1.5px] border-muted-foreground/25 shrink-0" />}
+                      <span className={cn(
+                        "truncate flex-1 font-medium",
+                        f.status === "done" && "text-muted-foreground/60",
+                        f.status === "error" && "text-destructive",
+                        f.status === "pending" && "text-muted-foreground/40"
+                      )}>{f.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ═══ Drag & Drop Overlay ═══ */}
+            {dragOver && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary/60 rounded-xl pointer-events-none">
+                <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
+                  <div className="relative">
+                    <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center shadow-lg">
+                      <CloudUpload className="h-10 w-10 text-primary animate-bounce" />
+                    </div>
+                    <div className="absolute -top-2 -right-2 h-8 w-8 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center shadow-md">
+                      <Upload className="h-4 w-4 text-primary" />
+                    </div>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-base font-bold text-primary">Drop files to upload</p>
+                    <p className="text-xs text-muted-foreground font-medium">
+                      {selectedItem ? `Uploading to ${selectedItem.label}` : `Uploading to ${items.find(i => i.kind === "VBNumber")?.label || poNumber}`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
         </DialogContent>
       </Dialog>
 
@@ -877,6 +994,27 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete{" "}
+              <span className="font-semibold text-foreground">{selCount} file{selCount !== 1 ? "s" : ""}</span>{" "}
+              from Google Drive and remove them from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete {selCount} File{selCount !== 1 ? "s" : ""}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Email Compose Dialog */}
       <EmailComposeDialog
         open={emailComposeOpen}
@@ -884,7 +1022,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
           setEmailComposeOpen(false);
           setEmailComposeMode("compose");
           setEmailInitialData(undefined);
-          setSelectedIds(new Set());
+          setSelectedIds([]);
           setEmailAttachments([]);
         }}
         attachments={emailComposeMode === "compose" && !emailInitialData ? emailAttachments : []}
