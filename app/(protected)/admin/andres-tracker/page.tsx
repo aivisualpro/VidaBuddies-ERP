@@ -246,6 +246,20 @@ export default function AndresTrackerPage() {
     }));
   };
 
+  // Fetch standalone shippings + CPOs for accurate data (not stale embedded)
+  const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
+  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []),
+      fetch("/api/admin/vb-customer-po").then(r => r.json()).catch(() => []),
+    ]).then(([ships, cpos]) => {
+      setStandaloneShips(Array.isArray(ships) ? ships : []);
+      setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
+    });
+  }, [purchaseOrders]); // re-fetch when POs change
+
   const sortedShippings = useMemo(() => {
     const productMap = new Map();
     if (storeProducts && Array.isArray(storeProducts)) storeProducts.forEach(p => { if (p._id && p.name) productMap.set(p._id, p.name); });
@@ -266,32 +280,46 @@ export default function AndresTrackerPage() {
       });
     }
 
+    // Build CPO lookup by _id
+    const cpoMap = new Map();
+    standaloneCPOs.forEach((cpo: any) => {
+      if (cpo._id) cpoMap.set(cpo._id.toString(), cpo);
+    });
+
+    // Build PO lookup for archived check
+    const poMap = new Map();
+    (purchaseOrders || []).forEach((po: any) => {
+      if (po._id) poMap.set(po._id.toString(), po);
+    });
+
     let flatList: any[] = [];
     
-    (purchaseOrders || []).filter(po => !po.isArchived).forEach(po => {
-      (po.customerPO || []).forEach((cpo: any) => {
-        (cpo.shipping || []).forEach((ship: any) => {
-          const status = (ship.status || "").toLowerCase().trim();
-          if (status === "in transit" || status === "in_transit") {
-            const cname = customerMap.get(cpo.customer) || cpo.customer || "-";
-            const sname = supplierMap.get(ship.supplier) || ship.supplier || "-";
-            const pNames = (ship.products && Array.isArray(ship.products)) 
-              ? ship.products.map((id:string) => productMap.get(id) || id).join(", ") 
-              : "—";
-            
-            flatList.push({
-              ...ship,
-              poId: po._id,
-              cpoIdForUpdate: cpo._id || cpo.customerPONo,
-              shipIdForUpdate: ship.svbid || ship._id,
-              customerName: cname,
-              customerPONo: cpo.customerPONo || "-",
-              supplierName: sname,
-              productsStr: pNames,
-              parentPoId: po._id
-            });
-          }
-        });
+    standaloneShips.forEach((ship: any) => {
+      const status = (ship.status || "").toLowerCase().trim();
+      if (status !== "in transit" && status !== "in_transit" && status !== "on water") return;
+
+      // Skip if parent PO is archived
+      const parentPO = poMap.get(ship.VBNumber?.toString());
+      if (parentPO?.isArchived) return;
+
+      // Resolve parent CPO for customer info
+      const cpo = cpoMap.get(ship.VBSerialNumber?.toString());
+      const cname = cpo ? (customerMap.get(cpo.customer?.toString()) || cpo.customer || "-") : "-";
+      const sname = supplierMap.get(ship.supplier) || ship.supplier || "-";
+      const pNames = (ship.products && Array.isArray(ship.products)) 
+        ? ship.products.map((id: string) => productMap.get(id) || id).join(", ") 
+        : "—";
+      
+      flatList.push({
+        ...ship,
+        poId: ship.VBNumber?.toString() || "",
+        cpoIdForUpdate: ship.VBSerialNumber?.toString() || "",
+        shipIdForUpdate: ship._id?.toString() || ship.svbid || "",
+        customerName: cname,
+        customerPONo: cpo?.customerPONo || "-",
+        supplierName: sname,
+        productsStr: pNames,
+        parentPoId: ship.VBNumber?.toString() || ""
       });
     });
 
@@ -320,7 +348,7 @@ export default function AndresTrackerPage() {
       return 0;
     });
     return flatList;
-  }, [purchaseOrders, shipSort, storeProducts, storeCustomers, storeSuppliers, globalSearch]);
+  }, [standaloneShips, standaloneCPOs, purchaseOrders, shipSort, storeProducts, storeCustomers, storeSuppliers, globalSearch]);
 
   const toggleShipSort = (key: typeof shipSort.key) => {
     setShipSort(prev => ({
@@ -497,8 +525,9 @@ export default function AndresTrackerPage() {
         <div className={getColClass(1)}>
           <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <LayoutGrid className="h-4 w-4 text-primary" />
-              <h2 className="font-bold text-sm uppercase tracking-wider">VBPOs</h2>
+              <LayoutGrid className="h-4 w-4" style={{ color: '#406AAF' }} />
+              <h2 className="font-bold text-sm uppercase tracking-wider" style={{ color: '#406AAF' }}>VBPOs</h2>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: 'rgba(64,106,175,0.1)', color: '#406AAF', border: '1px solid rgba(64,106,175,0.2)' }}>{sortedPOs.length}</span>
             </div>
             <div className="flex items-center gap-1">
               <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddPOOpen(true)}>
@@ -542,7 +571,8 @@ export default function AndresTrackerPage() {
                       <Fragment key={po._id}>
                         <tr className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group ${isExpandedRow ? 'bg-zinc-50 dark:bg-zinc-800/40' : ''}`}>
                           <td 
-                            className="px-3 py-2.5 font-bold text-foreground cursor-pointer group-hover:text-primary transition-colors"
+                            className="px-3 py-2.5 font-bold cursor-pointer transition-colors"
+                            style={{ color: '#406AAF' }}
                             onClick={() => { if (expandedCol !== 1) setExpandedVbpoId(isExpandedRow ? null : po._id); }}
                           >
                             <div className="flex items-center gap-1.5">
@@ -616,8 +646,9 @@ export default function AndresTrackerPage() {
         <div className={getColClass(2)}>
           <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <LayoutGrid className="h-4 w-4 text-blue-500" />
-              <h2 className="font-bold text-sm uppercase tracking-wider">Shippments</h2>
+              <LayoutGrid className="h-4 w-4" style={{ color: '#EA5252' }} />
+              <h2 className="font-bold text-sm uppercase tracking-wider" style={{ color: '#EA5252' }}>Shippments</h2>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: 'rgba(234,82,82,0.1)', color: '#EA5252', border: '1px solid rgba(234,82,82,0.2)' }}>{sortedShippings.length}</span>
             </div>
             <div className="flex items-center gap-1">
               <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddShippingOpen(true)}>
@@ -638,7 +669,7 @@ export default function AndresTrackerPage() {
                 <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("svbid")}>
-                      SVB {shipSort.key === "svbid" && (shipSort.dir === "asc" ? "↑" : "↓")}
+                      # {shipSort.key === "svbid" && (shipSort.dir === "asc" ? "↑" : "↓")}
                     </th>
                     <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleShipSort("customer")}>
                       Customer {shipSort.key === "customer" && (shipSort.dir === "asc" ? "↑" : "↓")}
@@ -669,8 +700,8 @@ export default function AndresTrackerPage() {
                       key={`${ship.svbid}-${idx}`} 
                       className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group"
                     >
-                      <td className="px-3 py-2.5 font-bold text-blue-600 dark:text-blue-400">
-                        <EditableCell value={ship.svbid} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'svbid', val)} />
+                      <td className="px-3 py-2.5 font-bold" style={{ color: '#EA5252' }}>
+                        <EditableCell value={ship.VBShipmentNumber || ship.svbid} isExpanded={expandedCol === 2} onSave={(val: string) => handleInlineUpdate(ship.poId, 'shipping', ship.cpoIdForUpdate, ship.shipIdForUpdate, 'VBShipmentNumber', val)} />
                       </td>
                       <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[120px]" title={ship.customerName}>
                         {ship.customerName}
@@ -712,7 +743,8 @@ export default function AndresTrackerPage() {
           <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-4 w-4 text-emerald-500" />
-              <h2 className="font-bold text-sm uppercase tracking-wider">Customer POs</h2>
+              <h2 className="font-bold text-sm uppercase tracking-wider text-emerald-500">Customer POs</h2>
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-bold border border-emerald-500/20">{sortedCPOs.length}</span>
             </div>
             <div className="flex items-center gap-1">
               <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-primary/20 hover:bg-primary/5" onClick={() => setIsAddCPOOpen(true)}>
@@ -819,6 +851,7 @@ export default function AndresTrackerPage() {
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-4 w-4 text-orange-500" />
               <h2 className="font-bold text-sm uppercase tracking-wider">Inventory</h2>
+              <span className="text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-bold border border-orange-500/20">{sortedInventory.length}</span>
             </div>
             <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 4 ? null : 4)}>
               {expandedCol === 4 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
