@@ -1250,7 +1250,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                   {(() => {
                                     const productIds = (Array.isArray(ship.products) && ship.products.length > 0) ? ship.products
                                       : typeof ship.products === 'string' ? ship.products.split(',').filter(Boolean)
-                                        : ship.product ? [ship.product] : [];
+                                        : [];
                                     return productIds.length > 0
                                       ? productIds.map((pid: string, i: number) => (
                                         <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg w-fit">

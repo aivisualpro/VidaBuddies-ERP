@@ -971,8 +971,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                          <div className="grid grid-cols-5 gap-0 p-2">
                             {/* Product (Wider) */}
                             <div className="col-span-2 flex flex-col items-center justify-center text-center border-r border-border/50 px-2 py-1">
-                                 <p className="text-[11px] font-black text-foreground truncate w-full" title={(ship.product ? products[ship.product as string] : undefined) || ship.product}>
-                                    {(ship.product ? products[ship.product as string] : undefined) || ship.product || 'UNKNOWN PRODUCT'}
+                                 <p className="text-[11px] font-black text-foreground truncate w-full" title={(Array.isArray(ship.products) ? ship.products.map((id: string) => products[id] || id).join(', ') : undefined) || 'UNKNOWN PRODUCT'}>
+                                    {(Array.isArray(ship.products) && ship.products.length > 0) ? ship.products.map((id: string) => products[id] || id).join(', ') : 'UNKNOWN PRODUCT'}
                                  </p>
                             </div>
                             {/* Drums */}

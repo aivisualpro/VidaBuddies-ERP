@@ -161,6 +161,20 @@ export default function AndresTrackerPage() {
     return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm overflow-hidden animate-in fade-in duration-300";
   };
 
+  // Fetch standalone shippings + CPOs for accurate data (not stale embedded)
+  const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
+  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []),
+      fetch("/api/admin/vb-customer-po").then(r => r.json()).catch(() => []),
+    ]).then(([ships, cpos]) => {
+      setStandaloneShips(Array.isArray(ships) ? ships : []);
+      setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
+    });
+  }, [purchaseOrders]); // re-fetch when POs change
+
   const sortedPOs = useMemo(() => {
     // fast O(1) map for product ID to Name
     const productMap = new Map();
@@ -170,9 +184,20 @@ export default function AndresTrackerPage() {
       });
     }
 
+    // Build set of PO IDs that have at least 1 in-transit shipping
+    const posWithInTransit = new Set<string>();
+    standaloneShips.forEach((ship: any) => {
+      const s = (ship.status || "").toLowerCase().trim();
+      if (s === "in transit" || s === "in_transit" || s === "on water") {
+        const poId = ship.VBNumber?.toString();
+        if (poId) posWithInTransit.add(poId);
+      }
+    });
+
     let base = [...(purchaseOrders || [])]
       .filter((po) => {
         if (po.isArchived) return false;
+        if (!posWithInTransit.has(po._id?.toString())) return false;
         if (!globalSearch) return true;
         return JSON.stringify(po).toLowerCase().includes(globalSearch.toLowerCase());
       })
@@ -237,7 +262,7 @@ export default function AndresTrackerPage() {
     });
 
     return base;
-  }, [purchaseOrders, vbpoSort, storeProducts, globalSearch]);
+  }, [purchaseOrders, vbpoSort, storeProducts, globalSearch, standaloneShips]);
 
   const toggleVbpoSort = (key: typeof vbpoSort.key) => {
     setVbpoSort(prev => ({
@@ -246,19 +271,6 @@ export default function AndresTrackerPage() {
     }));
   };
 
-  // Fetch standalone shippings + CPOs for accurate data (not stale embedded)
-  const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
-  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []),
-      fetch("/api/admin/vb-customer-po").then(r => r.json()).catch(() => []),
-    ]).then(([ships, cpos]) => {
-      setStandaloneShips(Array.isArray(ships) ? ships : []);
-      setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
-    });
-  }, [purchaseOrders]); // re-fetch when POs change
 
   const sortedShippings = useMemo(() => {
     const productMap = new Map();
@@ -581,7 +593,7 @@ export default function AndresTrackerPage() {
                                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary" />
                                 </div>
                               )}
-                              <EditableCell value={po.vbpoNo} isExpanded={expandedCol === 1} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'vbpoNo', val)} />
+                              <EditableCell value={po.VBNumber} isExpanded={expandedCol === 1} onSave={(val: string) => handleInlineUpdate(po._id, 'po', '', '', 'VBNumber', val)} />
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-muted-foreground font-medium">

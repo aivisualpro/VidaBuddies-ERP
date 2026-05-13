@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
                 shipId: ship._id,
 
                 // VidaPO data
-                vbpoNo: po.VBNumber,
+                VBNumber: po.VBNumber,
                 orderType: po.orderType,
 
                 // CustomerPO data
@@ -72,9 +72,7 @@ export async function GET(req: NextRequest) {
                 supplierLocationId: ship.supplierLocation ? (supplierLocationMap.get(ship.supplierLocation) || ship.supplierLocation) : "",
                 product: (() => {
                   // Handle products array (new) or product singular (legacy)
-                  const pids = (Array.isArray(ship.products) && ship.products.length > 0)
-                    ? ship.products
-                    : ship.product ? [ship.product] : [];
+                  const pids = Array.isArray(ship.products) ? ship.products : [];
                   return pids.map((pid: string) => productMap.get(pid) || pid).join(', ') || "";
                 })(),
                 BOLNumber: ship.BOLNumber,

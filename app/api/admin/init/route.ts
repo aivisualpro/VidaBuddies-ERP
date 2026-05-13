@@ -177,7 +177,8 @@ export async function GET(request: Request) {
                 poId: po._id,
                 cpoId: cpo._id,
                 shipId: ship._id,
-                vbpoNo: po.VBNumber,
+                vbpoNo: po.VBNumber, // legacy alias kept for frontend compat
+                VBNumber: po.VBNumber,
                 orderType: po.orderType,
                 poNo: cpo.poNo,
                 customer: cpo.customer ? (customerMap.get(cpo.customer) || cpo.customer) : "",
@@ -191,12 +192,7 @@ export async function GET(request: Request) {
                   ? supplierLocationMap.get(ship.supplierLocation) || ship.supplierLocation
                   : "",
                 product: (() => {
-                  const pids =
-                    Array.isArray(ship.products) && ship.products.length > 0
-                      ? ship.products
-                      : ship.product
-                        ? [ship.product]
-                        : [];
+                  const pids = Array.isArray(ship.products) ? ship.products : [];
                   return pids.map((pid: string) => productMap.get(pid) || pid).join(", ") || "";
                 })(),
                 BOLNumber: ship.BOLNumber,

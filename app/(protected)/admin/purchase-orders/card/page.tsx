@@ -290,7 +290,7 @@ function ShippingDetailRow({
   // Resolve products
   const productIds: string[] = Array.isArray(ship.products) ? ship.products
     : typeof ship.products === "string" ? ship.products.split(",").filter(Boolean)
-    : ship.product ? [ship.product] : [];
+    : [];
   const productNames = productIds.map((id) => productMap[id] || id).filter(Boolean);
 
   // Resolve supplier name & location
