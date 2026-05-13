@@ -331,7 +331,7 @@ export default function TimelineModal({
     const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
-    const [statusFilter, setStatusFilter] = useState<string>("Open");
+    const [statusFilter, setStatusFilter] = useState<string>("");
     const [typeFilter, setTypeFilter] = useState<string>("");
 
     // ── Hierarchy data from store + standalone collections ──
@@ -559,7 +559,7 @@ export default function TimelineModal({
     };
 
     useEffect(() => {
-        if (open) { fetchEntries(); setShowAddDialog(false); setSearch(""); setSidebarSelection("all"); setStatusFilter("Open"); setTypeFilter(""); }
+        if (open) { fetchEntries(); setShowAddDialog(false); setSearch(""); setSidebarSelection("all"); setStatusFilter(""); setTypeFilter(""); }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, VBNumber, VBSerialNumber, VBShipmentNumber]);
 
@@ -716,7 +716,7 @@ export default function TimelineModal({
                         </div>
                         {/* Row 2: Status filter tabs */}
                         <div className="flex items-center gap-1">
-                            {(["Open", "In Progress", "Closed", ""] as const).map((status) => {
+                            {(["", "Open", "In Progress", "Closed"] as const).map((status) => {
                                 const label = status || "All";
                                 const count = status ? (statusCounts[status] || 0) : statusCounts.All;
                                 const isActive = statusFilter === status;

@@ -6,7 +6,7 @@ import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, MessageCircle, Paperclip } from "lucide-react";
+import { Pencil, Trash2, MessageCircle, Paperclip, Clock } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
@@ -16,6 +16,7 @@ import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
 import { useCustomers } from "@/hooks/queries/useCustomers";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
+import TimelineModal from "@/components/admin/timeline-modal";
 
 interface CustomerPO {
   _id: string;
@@ -59,6 +60,8 @@ function CustomerPOsListContent() {
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
+  const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; title?: string } | null>(null);
 
   const { data: storeCustomers = [] } = useCustomers();
   const { data: purchaseOrders = [] } = usePurchaseOrders();
@@ -149,6 +152,21 @@ function CustomerPOsListContent() {
       .then((d) => {
         setCurrentUserId(d.currentUser?.id || "");
         setAllUsers(d.users || []);
+      })
+      .catch(() => {});
+    fetch("/api/admin/timeline")
+      .then((r) => r.json())
+      .then((items) => {
+        if (Array.isArray(items)) {
+          const counts: Record<string, number> = {};
+          items.forEach((t: any) => {
+            const serialKey = (t.VBSerialNumber || '')?.toString();
+            const vbKey = (t.VBNumber || '')?.toString();
+            if (serialKey) counts[serialKey] = (counts[serialKey] || 0) + 1;
+            else if (vbKey) counts[vbKey] = (counts[vbKey] || 0) + 1;
+          });
+          setTimelineCounts(counts);
+        }
       })
       .catch(() => {});
   }, []);
@@ -300,6 +318,34 @@ function CustomerPOsListContent() {
       },
     },
     {
+      id: "timeline",
+      header: "Timeline",
+      cell: ({ row }) => {
+        const cpoId = row.original._id;
+        const count = timelineCounts[cpoId] || 0;
+        const display = row.original.VBSerialNumber || cpoId;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setTimelineOpen({
+                VBNumber: row.original.VBNumber?.toString() || undefined,
+                VBSerialNumber: cpoId?.toString() || undefined,
+                title: `Timeline — ${display}`,
+              });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <Clock className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       id: "chat",
       header: "Chat",
       cell: ({ row }) => {
@@ -437,6 +483,15 @@ function CustomerPOsListContent() {
         open={!!attachmentsPoNumber}
         onClose={() => setAttachmentsPoNumber(null)}
         poNumber={attachmentsPoNumber || ""}
+      />
+
+      {/* Timeline Modal */}
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        VBNumber={timelineOpen?.VBNumber}
+        VBSerialNumber={timelineOpen?.VBSerialNumber}
+        title={timelineOpen?.title}
       />
     </div>
   );

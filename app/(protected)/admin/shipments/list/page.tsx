@@ -112,6 +112,7 @@ function ShipmentsListContent() {
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [editingCPO, setEditingCPO] = useState<Record<string, any> | null>(null);
+  const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
 
   const openTracking = (item: ShipmentRecord) => {
     const cn = item.containerNo;
@@ -162,6 +163,22 @@ function ShipmentsListContent() {
       .then((d) => {
         setCurrentUserId(d.currentUser?.id || "");
         setAllUsers(d.users || []);
+      })
+      .catch(() => {});
+    fetch("/api/admin/timeline")
+      .then((r) => r.json())
+      .then((items) => {
+        if (Array.isArray(items)) {
+          const counts: Record<string, number> = {};
+          items.forEach((t: any) => {
+            // VBShipmentNumber is stored as ObjectId ref to shipping._id
+            const shipKey = (t.VBShipmentNumber || '')?.toString();
+            const serialKey = (t.VBSerialNumber || '')?.toString();
+            if (shipKey) counts[shipKey] = (counts[shipKey] || 0) + 1;
+            else if (serialKey) counts[serialKey] = (counts[serialKey] || 0) + 1;
+          });
+          setTimelineCounts(counts);
+        }
       })
       .catch(() => {});
   }, []);
@@ -247,6 +264,22 @@ function ShipmentsListContent() {
   }, [data]);
 
   const columns: ColumnDef<ShipmentRecord>[] = [
+    {
+      id: "VBShipmentNumber",
+      header: "Shipment #",
+      cell: ({ row }) => {
+        const label = row.original.VBShipmentNumber || row.original.svbid || "-";
+        if (label === "-") return "-";
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); setDetailShipment(row.original); }}
+            className="text-primary hover:text-primary/80 font-bold text-xs underline underline-offset-2 decoration-primary/30 hover:decoration-primary transition-colors"
+          >
+            {label}
+          </button>
+        );
+      },
+    },
     {
       accessorKey: "status",
       header: "Status",
@@ -365,6 +398,39 @@ function ShipmentsListContent() {
       accessorKey: "gallons",
       header: "Gallons",
       cell: ({ row }) => row.original.gallons?.toLocaleString() || "-",
+    },
+    {
+      id: "timeline",
+      header: "Timeline",
+      cell: ({ row }) => {
+        const shipId = row.original._id;
+        const count = timelineCounts[shipId] || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const names = {
+                vbNumber: row.original.VBNumber,
+                serial: row.original.VBSerialNumber,
+                shipNumber: row.original.VBShipmentNumber || row.original.svbid,
+              };
+              setTimelineOpen({
+                VBNumber: row.original.VBNumber?.toString() || undefined,
+                VBSerialNumber: row.original.VBSerialNumber?.toString() || undefined,
+                VBShipmentNumber: shipId?.toString() || undefined,
+                title: `Timeline — ${names.shipNumber || 'Shipping'}`,
+              });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+          >
+            <Clock className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
     },
     {
       id: "chat",
