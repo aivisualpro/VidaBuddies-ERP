@@ -20,6 +20,7 @@ import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
+import { CustomerInfoPanel } from "@/components/admin/customer-info-panel";
 
 interface ShipmentRecord {
   _id: string;
@@ -56,6 +57,7 @@ interface ShipmentRecord {
   _displaySupplier?: string;
   _displaySupplierLocation?: string;
   _displayProducts?: string[];
+  _customerId?: string | null;
 }
 
 function normalizeStatus(raw: string): string {
@@ -113,6 +115,7 @@ function ShipmentsListContent() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [editingCPO, setEditingCPO] = useState<Record<string, any> | null>(null);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
+  const [customerPanelId, setCustomerPanelId] = useState<string | null>(null);
 
   const openTracking = (item: ShipmentRecord) => {
     const cn = item.containerNo;
@@ -309,7 +312,19 @@ function ShipmentsListContent() {
       id: "customer",
       header: "Customer",
       accessorFn: (row) => (row as any)._displayCustomer || "",
-      cell: ({ row }) => (row.original as any)._displayCustomer || "-",
+      cell: ({ row }) => {
+        const name = (row.original as any)._displayCustomer;
+        const id = (row.original as any)._customerId;
+        if (!name) return "-";
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); if (id) setCustomerPanelId(id); }}
+            className="text-left font-medium text-xs hover:text-primary transition-colors underline underline-offset-2 decoration-muted-foreground/30 hover:decoration-primary"
+          >
+            {name}
+          </button>
+        );
+      },
     },
     {
       id: "customerPONo",
@@ -681,6 +696,13 @@ function ShipmentsListContent() {
         onClose={() => setEditingCPO(null)}
         editingData={editingCPO}
         onSaved={fetchData}
+      />
+
+      {/* Customer Info Panel */}
+      <CustomerInfoPanel
+        customerId={customerPanelId}
+        open={!!customerPanelId}
+        onClose={() => setCustomerPanelId(null)}
       />
     </div>
   );

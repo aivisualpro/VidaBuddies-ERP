@@ -48,6 +48,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { ShippingCard, ShippingEmptyState } from "@/components/admin/shipping-card";
+import { AttachmentsModal } from "@/components/attachments-modal";
+import { DriveDocumentsModal } from "@/components/drive-documents-modal";
+import TimelineModal from "@/components/admin/timeline-modal";
 
 interface CustomerLocation {
   _id?: string;
@@ -70,12 +74,30 @@ interface Customer {
   location: CustomerLocation[];
 }
 
-interface Shipping {
-  _id?: string;
-  vbpoId?: string;
-  vbpoNo?: string;
-  parentCpoId?: string;
-  parentCpoNo?: string;
+/** Matches VBcustomerPO collection */
+interface VBcustomerPO {
+  _id: string;
+  VBNumber?: string;           // ObjectId ref to VidaPO
+  VBSerialNumber?: string;     // display string e.g. "VB1-1"
+  customer?: string;           // ObjectId ref to VidaCustomer
+  customerLocation?: string;   // ObjectId ref to customer location subdoc
+  customerPONo?: string;
+  customerPODate?: string;
+  requestedDeliveryDate?: string;
+  qtyOrdered?: number;
+  qtyReceived?: number;
+  UOM?: string;
+  warehouse?: string;
+  createdAt?: string;
+  [key: string]: any;
+}
+
+/** Matches VBshipping collection */
+interface VBshipping {
+  _id: string;
+  VBNumber?: string;           // ObjectId ref to VidaPO
+  VBSerialNumber?: string;     // ObjectId ref to VBcustomerPO._id
+  VBShipmentNumber?: string;
   status?: string;
   ETA?: string;
   updatedETA?: string;
@@ -94,7 +116,7 @@ interface Shipping {
   estTrumpDuties?: number;
   netWeightKG?: number;
   grossWeightKG?: number;
-  ticoVB?: number;
+  ticoVB?: string;
   isArrivalNotice?: boolean;
   isGensetRequired?: boolean;
   gensetInv?: string;
@@ -118,35 +140,8 @@ interface Shipping {
   isTruckerReceivedDeliveryOrder?: boolean;
   createdBy?: string;
   updateShipmentTracking?: string;
-  _poId: string;
-  _cpoIdx: number;
-  _shipIdx: number;
+  products?: string[];
   [key: string]: any;
-}
-
-interface CustomerPO {
-  _id?: string;
-  poNo?: string;
-  customer?: string;
-  customerLocation?: string;
-  customerPONo?: string;
-  customerPODate?: string;
-  requestedDeliveryDate?: string;
-  qtyOrdered?: number;
-  qtyReceived?: number;
-  UOM?: string;
-  warehouse?: string;
-  shipping?: Shipping[];
-}
-
-interface PurchaseOrder {
-  _id: string;
-  vbpoNo: string;
-  orderType: string;
-  date: string;
-  category: string;
-  createdBy: string;
-  customerPO: CustomerPO[];
 }
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -164,15 +159,25 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [tempName, setTempName] = useState("");
+  // Full location edit state
+  const [tempLocation, setTempLocation] = useState<CustomerLocation | null>(null);
+  // Full edit state for the customer edit dialog
+  const [tempCustomer, setTempCustomer] = useState<Customer | null>(null);
 
-  // Data for POs & Shippings
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  // Order History & Active Logistics — from /api/admin/customers/[id]/orders
+  const [cpos, setCpos] = useState<VBcustomerPO[]>([]);
+  const [shippings, setShippings] = useState<VBshipping[]>([]);
   const [supplierLocations, setSupplierLocations] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<Record<string, string>>({});
   const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
+
+  // Modal states for ShippingCard actions
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -204,125 +209,91 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   }, [customer, setLeftContent, setRightContent]);
 
   useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const [custRes, poRes, supRes, prodRes, userRes] = await Promise.all([
-          fetch(`/api/admin/customers/${id}`).then(r => r.json()),
-          fetch("/api/admin/purchase-orders").then(r => r.json()),
-          fetch("/api/admin/suppliers").then(r => r.json()),
-          fetch("/api/admin/products").then(r => r.json()),
-          fetch("/api/admin/users").then(r => r.json()),
-        ]);
+    // Phase 1: customer record (fast)
+    fetch(`/api/admin/customers/${id}`)
+      .then(r => r.json())
+      .then(custRes => { setCustomer(custRes); setLoading(false); })
+      .catch(() => { toast.error("Error loading customer"); setLoading(false); });
 
-        setCustomer(custRes);
+    // Phase 2a: CPOs + shipments for this customer only
+    fetch(`/api/admin/customers/${id}/orders`)
+      .then(r => r.json())
+      .then(({ cpos: cpoData, shippings: shipData }) => {
+        setCpos(Array.isArray(cpoData) ? cpoData : []);
+        setShippings(Array.isArray(shipData) ? shipData : []);
+      })
+      .catch(() => toast.error("Error loading order history"));
 
-        if (Array.isArray(poRes)) {
-           setPurchaseOrders(poRes);
-        }
-
-        if (Array.isArray(userRes)) {
-          const mapping: Record<string, string> = {};
-          userRes.forEach((u: any) => {
-            mapping[u.email.toLowerCase()] = u.name;
-          });
-          setUsers(mapping);
-        }
-
-
-        if (Array.isArray(supRes)) {
-          const mapping: Record<string, string> = {};
-          supRes.forEach((sup: any) => {
-            if (sup.location && Array.isArray(sup.location)) {
-              sup.location.forEach((loc: any) => {
-                if (loc.vbId) mapping[loc.vbId] = loc.locationName || `${sup.name} - ${loc.city}`;
-              });
-            }
-          });
-          setSupplierLocations(mapping);
-        }
-
-        if (Array.isArray(prodRes)) {
-          const mapping: Record<string, string> = {};
-          prodRes.forEach((p: any) => {
-            mapping[p._id] = p.name;
-            if (p.vbId) mapping[p.vbId] = p.name;
-          });
-          setProducts(mapping);
-        }
-      } catch (error) {
-        toast.error("Error loading dashboard data");
-      } finally {
-        setLoading(false);
-        setDataLoading(false);
+    // Phase 2b: lookup tables for display (suppliers, products, users)
+    Promise.all([
+      fetch("/api/admin/suppliers").then(r => r.json()),
+      fetch("/api/admin/products").then(r => r.json()),
+      fetch("/api/admin/users").then(r => r.json()),
+    ]).then(([supRes, prodRes, userRes]) => {
+      if (Array.isArray(userRes)) {
+        const mapping: Record<string, string> = {};
+        userRes.forEach((u: any) => { mapping[u.email.toLowerCase()] = u.name; });
+        setUsers(mapping);
       }
-    };
-
-    fetchInitialData();
+      if (Array.isArray(supRes)) {
+        const mapping: Record<string, string> = {};
+        supRes.forEach((sup: any) => {
+          if (sup.location && Array.isArray(sup.location)) {
+            sup.location.forEach((loc: any) => {
+              if (loc._id) mapping[loc._id.toString()] = loc.locationName || `${sup.name} - ${loc.city}`;
+              if (loc.vbId) mapping[loc.vbId] = loc.locationName || `${sup.name} - ${loc.city}`;
+            });
+          }
+        });
+        setSupplierLocations(mapping);
+      }
+      if (Array.isArray(prodRes)) {
+        const mapping: Record<string, string> = {};
+        prodRes.forEach((p: any) => { mapping[p._id] = p.name; if (p.vbId) mapping[p.vbId] = p.name; });
+        setProducts(mapping);
+      }
+    }).catch(() => toast.error("Error loading lookup data"))
+      .finally(() => setDataLoading(false));
   }, [id]);
 
-  const filteredCustomerPOs = purchaseOrders.flatMap(po => 
-    (po.customerPO || []).filter(cpo => {
-      const matchCust = cpo.customer === customer?.vbId;
-      const matchLoc = !selectedLocationId || cpo.customerLocation === selectedLocationId;
-      return matchCust && matchLoc;
-    }).map(cpo => ({
-      ...cpo,
-      vbpoId: po._id,
-      vbpoNo: po.vbpoNo,
-      orderCategory: po.category,
-      createdBy: po.createdBy
-    }))
-  ).sort((a, b) => new Date(b.customerPODate || '').getTime() - new Date(a.customerPODate || '').getTime());
+  // ── Derived data ──────────────────────────────────────────────────────────
+  // Filter CPOs by selected location (if any)
+  const filteredCustomerPOs = selectedLocationId
+    ? cpos.filter(cpo => cpo.customerLocation === selectedLocationId)
+    : cpos;
 
+  // Build set of CPO IDs that belong to the filtered CPOs (for shipment cascade)
+  const filteredCpoIds = new Set(filteredCustomerPOs.map(cpo => cpo._id));
 
-  const allShippings: Shipping[] = filteredCustomerPOs.flatMap(cpo => {
-    const po = purchaseOrders.find(p => p._id === cpo.vbpoId);
-    const cpoIdx = po?.customerPO.findIndex(c => c._id === cpo._id) ?? -1;
-    
-    return (cpo.shipping || []).map((ship, sIdx) => ({
-      ...ship,
-      parentCpoNo: cpo.poNo,
-      parentCpoId: cpo._id,
-      vbpoNo: cpo.vbpoNo,
-      vbpoId: cpo.vbpoId,
-      _poId: cpo.vbpoId!,
-      _cpoIdx: cpoIdx,
-      _shipIdx: sIdx
-    }));
-  }).sort((a, b) => new Date(b.ETA || '').getTime() - new Date(a.ETA || '').getTime());
+  // Filter shippings:
+  //  - If a CPO is selected: show only shippings for that CPO
+  //  - Else if a location is selected: show shippings for all CPOs at that location
+  //  - Else: show all shippings
+  const filteredShippings = selectedCpoId
+    ? shippings.filter(s => s.VBSerialNumber === selectedCpoId)
+    : selectedLocationId
+      ? shippings.filter(s => filteredCpoIds.has(s.VBSerialNumber || ''))
+      : shippings;
 
-  const filteredShippings = selectedCpoId 
-    ? allShippings.filter(s => s.parentCpoId === selectedCpoId)
-    : allShippings;
-
-  const updateShippingField = async (poId: string, cpoIdx: number, shipIdx: number, field: string, value: any) => {
-      if (cpoIdx === -1 || shipIdx === -1) return;
-
-      // Optimistic Update
-      setPurchaseOrders(prev => prev.map(p => {
-        if (p._id !== poId) return p;
-        const newPO = { ...p };
-        newPO.customerPO = [...p.customerPO];
-        const cpo = { ...newPO.customerPO[cpoIdx] };
-        cpo.shipping = [...(cpo.shipping || [])];
-        cpo.shipping[shipIdx] = { ...cpo.shipping[shipIdx], [field]: value };
-        newPO.customerPO[cpoIdx] = cpo;
-        return newPO;
-      }));
-
-      try {
-        const updateKey = `customerPO.${cpoIdx}.shipping.${shipIdx}.${field}`;
-        const response = await fetch(`/api/admin/purchase-orders/${poId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ [updateKey]: value })
-        });
-        
-        if (!response.ok) throw new Error("Update failed");
-      } catch (error) {
-        toast.error("Failed to update");
-        // Could refresh if needed
-      }
+  // Update a single field on a VBshipping record (optimistic)
+  const updateShippingField = async (shipId: string, field: string, value: any) => {
+    // Optimistic update
+    setShippings(prev => prev.map(s => s._id === shipId ? { ...s, [field]: value } : s));
+    try {
+      const res = await fetch(`/api/admin/vb-shipping/${shipId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+    } catch {
+      toast.error("Failed to update");
+      // Re-fetch to restore correct state
+      fetch(`/api/admin/customers/${id}/orders`)
+        .then(r => r.json())
+        .then(({ shippings: shipData }) => { if (Array.isArray(shipData)) setShippings(shipData); })
+        .catch(() => {});
+    }
   };
 
 
@@ -384,33 +355,49 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     if (!customer) return;
     const location = customer.location.find((l, idx) => (l._id || idx.toString()) === locationId);
     if (!location) return;
-    
     setEditingLocationId(locationId);
-    setTempName(location.locationName);
+    setTempLocation({ ...location }); // clone so edits are isolated
     setIsEditDialogOpen(true);
   };
 
-  const confirmEditLocation = async () => {
-    if (!customer || !editingLocationId) return;
+  const handleTempLocFieldChange = (field: keyof CustomerLocation, value: string) => {
+    if (!tempLocation) return;
+    const updated = { ...tempLocation, [field]: value };
+    // Auto-sync fullAddress from individual fields
+    if (['street', 'city', 'state', 'zip', 'country'].includes(field)) {
+      const { street, city, state, zip, country } = updated;
+      updated.fullAddress = [street, city, state, zip, country].filter(Boolean).join(", ");
+    }
+    // Auto-parse fullAddress into individual fields
+    if (field === 'fullAddress') {
+      const parts = value.split(',').map((s: string) => s.trim());
+      if (parts[0] !== undefined) updated.street = parts[0];
+      if (parts[1] !== undefined) updated.city = parts[1];
+      if (parts[2] !== undefined) updated.state = parts[2];
+      if (parts[3] !== undefined) updated.zip = parts[3];
+      if (parts[4] !== undefined) updated.country = parts[4];
+    }
+    setTempLocation(updated);
+  };
 
+  const confirmEditLocation = async () => {
+    if (!customer || !editingLocationId || !tempLocation) return;
     try {
       const updatedLocations = customer.location.map((loc, idx) => {
         if ((loc._id || idx.toString()) === editingLocationId) {
-          return { ...loc, locationName: tempName };
+          return { ...loc, ...tempLocation };
         }
         return loc;
       });
-
       const updateRes = await fetch(`/api/admin/customers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ location: updatedLocations }),
       });
-
       if (updateRes.ok) {
         const updatedCustomer = await updateRes.json();
         setCustomer(updatedCustomer);
-        toast.success("Location name updated!");
+        toast.success("Location updated!");
         setIsEditDialogOpen(false);
       }
     } catch (error) {
@@ -482,25 +469,63 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const handleEditDetails = () => {
     if (!customer) return;
     setTempName(customer.name);
+    // Deep-clone so edits don't mutate display state
+    setTempCustomer(JSON.parse(JSON.stringify(customer)));
     setIsCustomerEditDialogOpen(true);
   };
 
+  const handleTempLocationChange = (index: number, field: keyof CustomerLocation, value: string) => {
+    if (!tempCustomer) return;
+    const newLocs = [...tempCustomer.location];
+    const loc = { ...newLocs[index], [field]: value };
+    // Auto-sync fullAddress
+    if (['street', 'city', 'state', 'zip', 'country'].includes(field)) {
+      const { street, city, state, zip, country } = loc;
+      loc.fullAddress = [street, city, state, zip, country].filter(Boolean).join(", ");
+    }
+    // Auto-parse fullAddress
+    if (field === 'fullAddress') {
+      const parts = value.split(',').map((s: string) => s.trim());
+      if (parts[0]) loc.street = parts[0];
+      if (parts[1]) loc.city = parts[1];
+      if (parts[2]) loc.state = parts[2];
+      if (parts[3]) loc.zip = parts[3];
+      if (parts[4]) loc.country = parts[4];
+    }
+    newLocs[index] = loc;
+    setTempCustomer({ ...tempCustomer, location: newLocs });
+  };
+
+  const handleTempAddLocation = () => {
+    if (!tempCustomer) return;
+    const newLoc: CustomerLocation = {
+      vbId: "", locationName: "", street: "", city: "",
+      state: "", country: "", zip: "", fullAddress: "", website: "",
+    };
+    setTempCustomer({ ...tempCustomer, location: [...tempCustomer.location, newLoc] });
+  };
+
+  const handleTempRemoveLocation = (index: number) => {
+    if (!tempCustomer) return;
+    const newLocs = tempCustomer.location.filter((_, i) => i !== index);
+    setTempCustomer({ ...tempCustomer, location: newLocs });
+  };
+
   const confirmEditCustomer = async () => {
-    if (!customer || !tempName || tempName === customer.name) {
+    if (!customer || !tempCustomer) {
       setIsCustomerEditDialogOpen(false);
       return;
     }
-
     try {
       const updateRes = await fetch(`/api/admin/customers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: tempName }),
+        body: JSON.stringify({ name: tempCustomer.name, vbId: tempCustomer.vbId, location: tempCustomer.location }),
       });
-
       if (updateRes.ok) {
-        setCustomer({ ...customer, name: tempName });
-        toast.success("Customer name updated!");
+        const updated = await updateRes.json();
+        setCustomer(updated);
+        toast.success("Customer updated!");
         setIsCustomerEditDialogOpen(false);
       }
     } catch (error) {
@@ -543,10 +568,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               customer.location.map((loc: CustomerLocation, idx) => (
                 <div 
                   key={loc._id || idx} 
-                  onClick={() => setSelectedLocationId(selectedLocationId === loc.vbId ? null : loc.vbId)}
+                  onClick={() => setSelectedLocationId(selectedLocationId === loc._id ? null : loc._id || null)}
                   className={cn(
                     "group relative h-60 overflow-hidden rounded-3xl border shadow-none transition-all duration-500 hover:-translate-y-2 cursor-pointer",
-                    selectedLocationId === loc.vbId ? "border-primary ring-1 ring-primary bg-primary/10" : "border-border hover:border-primary/40 bg-transparent"
+                    selectedLocationId === loc._id ? "border-primary ring-1 ring-primary bg-primary/10" : "border-border hover:border-primary/40 bg-transparent"
                   )}
                 >
                   {/* Nano Banana Background Image - Better visibility for Light Theme */}
@@ -668,7 +693,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             {filteredCustomerPOs.length > 0 ? (
               filteredCustomerPOs.map((cpo, idx) => {
                 const poLocations: Record<string, string> = {};
-                customer.location.forEach(l => { poLocations[l.vbId] = l.locationName; });
+                // key by both _id (ObjectId) and vbId for forward/backward compat
+                customer.location.forEach(l => {
+                  if (l._id) poLocations[l._id] = l.locationName;
+                  if (l.vbId) poLocations[l.vbId] = l.locationName;
+                });
 
                 return (
                 <div 
@@ -688,11 +717,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                   />
                   
                   <div className="relative z-10 flex flex-col gap-[8px]">
-                    {/* Row 1: poNo and customerPONo (Inline) */}
+                    {/* Row 1: Serial # and customerPONo */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <h3 className="text-lg font-black leading-tight text-foreground uppercase tracking-tight">
-                          {cpo.poNo || "UNNAMED"}
+                          {cpo.VBSerialNumber || cpo._id?.slice(-6) || "CPO"}
                         </h3>
                         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg border border-border/50">
                           <span className="text-[9px] font-black tracking-widest text-muted-foreground uppercase opacity-60">REF:</span>
@@ -708,7 +737,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
                            onClick={(e) => { 
                                e.stopPropagation(); 
-                               router.push(`/admin/purchase-orders/${cpo.vbpoId}`);
+                               if (cpo.VBNumber) router.push(`/admin/purchase-orders/${cpo.VBNumber}`);
+                               else toast.info("No linked Purchase Order");
                            }}
                          >
                             <Pencil className="h-3.5 w-3.5" />
@@ -776,7 +806,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       </div>
                     </div>
 
-                    {/* Row 5: Warehouse & Actions */}
+                    {/* Row 5: Warehouse & VBSerialNumber */}
                     <div className="flex items-center justify-between pt-1">
                       <div className="flex items-center gap-2">
                          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -791,9 +821,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       </div>
                       
                       <div className="flex flex-col items-end">
-                          <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-50">VBPO</p>
+                          <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-50">Serial #</p>
                           <p className="text-[10px] font-black uppercase tracking-widest text-primary">
-                             {cpo.vbpoNo}
+                             {cpo.VBSerialNumber || '-'}
                           </p>
                       </div>
                     </div>
@@ -811,398 +841,185 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         {/* Column 3: Shippings */}
-        <div className="col-span-7 flex flex-col gap-[8px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
+        <div className="col-span-7 flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
           <div className="sticky top-0 z-20 flex items-center justify-between p-[8px] mb-[4px] backdrop-blur-xl border-b border-border/20 bg-transparent">
             <div className="flex items-center gap-2">
               <Truck className="h-4 w-4 text-primary" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Active Logistics</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Shippings</span>
             </div>
             <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black border border-primary/20">
               {filteredShippings.length}
             </span>
           </div>
 
-          <div className="space-y-[8px]">
+          <div className="space-y-4">
             {filteredShippings.length > 0 ? (
               filteredShippings.map((ship, idx) => (
-                <div key={idx} className="relative overflow-hidden rounded-3xl text-card-foreground border border-border shadow-sm p-[8px] space-y-[8px] bg-transparent">
-                    {/* Background Pattern */}
-                    {/* Background Accents Removed */}
-                    <img 
-                      src="/images/nano_banana_bg.png" 
-                      alt="bg" 
-                      className="absolute inset-0 w-full h-full object-cover opacity-[0.10] mix-blend-multiply dark:mix-blend-overlay group-hover:scale-110 transition-all duration-1000 pointer-events-none"
-                    />
-
-                    {/* Actions: Edit/Delete (Top Right) */}
-                    <div className="absolute top-5 right-5 z-20 flex items-center gap-1">
-                        <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                            onClick={() => router.push(`/admin/purchase-orders/${ship.vbpoId}`)}
-                        >
-                            <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                toast.info("Delete shipping from Purchase Orders detail page");
-                            }}
-                        >
-                            <Trash className="h-3 w-3" />
-                        </Button>
-                    </div>
-
-                    {/* Row 1: VBID | Container | BOL | Status */}
-
-                    <div className="grid grid-cols-4 gap-4 relative z-10">
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-70">VBID</p>
-                            <p className="text-sm font-bold">{ship.svbid || ship.vbpoNo}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-70">Container</p>
-                            <p className="text-sm font-bold uppercase">{ship.containerNo || '-'}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-70">BOL Number</p>
-                            <p className="text-sm font-bold uppercase">{ship.BOLNumber || '-'}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-70">Status</p>
-                            <p className="text-sm font-bold uppercase">{ship.status || 'Active'}</p>
-                        </div>
-                    </div>
-
-                    <Separator className="bg-border/30 relative z-10" />
-
-                    {/* Row 2: Supplier Info Grid */}
-                    <div className="grid grid-cols-3 gap-[8px] rounded-2xl p-[8px] border border-border/50 relative z-10">
-                        <div className="flex flex-col items-center gap-1 text-center">
-                            <MapPin className="h-4 w-4 text-primary/60" />
-                            <p className="text-[10px] font-black text-foreground truncate w-full px-1" title={(ship.supplierLocation ? supplierLocations[ship.supplierLocation as string] : undefined) || ship.supplierLocation}>
-                                {(ship.supplierLocation ? supplierLocations[ship.supplierLocation as string] : undefined) || ship.supplierLocation || 'N/A'}
-                            </p>
-                            <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Supplier Loc</p>
-                        </div>
-                        <div className="flex flex-col items-center gap-1 text-center border-x border-border/50">
-                            <Hash className="h-4 w-4 text-primary" />
-                            <p className="text-[11px] font-black text-foreground truncate w-full px-1">
-                                {ship.supplierPO || '-'}
-                            </p>
-                            <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Supplier PO</p>
-                        </div>
-                        <div className="flex flex-col items-center gap-1 text-center">
-                            <Calendar className="h-4 w-4 text-primary/60" />
-                            <p className="text-[11px] font-black text-foreground">
-                                {formatDate(ship.supplierPoDate)}
-                            </p>
-                            <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">PO Date</p>
-                        </div>
-                    </div>
-
-                    {/* Row 3 & 4: Logistics & Timeline */}
-                    <div className="rounded-2xl border border-border/50 relative z-10 flex flex-col">
-                        <div className="grid grid-cols-3 gap-2 p-3">
-                            <div className="flex flex-col items-center gap-1 text-center">
-                                <Truck className="h-4 w-4 text-primary/60" />
-                                <p className="text-[10px] font-black text-foreground truncate w-full px-1" title={ship.carrier}>
-                                    {ship.carrier || '-'}
-                                </p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Carrier</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center border-x border-border/50">
-                                <Tag className="h-4 w-4 text-primary" />
-                                <p className="text-[11px] font-black text-foreground truncate w-full px-1" title={ship.carrierBookingRef}>
-                                    {ship.carrierBookingRef || '-'}
-                                </p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Booking Ref</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center">
-                                <Box className="h-4 w-4 text-primary/60" />
-                                <p className="text-[11px] font-black text-foreground truncate w-full px-1" title={ship.vessellTrip}>
-                                    {ship.vessellTrip || '-'}
-                                </p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Vessel / Trip</p>
-                            </div>
-                        </div>
-
-                        <Separator className="bg-border/30" />
-
-                        <div className="grid grid-cols-5 gap-0 p-2">
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <MapPin className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full" title={ship.portOfLading}>{ship.portOfLading || '-'}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Lading</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <MapPin className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full" title={ship.portOfEntryShipTo}>{ship.portOfEntryShipTo || '-'}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Entry</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Calendar className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{formatDate(ship.dateOfLanding)}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Landing</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Calendar className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{formatDate(ship.ETA)}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">ETA</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1 text-center px-1">
-                                <Calendar className="h-3.5 w-3.5 text-primary" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{formatDate(ship.updatedETA)}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Upd ETA</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <Separator className="bg-border/30 relative z-10" />
-
-                    {/* Row 4: Cargo & Financials Card */}
-                    <div className="rounded-2xl border border-border/50 relative z-10 flex flex-col mt-4">
-                         {/* Row 1: Product Info */}
-                         <div className="grid grid-cols-5 gap-0 p-2">
-                            {/* Product (Wider) */}
-                            <div className="col-span-2 flex flex-col items-center justify-center text-center border-r border-border/50 px-2 py-1">
-                                 <p className="text-[11px] font-black text-foreground truncate w-full" title={(Array.isArray(ship.products) ? ship.products.map((id: string) => products[id] || id).join(', ') : undefined) || 'UNKNOWN PRODUCT'}>
-                                    {(Array.isArray(ship.products) && ship.products.length > 0) ? ship.products.map((id: string) => products[id] || id).join(', ') : 'UNKNOWN PRODUCT'}
-                                 </p>
-                            </div>
-                            {/* Drums */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Box className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.drums || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Drums</p>
-                            </div>
-                             {/* Pallets */}
-                             <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Box className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.pallets || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Pallets</p>
-                            </div>
-                             {/* Gallons */}
-                             <div className="flex flex-col items-center gap-1 text-center px-1">
-                                <Box className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.gallons || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Gallons</p>
-                            </div>
-                        </div>
-
-                        <Separator className="bg-border/30" />
-
-                        {/* Row 2: Values & Weights */}
-                        <div className="grid grid-cols-5 gap-0 p-2">
-                            {/* Inv Value */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Hash className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">${ship.invValue || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Inv Value</p>
-                            </div>
-                            {/* Est. Duties */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Hash className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">${ship.estTrumpDuties || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Est. Duties</p>
-                            </div>
-                            {/* Net KG */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Box className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.netWeightKG || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Net KG</p>
-                            </div>
-                            {/* Gross KG */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1">
-                                <Box className="h-3.5 w-3.5 text-primary/60" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.grossWeightKG || 0}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Gross KG</p>
-                            </div>
-                            {/* Tico VB */}
-                            <div className="flex flex-col items-center gap-1 text-center px-1">
-                                <Tag className="h-3.5 w-3.5 text-primary" />
-                                <p className="text-[9px] font-black text-foreground truncate w-full">{ship.ticoVB || '-'}</p>
-                                <p className="text-[7px] font-black uppercase text-muted-foreground/60 tracking-widest">Tico VB</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Row 5: Logistics & Documentation Master Grid */}
-                    <div className="rounded-2xl border border-border/50 relative z-10 flex flex-col mt-4">
-                        
-                        {/* Grid Row 1: Arrival | Genset | Fees */}
-                        <div className="grid grid-cols-5 gap-0 p-2 border-b border-border/30">
-                             {/* Arrival Notice */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Arrival Notice</p>
-                                <Switch 
-                                  checked={!!ship.isArrivalNotice} 
-                                  onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isArrivalNotice', v)} 
-                                  className="scale-75 data-[state=checked]:bg-primary cursor-pointer" 
-                                />
-                            </div>
-                            {/* Genset Req */}
-                            <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Genset Req</p>
-                                <Switch checked={!!ship.isGensetRequired} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isGensetRequired', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                            {/* Genset Inv */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1 pt-1.5">
-                                <p className="text-[10px] font-bold text-foreground truncate w-full">{ship.gensetInv || '-'}</p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Genset Inv</p>
-                            </div>
-                             {/* Genset Emailed */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Genset Emailed</p>
-                                <Switch checked={!!ship.gensetEmailed} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'gensetEmailed', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Collect Fees */}
-                             <div className="flex flex-col items-center gap-1.5 text-center px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Collect Fees</p>
-                                <Switch checked={!!ship.isCollectFeesPaid} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isCollectFeesPaid', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                        </div>
-
-                        {/* Grid Row 2: Financials | DO | Docs A */}
-                        <div className="grid grid-cols-5 gap-0 p-2 border-b border-border/30">
-                            {/* Amount */}
-                            <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1 pt-1.5">
-                                <p className="text-[10px] font-bold text-foreground">${ship.feesAmount || 0}</p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Amount</p>
-                            </div>
-                             {/* Est Duties */}
-                             <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1 pt-1.5">
-                                <p className="text-[10px] font-bold text-foreground">${ship.estimatedDuties || 0}</p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Est Duties</p>
-                            </div>
-                             {/* DO Created */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">DO Created</p>
-                                <Switch checked={!!ship.isDOCreated} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isDOCreated', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Sup Inv */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Sup Inv</p>
-                                <Switch checked={!!ship.isSupplierInvoice} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isSupplierInvoice', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Man Sec ISF */}
-                             <div className="flex flex-col items-center gap-1.5 text-center px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Man Sec ISF</p>
-                                <Switch checked={!!ship.isManufacturerSecurityISF} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isManufacturerSecurityISF', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                        </div>
-
-                        {/* Grid Row 3: Docs B */}
-                        <div className="grid grid-cols-5 gap-0 p-2 border-b border-border/30">
-                             {/* VB ISF */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">VB ISF</p>
-                                <Switch checked={!!ship.isVidaBuddiesISFFiling} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isVidaBuddiesISFFiling', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Pack List */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Pack List</p>
-                                <Switch checked={!!ship.isPackingList} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isPackingList', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Cert Analysis */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Cert Analysis</p>
-                                <Switch checked={!!ship.isCertificateOfAnalysis} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isCertificateOfAnalysis', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Cert Origin */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Cert Origin</p>
-                                <Switch checked={!!ship.isCertificateOfOrigin} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isCertificateOfOrigin', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Bill of Lading */}
-                             <div className="flex flex-col items-center gap-1.5 text-center px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Bill of Lading</p>
-                                <Switch checked={!!ship.IsBillOfLading || !!ship.isBillOfLading} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'IsBillOfLading', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                        </div>
-
-                        {/* Grid Row 4: Final Status & Logistics */}
-                        <div className="grid grid-cols-5 gap-0 p-2">
-                             {/* Docs to Broker */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Docs to Broker</p>
-                                <Switch checked={!!ship.isAllDocumentsProvidedToCustomsBroker} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isAllDocumentsProvidedToCustomsBroker', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Customs Stat */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Customs Stat</p>
-                                <Switch checked={!!ship.isCustomsStatus} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isCustomsStatus', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Drayage Asg */}
-                             <div className="flex flex-col items-center gap-1.5 text-center border-r border-border/50 px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Drayage Asg</p>
-                                <Switch checked={!!ship.IsDrayageAssigned} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'IsDrayageAssigned', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                             {/* Trucker Notif */}
-                             <div className="flex flex-col items-center gap-1 text-center border-r border-border/50 px-1 pt-1.5">
-                                <p className="text-[9px] font-bold text-foreground truncate w-full">{formatDate(ship.truckerNotifiedDate)}</p>
-                                <p className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Trucker Notif</p>
-                            </div>
-                             {/* Trucker DO */}
-                             <div className="flex flex-col items-center gap-1.5 text-center px-1">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground">Trucker DO</p>
-                                <Switch checked={!!ship.isTruckerReceivedDeliveryOrder} onCheckedChange={(v) => updateShippingField(ship._poId, ship._cpoIdx, ship._shipIdx, 'isTruckerReceivedDeliveryOrder', v)} className="scale-75 data-[state=checked]:bg-primary cursor-pointer" />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Row 13: Meta */}
-                    <div className="flex items-center justify-between pt-4 relative z-10 border-t border-border/30">
-                        <div className="flex items-center gap-4">
-                            <div className="flex flex-col">
-                                <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Created By</p>
-                                <p className="text-[10px] font-bold uppercase">{ship.createdBy ? (users[ship.createdBy.toLowerCase()] || ship.createdBy) : 'System'}</p>
-                            </div>
-                        </div>
-                        
-                        <div className="flex flex-col items-end max-w-[50%]">
-                            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Tracking Log</p>
-                            <p className="text-[10px] font-bold uppercase truncate">{ship.updateShipmentTracking || '-'}</p>
-                        </div>
-                    </div>
-                </div>
+                <ShippingCard
+                  key={ship._id || idx}
+                  ship={ship}
+                  index={idx}
+                  supplierLocations={supplierLocations}
+                  products={products}
+                  onUpdateField={(shipId, field, value) => updateShippingField(shipId, field, value)}
+                  onAttachments={(s) => {
+                    // Resolve the parent CPO to get its VBSerialNumber (used as the spoNumber / folder name)
+                    const parentCpo = cpos.find(c => c._id === s.VBSerialNumber);
+                    // Resolve the parent PO VBNumber from the CPO's VBNumber field (it stores the PO _id)
+                    // We navigate to drive docs using VBNumber string, not ObjectId
+                    setAttachmentsOpen({
+                      poNumber: parentCpo?.VBNumber || s.VBNumber || '',
+                      spoNumber: parentCpo?.VBSerialNumber || '',
+                      shipNumber: s.VBShipmentNumber || s.svbid || undefined,
+                    });
+                  }}
+                  onTimeline={(s) => setTimelineOpen({
+                    VBNumber: s.VBNumber,
+                    VBSerialNumber: s.VBSerialNumber,
+                    VBShipmentNumber: s._id,
+                    title: `Timeline — ${s.VBShipmentNumber || 'Shipping'}`,
+                  })}
+                  onEdit={(s) => router.push(`/admin/shipments/list`)}
+                  onDelete={(s) => {
+                    toast("Delete Shipping?", {
+                      description: "This cannot be undone.",
+                      duration: 10000,
+                      cancel: { label: "Cancel", onClick: () => {} },
+                      action: {
+                        label: "Delete",
+                        onClick: async () => {
+                          try {
+                            const res = await fetch(`/api/admin/vb-shipping/${s._id}`, { method: "DELETE" });
+                            if (!res.ok) throw new Error();
+                            setShippings(prev => prev.filter(x => x._id !== s._id));
+                            toast.success("Shipping deleted");
+                          } catch { toast.error("Error deleting shipping"); }
+                        }
+                      }
+                    });
+                  }}
+                />
               ))
             ) : (
-
-              <div className="flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] opacity-50">
-                <Truck className="h-10 w-10 text-muted-foreground/30 mb-4" />
-                <p className="font-black uppercase text-[10px] tracking-[0.3em] text-muted-foreground">No Active Ships</p>
-              </div>
+              <ShippingEmptyState />
             )}
           </div>
         </div>
       </div>
 
-      {/* Edit Location Dialog */}
+
+      {/* Edit Location Dialog — all fields */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Location Name</DialogTitle>
+            <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Location</DialogTitle>
             <DialogDescription className="text-muted-foreground uppercase text-[10px] tracking-widest font-bold">
-              Update the name for this site.
+              Update all details for this site.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">Location Name</Label>
-              <Input
-                id="name"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                className="rounded-2xl bg-foreground/5 border-border focus-visible:ring-primary h-12 text-sm font-bold"
-              />
+          {tempLocation && (
+            <div className="grid gap-4 py-4">
+              {/* Row 1: VB ID + Name */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Location VB ID</Label>
+                  <Input
+                    value={tempLocation.vbId || ""}
+                    onChange={(e) => handleTempLocFieldChange("vbId", e.target.value)}
+                    placeholder="LOC-001"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Location Name</Label>
+                  <Input
+                    value={tempLocation.locationName || ""}
+                    onChange={(e) => handleTempLocFieldChange("locationName", e.target.value)}
+                    placeholder="Main Warehouse"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Street + City */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Street</Label>
+                  <Input
+                    value={tempLocation.street || ""}
+                    onChange={(e) => handleTempLocFieldChange("street", e.target.value)}
+                    placeholder="123 Main St"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">City</Label>
+                  <Input
+                    value={tempLocation.city || ""}
+                    onChange={(e) => handleTempLocFieldChange("city", e.target.value)}
+                    placeholder="New York"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: State + Zip + Country */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">State</Label>
+                  <Input
+                    value={tempLocation.state || ""}
+                    onChange={(e) => handleTempLocFieldChange("state", e.target.value)}
+                    placeholder="NY"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Zip Code</Label>
+                  <Input
+                    value={tempLocation.zip || ""}
+                    onChange={(e) => handleTempLocFieldChange("zip", e.target.value)}
+                    placeholder="10001"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Country</Label>
+                  <Input
+                    value={tempLocation.country || ""}
+                    onChange={(e) => handleTempLocFieldChange("country", e.target.value)}
+                    placeholder="USA"
+                    className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Full Address — auto-syncs */}
+              <div className="grid gap-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
+                  Full Address
+                  <span className="ml-1 normal-case font-normal text-muted-foreground/50">(auto-syncs from fields above)</span>
+                </Label>
+                <Input
+                  value={tempLocation.fullAddress || ""}
+                  onChange={(e) => handleTempLocFieldChange("fullAddress", e.target.value)}
+                  placeholder="123 Main St, New York, NY, 10001, USA"
+                  className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                />
+              </div>
+
+              {/* Website */}
+              <div className="grid gap-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Website</Label>
+                <Input
+                  value={tempLocation.website || ""}
+                  onChange={(e) => handleTempLocFieldChange("website", e.target.value)}
+                  placeholder="https://example.com"
+                  className="rounded-xl bg-foreground/5 border-border focus-visible:ring-primary"
+                />
+              </div>
             </div>
-          </div>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsEditDialogOpen(false)} className="rounded-full font-black uppercase text-[10px] tracking-widest">Cancel</Button>
             <Button onClick={confirmEditLocation} className="rounded-full font-black uppercase text-[10px] tracking-widest shadow-lg shadow-primary/20">Save Changes</Button>
@@ -1226,33 +1043,144 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         </DialogContent>
       </Dialog>
 
-      {/* Edit Customer Dialog */}
+      {/* Edit Customer Dialog — full fields */}
       <Dialog open={isCustomerEditDialogOpen} onOpenChange={setIsCustomerEditDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Customer Name</DialogTitle>
+            <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Customer</DialogTitle>
             <DialogDescription className="text-muted-foreground uppercase text-[10px] tracking-widest font-bold">
-              Update the main registration name.
+              Update customer details and all locations.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="custName" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">Customer Name</Label>
-              <Input
-                id="custName"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                className="rounded-2xl bg-foreground/5 border-border focus-visible:ring-primary h-12 text-sm font-bold"
-              />
+          {tempCustomer && (
+            <div className="grid gap-6 py-4">
+              {/* Core fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">VB ID</Label>
+                  <Input
+                    value={tempCustomer.vbId || ""}
+                    onChange={(e) => setTempCustomer({ ...tempCustomer, vbId: e.target.value })}
+                    placeholder="VB-001"
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Customer Name</Label>
+                  <Input
+                    value={tempCustomer.name || ""}
+                    onChange={(e) => setTempCustomer({ ...tempCustomer, name: e.target.value })}
+                    placeholder="Acme Corp"
+                    className="rounded-xl"
+                  />
+                </div>
+              </div>
+
+              {/* Locations */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Locations ({tempCustomer.location.length})</h3>
+                  <Button type="button" variant="outline" size="sm" onClick={handleTempAddLocation}>
+                    <Plus className="mr-1.5 h-3 w-3" /> Add Location
+                  </Button>
+                </div>
+                {tempCustomer.location.map((loc, index) => (
+                  <div key={index} className="rounded-xl border p-4 relative space-y-3">
+                    <Button
+                      type="button" variant="ghost" size="icon"
+                      className="absolute right-2 top-2 h-6 w-6 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                      onClick={() => handleTempRemoveLocation(index)}
+                    >
+                      <Trash className="h-3 w-3" />
+                    </Button>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-primary">Location {index + 1}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Location VB ID</Label>
+                        <Input value={loc.vbId || ""} onChange={(e) => handleTempLocationChange(index, "vbId", e.target.value)} placeholder="LOC-001" className="rounded-lg h-8 text-xs" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Location Name</Label>
+                        <Input value={loc.locationName || ""} onChange={(e) => handleTempLocationChange(index, "locationName", e.target.value)} placeholder="Main Warehouse" className="rounded-lg h-8 text-xs" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Street</Label>
+                        <Input value={loc.street || ""} onChange={(e) => handleTempLocationChange(index, "street", e.target.value)} placeholder="123 Main St" className="rounded-lg h-8 text-xs" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">City</Label>
+                        <Input value={loc.city || ""} onChange={(e) => handleTempLocationChange(index, "city", e.target.value)} placeholder="New York" className="rounded-lg h-8 text-xs" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">State</Label>
+                        <Input value={loc.state || ""} onChange={(e) => handleTempLocationChange(index, "state", e.target.value)} placeholder="NY" className="rounded-lg h-8 text-xs" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Zip Code</Label>
+                        <Input value={loc.zip || ""} onChange={(e) => handleTempLocationChange(index, "zip", e.target.value)} placeholder="10001" className="rounded-lg h-8 text-xs" />
+                      </div>
+                      <div className="grid gap-1.5 col-span-2">
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Country</Label>
+                        <Input value={loc.country || ""} onChange={(e) => handleTempLocationChange(index, "country", e.target.value)} placeholder="USA" className="rounded-lg h-8 text-xs" />
+                      </div>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Full Address <span className="normal-case text-muted-foreground/50">(auto-syncs from fields above)</span></Label>
+                      <Input value={loc.fullAddress || ""} onChange={(e) => handleTempLocationChange(index, "fullAddress", e.target.value)} placeholder="123 Main St, New York, NY, 10001, USA" className="rounded-lg h-8 text-xs" />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Website</Label>
+                      <Input value={loc.website || ""} onChange={(e) => handleTempLocationChange(index, "website", e.target.value)} placeholder="https://example.com" className="rounded-lg h-8 text-xs" />
+                    </div>
+                  </div>
+                ))}
+                {tempCustomer.location.length === 0 && (
+                  <div className="text-center text-sm text-muted-foreground py-6 border border-dashed rounded-xl">
+                    No locations — click Add Location to add one.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsCustomerEditDialogOpen(false)} className="rounded-full font-black uppercase text-[10px] tracking-widest">Cancel</Button>
-            <Button onClick={confirmEditCustomer} className="rounded-full font-black uppercase text-[10px] tracking-widest shadow-lg shadow-primary/20">Update Name</Button>
+            <Button onClick={confirmEditCustomer} className="rounded-full font-black uppercase text-[10px] tracking-widest shadow-lg shadow-primary/20">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       </div>
+      {/* Drive Documents Modal */}
+      <DriveDocumentsModal
+        open={!!attachmentsOpen}
+        onClose={() => setAttachmentsOpen(null)}
+        poNumber={attachmentsOpen?.poNumber || ''}
+        onOpenLegacy={() => {
+          const saved = attachmentsOpen;
+          setAttachmentsOpen(null);
+          setTimeout(() => setLegacyAttachmentsOpen(saved), 100);
+        }}
+      />
+
+      {/* Legacy Attachments Modal */}
+      <AttachmentsModal
+        open={!!legacyAttachmentsOpen}
+        onClose={() => setLegacyAttachmentsOpen(null)}
+        poNumber={legacyAttachmentsOpen?.poNumber || ''}
+        spoNumber={legacyAttachmentsOpen?.spoNumber}
+        shipNumber={legacyAttachmentsOpen?.shipNumber}
+      />
+
+      {/* Timeline Modal */}
+      <TimelineModal
+        open={!!timelineOpen}
+        onClose={() => setTimelineOpen(null)}
+        VBNumber={timelineOpen?.VBNumber}
+        VBSerialNumber={timelineOpen?.VBSerialNumber}
+        VBShipmentNumber={timelineOpen?.VBShipmentNumber}
+        title={timelineOpen?.title}
+      />
     </TooltipProvider>
   );
 }

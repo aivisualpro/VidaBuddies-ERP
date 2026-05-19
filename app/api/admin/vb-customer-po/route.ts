@@ -15,9 +15,13 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     // Support both legacy "vidaPOId" param and new "VBNumber" param
     const vbNumber = searchParams.get("VBNumber") || searchParams.get("vidaPOId");
+    const customer = searchParams.get("customer");
 
     const filter: any = {};
     if (vbNumber) filter.VBNumber = vbNumber;
+    if (customer && /^[a-fA-F0-9]{24}$/.test(customer)) {
+      filter.customer = new (await import("mongoose")).default.Types.ObjectId(customer);
+    }
 
     const items = await VBcustomerPO.find(filter).sort({ createdAt: -1 });
     return NextResponse.json(items);

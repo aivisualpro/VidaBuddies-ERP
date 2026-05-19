@@ -201,6 +201,7 @@ export async function GET(req: Request) {
           ? item.products.map((p: any) => prodMap.get(p.toString()) || p.toString())
           : [],
         _displayCustomer: cpoDetail?.customer ? customerMap.get(cpoDetail.customer) || cpoDetail.customer : '',
+        _customerId: cpoDetail?.customer || null,
         _displayCustomerPONo: cpoDetail?.customerPONo || '',
         _displayWarehouse: cpoDetail?.warehouse || '',
       };
