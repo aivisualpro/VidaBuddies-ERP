@@ -312,7 +312,7 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <p className="text-[10px] text-gray-600 dark:text-gray-400 text-center pt-1 group-data-[collapsible=icon]:hidden">
-          V.1.21
+          V.1.22
         </p>
         <NavUser user={data.user} isSupplier={isSupplier} />
       </SidebarFooter>

@@ -100,6 +100,7 @@ function ShipmentsCardContent() {
   const [editingItem, setEditingItem] = useState<ShipmentRecord | null>(null);
   const [sidebarVBNumber, setSidebarVBNumber] = useState<string | null>(null);
   const [sidebarVBSerial, setSidebarVBSerial] = useState<string | null>(null);
+  const [sidebarShipment, setSidebarShipment] = useState<string | null>(null);
   const [trackingContainer, setTrackingContainer] = useState<string | null>(null);
   const [trackingRawJson, setTrackingRawJson] = useState<any>(null);
 
@@ -213,6 +214,9 @@ function ShipmentsCardContent() {
       result = result.filter(item => (item.VBNumber || 'Unlinked') === sidebarVBNumber);
       if (sidebarVBSerial) {
         result = result.filter(item => (item.VBSerialNumber || 'none') === sidebarVBSerial);
+        if (sidebarShipment) {
+          result = result.filter(item => (item.VBShipmentNumber || item.svbid || 'none') === sidebarShipment);
+        }
       }
     }
     if (statusFilter !== "all") {
@@ -226,7 +230,7 @@ function ShipmentsCardContent() {
       });
     }
     return result;
-  }, [data, searchQuery, statusFilter, sidebarVBNumber, sidebarVBSerial]);
+  }, [data, searchQuery, statusFilter, sidebarVBNumber, sidebarVBSerial, sidebarShipment]);
 
   // Header
   useLayoutEffect(() => {
@@ -272,7 +276,8 @@ function ShipmentsCardContent() {
         data={data}
         activeVBNumber={sidebarVBNumber}
         activeVBSerial={sidebarVBSerial}
-        onSelect={(vb, ser) => { setSidebarVBNumber(vb); setSidebarVBSerial(ser); }}
+        activeShipment={sidebarShipment}
+        onSelect={(vb, ser, ship) => { setSidebarVBNumber(vb); setSidebarVBSerial(ser); setSidebarShipment(ship); }}
       />
       <div className="flex-1 min-w-0 overflow-auto p-4">
       {/* Status pills */}
