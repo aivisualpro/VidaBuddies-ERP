@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -216,14 +216,34 @@ export function SimpleDataTable<TData, TValue>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent border-none">
                 {headerGroup.headers.map((header) => {
+                  const canSort = header.column.getCanSort();
+                  const sorted = header.column.getIsSorted();
                   return (
-                    <TableHead key={header.id} className="sticky top-0 bg-background z-20 border-b backdrop-blur-sm text-[14px] font-normal">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                    <TableHead
+                      key={header.id}
+                      className="sticky top-0 bg-background z-20 border-b backdrop-blur-sm text-[14px] font-normal"
+                    >
+                      {header.isPlaceholder ? null : canSort ? (
+                        <button
+                          onClick={header.column.getToggleSortingHandler()}
+                          className="flex items-center gap-1 select-none cursor-pointer group hover:text-foreground transition-colors w-full"
+                        >
+                          <span>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                          <span className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors shrink-0">
+                            {sorted === "asc" ? (
+                              <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                            ) : sorted === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                            ) : (
+                              <ChevronsUpDown className="h-3 w-3" />
+                            )}
+                          </span>
+                        </button>
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
                     </TableHead>
                   );
                 })}

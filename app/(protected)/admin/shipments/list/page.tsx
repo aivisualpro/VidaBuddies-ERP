@@ -267,6 +267,7 @@ function ShipmentsListContent() {
     {
       id: "VBShipmentNumber",
       header: "Shipment #",
+      accessorFn: (row) => row.VBShipmentNumber || row.svbid || "",
       cell: ({ row }) => {
         const label = row.original.VBShipmentNumber || row.original.svbid || "-";
         if (label === "-") return "-";
@@ -281,8 +282,9 @@ function ShipmentsListContent() {
       },
     },
     {
-      accessorKey: "status",
+      id: "status",
       header: "Status",
+      accessorFn: (row) => normalizeStatus(row.status || ""),
       cell: ({ row }) => {
         const raw = row.original.status || '';
         const norm = normalizeStatus(raw);
@@ -306,11 +308,13 @@ function ShipmentsListContent() {
     {
       id: "customer",
       header: "Customer",
+      accessorFn: (row) => (row as any)._displayCustomer || "",
       cell: ({ row }) => (row.original as any)._displayCustomer || "-",
     },
     {
       id: "customerPONo",
       header: "Customer PO #",
+      accessorFn: (row) => (row as any)._displayCustomerPONo || "",
       cell: ({ row }) => {
         const val = (row.original as any)._displayCustomerPONo;
         if (!val) return "-";
@@ -342,20 +346,28 @@ function ShipmentsListContent() {
     {
       id: "warehouse",
       header: "Warehouse",
+      accessorFn: (row) => (row as any)._displayWarehouse || "",
       cell: ({ row }) => (row.original as any)._displayWarehouse || "-",
     },
     {
-      accessorKey: "supplier",
+      id: "supplier",
       header: "Supplier",
+      accessorFn: (row) => (row as any)._displaySupplier || row.supplier || "",
       cell: ({ row }) => {
         const val = row.original.supplier || "";
         return (row.original as any)._displaySupplier || val || "-";
       },
     },
-    { accessorKey: "carrier", header: "Carrier" },
     {
-      accessorKey: "containerNo",
+      id: "carrier",
+      header: "Carrier",
+      accessorFn: (row) => row.carrier || "",
+      cell: ({ row }) => row.original.carrier || "-",
+    },
+    {
+      id: "containerNo",
       header: "Container #",
+      accessorFn: (row) => row.containerNo || "",
       cell: ({ row }) => {
         const cn = row.original.containerNo;
         if (!cn) return "-";
@@ -369,10 +381,20 @@ function ShipmentsListContent() {
         );
       },
     },
-    { accessorKey: "BOLNumber", header: "BOL #" },
     {
-      accessorKey: "ETA",
+      id: "BOLNumber",
+      header: "BOL #",
+      accessorFn: (row) => row.BOLNumber || "",
+      cell: ({ row }) => row.original.BOLNumber || "-",
+    },
+    {
+      id: "ETA",
       header: "ETA",
+      accessorFn: (row) => {
+        const d = row.updatedETA || row.ETA;
+        return d ? new Date(d).getTime() : 0;
+      },
+      sortingFn: "basic",
       cell: ({ row }) => {
         const eta = formatDate(row.original.ETA);
         const updatedEta = row.original.updatedETA ? formatDate(row.original.updatedETA) : null;
@@ -387,21 +409,36 @@ function ShipmentsListContent() {
         return eta;
       },
     },
-    { accessorKey: "portOfLading", header: "Port of Lading" },
-    { accessorKey: "portOfEntryShipTo", header: "Port of Entry" },
     {
-      accessorKey: "drums",
+      id: "portOfLading",
+      header: "Port of Lading",
+      accessorFn: (row) => row.portOfLading || "",
+      cell: ({ row }) => row.original.portOfLading || "-",
+    },
+    {
+      id: "portOfEntryShipTo",
+      header: "Port of Entry",
+      accessorFn: (row) => row.portOfEntryShipTo || "",
+      cell: ({ row }) => row.original.portOfEntryShipTo || "-",
+    },
+    {
+      id: "drums",
       header: "Drums",
+      accessorFn: (row) => row.drums ?? 0,
+      sortingFn: "basic",
       cell: ({ row }) => row.original.drums?.toLocaleString() || "-",
     },
     {
-      accessorKey: "gallons",
+      id: "gallons",
       header: "Gallons",
+      accessorFn: (row) => row.gallons ?? 0,
+      sortingFn: "basic",
       cell: ({ row }) => row.original.gallons?.toLocaleString() || "-",
     },
     {
       id: "timeline",
       header: "Timeline",
+      enableSorting: false,
       cell: ({ row }) => {
         const shipId = row.original._id;
         const count = timelineCounts[shipId] || 0;
@@ -435,6 +472,7 @@ function ShipmentsListContent() {
     {
       id: "chat",
       header: "Chat",
+      enableSorting: false,
       cell: ({ row }) => {
         const shipId = row.original._id;
         const display = row.original.VBShipmentNumber || row.original.svbid || shipId;
@@ -464,6 +502,7 @@ function ShipmentsListContent() {
     {
       id: "actions",
       header: "",
+      enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <button
