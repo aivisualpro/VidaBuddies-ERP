@@ -19,6 +19,7 @@ import { Loader2, Package, ArrowRightLeft, Calendar, Hash, Warehouse, Truck, Che
 interface TransferProduct {
   product: string; // ObjectId
   productName: string;
+  serialNumber: string;
   qty: number;
   batchNumber: string;
   uom: string;
@@ -180,7 +181,7 @@ export function TransferOrderDialog({
   const [hasExisting, setHasExisting] = useState(false);
 
   // Form state
-  const [serialNumber, setSerialNumber] = useState("");
+
   const [transferDate, setTransferDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -218,6 +219,7 @@ export function TransferOrderDialog({
               shipmentProducts.map((p) => ({
                 product: p._id,
                 productName: p.name,
+                serialNumber: "",
                 qty: 0,
                 batchNumber: "",
                 uom: "",
@@ -234,7 +236,7 @@ export function TransferOrderDialog({
     };
 
     fetchExisting();
-    setSerialNumber("");
+
     setTransferDate(new Date().toISOString().split("T")[0]);
   }, [open, shipmentId]);
 
@@ -264,12 +266,12 @@ export function TransferOrderDialog({
         vbShipmentNumber: shipmentId,
         warehouse: warehouseId || null,
         supplier: supplierId || null,
-        serialNumber,
         transferDate,
         products: products
           .filter((p) => p.qty > 0) // Only send products with qty > 0
           .map((p) => ({
             product: p.product,
+            serialNumber: p.serialNumber,
             qty: p.qty,
             batchNumber: p.batchNumber,
             uom: p.uom,
@@ -316,7 +318,7 @@ export function TransferOrderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowRightLeft className="h-5 w-5 text-primary" />
@@ -421,31 +423,17 @@ export function TransferOrderDialog({
               </div>
 
               {/* Manual fields */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="serialNumber" className="text-xs flex items-center gap-1.5">
-                    <Hash className="h-3 w-3" /> Serial Number
-                  </Label>
-                  <Input
-                    id="serialNumber"
-                    placeholder="Enter serial number"
-                    value={serialNumber}
-                    onChange={(e) => setSerialNumber(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="transferDate" className="text-xs flex items-center gap-1.5">
-                    <Calendar className="h-3 w-3" /> Transfer Date
-                  </Label>
-                  <Input
-                    id="transferDate"
-                    type="date"
-                    value={transferDate}
-                    onChange={(e) => setTransferDate(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="transferDate" className="text-xs flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" /> Transfer Date
+                </Label>
+                <Input
+                  id="transferDate"
+                  type="date"
+                  value={transferDate}
+                  onChange={(e) => setTransferDate(e.target.value)}
+                  className="h-9 max-w-[200px]"
+                />
               </div>
 
               <Separator />
@@ -456,14 +444,15 @@ export function TransferOrderDialog({
                   <Package className="h-4 w-4 text-primary" />
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Products</p>
                 </div>
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-visible">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-muted/50 border-b">
                         <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Product Name</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-32">Serial #</th>
                         <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-20">Qty</th>
                         <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">Batch #</th>
-                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-20">UOM</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-24">UOM</th>
                         <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-24">Weight</th>
                       </tr>
                     </thead>
@@ -473,6 +462,14 @@ export function TransferOrderDialog({
                           <tr key={p.product} className="border-b last:border-0">
                             <td className="px-3 py-2">
                               <span className="font-medium text-sm">{p.productName}</span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Input
+                                value={p.serialNumber}
+                                onChange={(e) => updateProduct(i, "serialNumber", e.target.value)}
+                                className="h-8 text-center text-sm"
+                                placeholder="—"
+                              />
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
@@ -515,7 +512,7 @@ export function TransferOrderDialog({
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
+                          <td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
                             No products found in this shipment
                           </td>
                         </tr>

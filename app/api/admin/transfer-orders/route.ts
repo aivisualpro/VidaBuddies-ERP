@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/admin/transfer-orders
- * Body: { vbShipmentNumber, warehouse, supplier, serialNumber, transferDate, products: [{ product, qty, batchNumber, uom, weight }] }
+ * Body: { vbShipmentNumber, warehouse, supplier, transferDate, products: [{ product, serialNumber, qty, batchNumber, uom, weight }] }
  * Creates one document per product in vidaTransferOrders
  */
 export async function POST(req: NextRequest) {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     await connectToDatabase();
 
-    const { vbShipmentNumber, warehouse, supplier, serialNumber, transferDate, products } = body;
+    const { vbShipmentNumber, warehouse, supplier, transferDate, products } = body;
 
     if (!vbShipmentNumber || !products || !Array.isArray(products) || products.length === 0) {
       return NextResponse.json({ error: "vbShipmentNumber and products array required" }, { status: 400 });
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       warehouse: warehouse || null,
       product: p.product,
       supplier: supplier || null,
-      serialNumber: serialNumber || "",
+      serialNumber: p.serialNumber || "",
       qty: p.qty || 0,
       batchNumber: p.batchNumber || "",
       uom: p.uom || "",
