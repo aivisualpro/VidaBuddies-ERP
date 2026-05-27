@@ -11,7 +11,7 @@ export interface IVidaTransferOrder extends Document {
   uom: string;
   weight: number;
   receivedDate: Date;
-  createdBy: string;
+  createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
@@ -26,7 +26,7 @@ const VidaTransferOrderSchema: Schema = new Schema({
   uom: { type: String },
   weight: { type: Number },
   receivedDate: { type: Date },
-  createdBy: { type: String },
+  createdBy: { type: Schema.Types.ObjectId, ref: 'VidaUser' },
   createdAt: { type: Date, default: Date.now },
 });
 

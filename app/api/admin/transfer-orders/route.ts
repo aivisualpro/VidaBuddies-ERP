@@ -5,29 +5,33 @@ import VidaProduct from "@/lib/models/VidaProduct";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaSupplier from "@/lib/models/VidaSupplier";
 import VBshipping from "@/lib/models/VBshipping";
+import VidaUser from "@/lib/models/VidaUser";
 import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 // Ensure populated models are registered
-const _models = { VidaProduct, VidaWarehouse, VidaSupplier, VBshipping };
+const _models = { VidaProduct, VidaWarehouse, VidaSupplier, VBshipping, VidaUser };
 
 /**
- * GET /api/admin/transfer-orders?shipmentId=xxx
- * Returns all transfer orders for a given VBShipment _id
+ * GET /api/admin/transfer-orders
+ * Optional: ?shipmentId=xxx   — filter by shipment
+ * Without params returns ALL transfer orders (for listing page)
  */
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
     const shipmentId = req.nextUrl.searchParams.get("shipmentId");
-    if (!shipmentId) {
-      return NextResponse.json({ error: "shipmentId query param required" }, { status: 400 });
-    }
 
-    const orders = await VidaTransferOrder.find({ vbShipmentNumber: shipmentId })
+    const filter: any = {};
+    if (shipmentId) filter.vbShipmentNumber = shipmentId;
+
+    const orders = await VidaTransferOrder.find(filter)
+      .populate("vbShipmentNumber", "VBShipmentNumber svbid")
       .populate("warehouse", "name")
       .populate("product", "name vbId")
       .populate("supplier", "name vbId")
+      .populate("createdBy", "name email")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -59,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "vbShipmentNumber and products array required" }, { status: 400 });
     }
 
-    const createdBy = session.name || session.email;
+    const createdBy = session.id || null;
 
     // Create one document per product line
     const docs = products.map((p: any) => ({

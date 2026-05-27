@@ -826,7 +826,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                          <div className="flex flex-col">
                             <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-50">Dispatch Point</p>
                             <p className="text-[10px] font-black uppercase tracking-widest text-foreground">
-                               {warehouseNameMap[cpo.warehouse] || cpo.warehouse || "STANDBY"}
+                               {warehouseNameMap[cpo.warehouse || ""] || cpo.warehouse || "STANDBY"}
                             </p>
                          </div>
                       </div>

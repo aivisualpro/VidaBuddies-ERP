@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Loader2, Package, ArrowRightLeft, Calendar, Hash, Warehouse, Truck } from "lucide-react";
+import { Loader2, Package, ArrowRightLeft, Calendar, Hash, Warehouse, Truck, ChevronDown, Plus, Check } from "lucide-react";
 
 interface TransferProduct {
   product: string; // ObjectId
@@ -36,7 +36,7 @@ interface ExistingTransfer {
   uom: string;
   weight: number;
   receivedDate: string;
-  createdBy: string;
+  createdBy: { _id: string; name: string; email?: string } | string | null;
   createdAt: string;
 }
 
@@ -56,6 +56,111 @@ interface TransferOrderDialogProps {
   shipmentProducts?: { _id: string; name: string }[];
   /** VBShipmentNumber label for display */
   shipmentLabel?: string;
+}
+
+/* ── Searchable UOM Combobox ── */
+function UomCombobox({
+  value,
+  onChange,
+  options,
+  onAddNew,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  onAddNew: (val: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const filtered = options.filter((o) =>
+    o.toLowerCase().includes(search.toLowerCase())
+  );
+  const exactMatch = options.some((o) => o.toLowerCase() === search.toLowerCase());
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-center flex items-center justify-between gap-1 hover:bg-muted/50 transition-colors"
+        onClick={() => { setOpen(!open); setSearch(""); }}
+      >
+        <span className={value ? "" : "text-muted-foreground"}>{value || "—"}</span>
+        <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 left-0 w-[180px] bg-popover border rounded-md shadow-lg overflow-hidden">
+          <div className="p-1.5 border-b">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search or type new..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-7 px-2 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && search.trim()) {
+                  if (!exactMatch) onAddNew(search.trim().toUpperCase());
+                  onChange(search.trim().toUpperCase());
+                  setOpen(false);
+                }
+              }}
+            />
+          </div>
+          <div className="max-h-[160px] overflow-y-auto p-1">
+            {filtered.length > 0 ? (
+              filtered.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-sm hover:bg-accent transition-colors flex items-center justify-between ${
+                    value === opt ? "bg-accent font-semibold" : ""
+                  }`}
+                  onClick={() => {
+                    onChange(opt);
+                    setOpen(false);
+                  }}
+                >
+                  {opt}
+                  {value === opt && <Check className="h-3 w-3 text-primary" />}
+                </button>
+              ))
+            ) : (
+              <p className="text-[10px] text-muted-foreground text-center py-2">No matches</p>
+            )}
+            {search.trim() && !exactMatch && (
+              <>
+                <div className="border-t my-1" />
+                <button
+                  type="button"
+                  className="w-full text-left px-2 py-1.5 text-xs rounded-sm hover:bg-accent transition-colors flex items-center gap-1.5 text-primary font-medium"
+                  onClick={() => {
+                    const val = search.trim().toUpperCase();
+                    onAddNew(val);
+                    onChange(val);
+                    setOpen(false);
+                  }}
+                >
+                  <Plus className="h-3 w-3" />
+                  Add &ldquo;{search.trim().toUpperCase()}&rdquo;
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TransferOrderDialog({
@@ -80,6 +185,15 @@ export function TransferOrderDialog({
     new Date().toISOString().split("T")[0]
   );
   const [products, setProducts] = useState<TransferProduct[]>([]);
+
+  // Fetch distinct UOM values from the collection
+  const [uomOptions, setUomOptions] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/admin/transfer-orders/uoms")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setUomOptions(d); })
+      .catch(() => {});
+  }, []);
 
   // Fetch existing transfers when dialog opens
   useEffect(() => {
@@ -280,7 +394,7 @@ export function TransferOrderDialog({
               </div>
 
               <p className="text-[10px] text-muted-foreground text-right">
-                Created by {existingTransfers[0]?.createdBy || "-"} on {formatDate(existingTransfers[0]?.createdAt)}
+                Created by {typeof existingTransfers[0]?.createdBy === 'object' && existingTransfers[0]?.createdBy ? (existingTransfers[0].createdBy as any).name || (existingTransfers[0].createdBy as any).email : existingTransfers[0]?.createdBy || "-"} on {formatDate(existingTransfers[0]?.createdAt)}
               </p>
             </div>
           </div>
@@ -379,11 +493,11 @@ export function TransferOrderDialog({
                               />
                             </td>
                             <td className="px-2 py-1.5">
-                              <Input
+                              <UomCombobox
                                 value={p.uom}
-                                onChange={(e) => updateProduct(i, "uom", e.target.value)}
-                                className="h-8 text-center text-sm"
-                                placeholder="—"
+                                onChange={(val) => updateProduct(i, "uom", val)}
+                                options={uomOptions}
+                                onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())}
                               />
                             </td>
                             <td className="px-2 py-1.5">
