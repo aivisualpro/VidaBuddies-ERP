@@ -35,7 +35,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const data = await req.json();
 
     // ObjectId fields: empty strings → null so Mongoose doesn't choke
-    const OID_FIELDS = ['VBNumber', 'customer', 'customerLocation'];
+    const OID_FIELDS = ['VBNumber', 'customer', 'customerLocation', 'warehouse'];
     for (const f of OID_FIELDS) {
       if (f in data && !data[f]) {
         data[f] = null;

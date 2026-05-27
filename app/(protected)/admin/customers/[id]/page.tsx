@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, useMemo, use } from "react";
 import { DetailPageSkeleton } from "@/components/skeletons";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -49,9 +49,11 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { ShippingCard, ShippingEmptyState } from "@/components/admin/shipping-card";
+import { TransferOrderDialog } from "@/components/admin/transfer-order-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
 
 interface CustomerLocation {
   _id?: string;
@@ -174,10 +176,19 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
+  // Warehouse lookup for denormalizing warehouse ObjectId → name
+  const { data: warehousesList = [] } = useWarehouses();
+  const warehouseNameMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    (warehousesList || []).forEach((w: any) => { if (w._id) m[w._id] = w.name; });
+    return m;
+  }, [warehousesList]);
+
   // Modal states for ShippingCard actions
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
+  const [transferDialogShip, setTransferDialogShip] = useState<any | null>(null);
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
@@ -815,7 +826,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                          <div className="flex flex-col">
                             <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-50">Dispatch Point</p>
                             <p className="text-[10px] font-black uppercase tracking-widest text-foreground">
-                               {cpo.warehouse || "STANDBY"}
+                               {warehouseNameMap[cpo.warehouse] || cpo.warehouse || "STANDBY"}
                             </p>
                          </div>
                       </div>
@@ -898,6 +909,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       }
                     });
                   }}
+                  onTransfers={(s) => setTransferDialogShip(s)}
                 />
               ))
             ) : (
@@ -1180,6 +1192,26 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         VBSerialNumber={timelineOpen?.VBSerialNumber}
         VBShipmentNumber={timelineOpen?.VBShipmentNumber}
         title={timelineOpen?.title}
+      />
+
+      {/* Transfer Order Dialog */}
+      <TransferOrderDialog
+        open={!!transferDialogShip}
+        onOpenChange={(open) => { if (!open) setTransferDialogShip(null); }}
+        shipmentId={transferDialogShip?._id || ""}
+        shipmentLabel={transferDialogShip?.VBShipmentNumber || transferDialogShip?.svbid || ""}
+        warehouseName="-"
+        warehouseId=""
+        supplierId={transferDialogShip?.supplier || ""}
+        supplierName={transferDialogShip?._displaySupplier || supplierLocations[transferDialogShip?.supplierLocation || ''] || "-"}
+        shipmentProducts={(() => {
+          const pIds: string[] = Array.isArray(transferDialogShip?.products)
+            ? transferDialogShip.products
+            : typeof transferDialogShip?.products === 'string'
+            ? transferDialogShip.products.split(',').filter(Boolean)
+            : [];
+          return pIds.map((pid: string) => ({ _id: pid, name: products[pid] || pid }));
+        })()}
       />
     </TooltipProvider>
   );

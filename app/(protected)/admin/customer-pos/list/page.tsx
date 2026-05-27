@@ -17,6 +17,7 @@ import { useCustomers } from "@/hooks/queries/useCustomers";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
+import { useWarehouses } from "@/hooks/queries/useWarehouses";
 
 interface CustomerPO {
   _id: string;
@@ -87,6 +88,14 @@ function CustomerPOsListContent() {
     });
     return map;
   }, [purchaseOrders]);
+
+  // Resolve warehouse ObjectId → display name
+  const { data: storeWarehouses = [] } = useWarehouses();
+  const warehouseNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (storeWarehouses || []).forEach((w: any) => { if (w._id) map[w._id] = w.name; });
+    return map;
+  }, [storeWarehouses]);
 
   const fetchData = async () => {
     try {
@@ -272,7 +281,11 @@ function CustomerPOsListContent() {
       cell: ({ row }) => row.original.qtyReceived?.toLocaleString() || "-",
     },
     { accessorKey: "UOM", header: "UOM" },
-    { accessorKey: "warehouse", header: "Warehouse" },
+    {
+      accessorKey: "warehouse",
+      header: "Warehouse",
+      cell: ({ row }) => warehouseNameMap[row.original.warehouse || ""] || row.original.warehouse || "-",
+    },
     {
       id: "completion",
       header: "Completion",

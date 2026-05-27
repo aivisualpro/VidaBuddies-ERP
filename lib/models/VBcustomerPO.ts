@@ -11,7 +11,7 @@ export interface IVBcustomerPO extends Document {
   qtyOrdered?: number;
   qtyReceived?: number;
   UOM?: string;
-  warehouse?: string;
+  warehouse?: mongoose.Types.ObjectId;  // ref to VidaWarehouse._id
   _originalCpoId?: string;           // traceability back to the nested sub-doc _id
   createdAt: Date;
   updatedAt: Date;
@@ -29,7 +29,7 @@ const VBcustomerPOSchema: Schema = new Schema(
     qtyOrdered: { type: Number },
     qtyReceived: { type: Number },
     UOM: { type: String },
-    warehouse: { type: String },
+    warehouse: { type: Schema.Types.ObjectId, ref: 'VidaWarehouse', default: null },
     _originalCpoId: { type: String },
     driveDocuments: [{ type: Schema.Types.Mixed }],
   },

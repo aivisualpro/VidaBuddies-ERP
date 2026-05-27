@@ -110,6 +110,16 @@ const data = {
       url: "/inventory/release-requests",
       icon: IconFileDescription,
     },
+    {
+      name: "Transfer Orders",
+      url: "/inventory/transfer-orders",
+      icon: IconRoute,
+    },
+    {
+      name: "Inventory Management",
+      url: "/inventory/management",
+      icon: IconClipboardList,
+    },
   ],
   management: [
     {

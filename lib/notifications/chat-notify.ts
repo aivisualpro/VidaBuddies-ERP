@@ -49,7 +49,7 @@ export async function notifyChatRecipients(params: ChatNotifyParams) {
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
+      : "http://localhost:1001";
 
   const mentionedSet = new Set(mentionedIds);
   const snippet = (messageText || "📎 Attachment").substring(0, 160);

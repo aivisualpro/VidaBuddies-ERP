@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     }
 
     const lookups = await buildLookups();
-    const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const appUrl = process.env.APP_URL || "http://localhost:1001";
     let fanned = 0;
     let emailsSent = 0;
     let pushesSent = 0;

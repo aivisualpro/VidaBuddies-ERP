@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const folderName = `${supplier.name} (${supplier.vbId || supplier._id.toString().substring(0, 6)})`;
     const folderId = await findOrCreateFolder(rootId, folderName);
 
-    const origin = req.headers.get("origin") || req.nextUrl.origin || "http://localhost:3000";
+    const origin = req.headers.get("origin") || req.nextUrl.origin || "http://localhost:1001";
     const uploadUrl = await createResumableUpload(folderId, fileName, mimeType, origin);
 
     return NextResponse.json({ uploadUrl });

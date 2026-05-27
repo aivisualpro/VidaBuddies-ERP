@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "PORT=$(node -e \"const h=require('crypto').createHash('md5').update(require('path').basename(__dirname)).digest('hex');console.log(3000+parseInt(h.slice(0,4),16)%7000)\") next dev",
+    "dev": "next dev --port 1001",
     "dev:safe": "next dev --no-turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "cron:reminders": "curl -s -H 'x-cron-secret: vida-refresh-secret-123' http://localhost:3000/api/cron/reminders | jq .",
+    "cron:reminders": "curl -s -H 'x-cron-secret: vida-refresh-secret-123' http://localhost:1001/api/cron/reminders | jq .",
     "vapid:generate": "node -e \"const wp=require('web-push');const k=wp.generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey);console.log('VAPID_PRIVATE_KEY='+k.privateKey);console.log('NEXT_PUBLIC_VAPID_PUBLIC_KEY='+k.publicKey);\""
   },
   "dependencies": {

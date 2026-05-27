@@ -64,6 +64,7 @@ import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { useProducts } from "@/hooks/queries/useProducts";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
 import { ShippingCard, ShippingEmptyState } from "@/components/admin/shipping-card";
+import { TransferOrderDialog } from "@/components/admin/transfer-order-dialog";
 
 const UOM_OPTIONS = [
   { value: "EA", label: "EA (Each)" },
@@ -355,6 +356,12 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   }, [storeProducts]);
 
   const warehouses = storeWarehouses || [];
+  // Build warehouse _id → name lookup for denormalization
+  const warehouseNameMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    (warehouses || []).forEach((w: any) => { if (w._id) m[w._id] = w.name; });
+    return m;
+  }, [warehouses]);
 
   const [emailRecords, setEmailRecords] = useState<any[]>([]);
 
@@ -379,6 +386,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
   const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; title?: string } | null>(null);
+  const [transferDialogShip, setTransferDialogShip] = useState<any | null>(null);
 
   const [isEditPOOpen, setIsEditPOOpen] = useState(false);
   const [editPOData, setEditPOData] = useState<Partial<PurchaseOrder>>({});
@@ -948,7 +956,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                           <div className="flex flex-col">
                             <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-50">Dispatch Point</p>
                             <p className="text-[10px] font-black uppercase tracking-widest text-foreground">
-                              {cpo.warehouse || "STANDBY"}
+                              {warehouseNameMap[cpo.warehouse || ""] || cpo.warehouse || "STANDBY"}
                             </p>
                           </div>
                         </div>
@@ -1082,6 +1090,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       onLiveTracking={(s) => setLiveTrackingOpen({ containerNo: s.containerNo, title: `Live Tracking — ${s.containerNo}` })}
                       onEdit={(s) => { const resolvedSup = suppliers.find((sup: any) => sup._id === rawSup) ? rawSup : (supplierIdByLocationId[rawSup] || rawSup); setSelectedSupplierForShipping(resolvedSup); setSelectedLocationForShipping(s.supplierLocation || (suppliers.find((sup: any) => sup._id === rawSup) ? '' : rawSup) || ''); setEditingShipping({ cpoIdx: s._cpoIdx, shipIdx: s._shipIdx, data: s }); }}
                       onDelete={(s) => handleDeleteShipping(s._id || '', s._cpoIdx, s._shipIdx)}
+                      onTransfers={(s) => setTransferDialogShip(s)}
                     />
                   );
                 })
@@ -1713,6 +1722,36 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Transfer Order Dialog */}
+      <TransferOrderDialog
+        open={!!transferDialogShip}
+        onOpenChange={(open) => { if (!open) setTransferDialogShip(null); }}
+        shipmentId={transferDialogShip?._id || ""}
+        shipmentLabel={transferDialogShip?.VBShipmentNumber || transferDialogShip?.svbid || ""}
+        warehouseName={(() => {
+          // Try to resolve warehouse from the CPO's warehouse field
+          const cpo = po?.customerPO?.[transferDialogShip?._cpoIdx];
+          return warehouseNameMap[cpo?.warehouse || ""] || cpo?.warehouse || "-";
+        })()}
+        warehouseId={(() => {
+          const cpo = po?.customerPO?.[transferDialogShip?._cpoIdx];
+          return cpo?.warehouse || "";
+        })()}
+        supplierId={transferDialogShip?.supplier || ""}
+        supplierName={(() => {
+          const rawSup = transferDialogShip?.supplier || '';
+          return transferDialogShip?._displaySupplier || suppliers.find((s: any) => s._id === rawSup)?.name || supplierByLocationId[rawSup] || "-";
+        })()}
+        shipmentProducts={(() => {
+          const pIds: string[] = Array.isArray(transferDialogShip?.products)
+            ? transferDialogShip.products
+            : typeof transferDialogShip?.products === 'string'
+            ? transferDialogShip.products.split(',').filter(Boolean)
+            : [];
+          return pIds.map((pid: string) => ({ _id: pid, name: products[pid] || pid }));
+        })()}
+      />
     </TooltipProvider>
   );
 }

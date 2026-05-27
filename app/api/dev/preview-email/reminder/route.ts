@@ -57,7 +57,7 @@ export async function GET() {
     },
   ];
 
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
+  const appUrl = process.env.APP_URL || "http://localhost:1001";
   const { html } = renderReminderEmail({
     userName: "Adeel Jabbar",
     items: mockItems,

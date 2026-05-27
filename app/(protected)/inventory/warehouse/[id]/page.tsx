@@ -123,7 +123,7 @@ export default function WarehouseDetailPage() {
       purchaseOrders.forEach(po => {
         if (po.isArchived || (po.orderType !== "Inventory" && po.orderType !== "INVENTORY")) return;
         (po.customerPO || []).forEach((cpo: any) => {
-          if (cpo.warehouse === id || cpo.warehouse === data._id || cpo.warehouse === data.name) {
+          if (String(cpo.warehouse) === id || String(cpo.warehouse) === data._id || String(cpo.warehouse) === data.name) {
              const pname = productMap.get(cpo.product) || cpo.product || "Unknown Product";
              transactions.push({
                id: `in-${po._id}-${cpo._id || Math.random()}`,

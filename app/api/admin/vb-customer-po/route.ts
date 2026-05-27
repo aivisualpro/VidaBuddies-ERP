@@ -39,6 +39,15 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const data = await req.json();
+
+    // ObjectId fields: empty strings → null so Mongoose doesn't choke
+    const OID_FIELDS = ['VBNumber', 'customer', 'customerLocation', 'warehouse'];
+    for (const f of OID_FIELDS) {
+      if (f in data && !data[f]) {
+        data[f] = null;
+      }
+    }
+
     const newItem = await VBcustomerPO.create(data);
     broadcastMutation("vb-customer-po", "create", newItem._id?.toString());
     return NextResponse.json(newItem, { status: 201 });

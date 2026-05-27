@@ -125,7 +125,7 @@ export async function GET(req: Request) {
         cpoCustomerIds.add(detail.customer);
       }
       if ((cpo as any).customerPONo) detail.customerPONo = (cpo as any).customerPONo;
-      if ((cpo as any).warehouse) detail.warehouse = (cpo as any).warehouse;
+      if ((cpo as any).warehouse) detail.warehouse = (cpo as any).warehouse.toString();
       cpoDetailMap.set(id, detail);
     }
 
@@ -187,6 +187,22 @@ export async function GET(req: Request) {
       for (const c of custDocs) customerMap.set(c._id.toString(), c.name || c.vbId || c._id.toString());
     }
 
+    // Resolve warehouse ObjectIds → names
+    const warehouseIds = new Set<string>();
+    for (const [, detail] of cpoDetailMap) {
+      if (detail.warehouse && /^[a-f\d]{24}$/i.test(detail.warehouse)) {
+        warehouseIds.add(detail.warehouse);
+      }
+    }
+    const warehouseMap = new Map<string, string>();
+    if (warehouseIds.size > 0) {
+      const whDocs = await db!.collection("vidawarehouses").find(
+        { _id: { $in: [...warehouseIds].map(id => new mongoose.Types.ObjectId(id)) } },
+        { projection: { name: 1 } }
+      ).toArray();
+      for (const w of whDocs) warehouseMap.set(w._id.toString(), w.name || w._id.toString());
+    }
+
     // Attach _display fields
     const enriched = items.map((item: any) => {
       const cpoId = item.VBSerialNumber ? item.VBSerialNumber.toString() : '';
@@ -203,7 +219,7 @@ export async function GET(req: Request) {
         _displayCustomer: cpoDetail?.customer ? customerMap.get(cpoDetail.customer) || cpoDetail.customer : '',
         _customerId: cpoDetail?.customer || null,
         _displayCustomerPONo: cpoDetail?.customerPONo || '',
-        _displayWarehouse: cpoDetail?.warehouse || '',
+        _displayWarehouse: cpoDetail?.warehouse ? warehouseMap.get(cpoDetail.warehouse) || cpoDetail.warehouse : '',
       };
     });
 

@@ -40,7 +40,7 @@ import { useHeaderActions } from "@/components/providers/header-actions-provider
 // Define the Modules structure based on the Sidebar
 const SYSTEM_MODULES = [
   { group: "Admin", items: ["Dashboard", "Users", "Customers", "Suppliers", "Notifications", "Settings"] },
-  { group: "Inventory", items: ["Warehouse", "Categories", "Products", "Release Requests"] },
+  { group: "Inventory", items: ["Warehouse", "Categories", "Products", "Release Requests", "Transfer Orders", "Inventory Management"] },
   { group: "Management", items: ["Purchase Orders", "Quality Control"] },
   { group: "Reports", items: ["Andres Tracker", "Live Shipments"] },
 ];

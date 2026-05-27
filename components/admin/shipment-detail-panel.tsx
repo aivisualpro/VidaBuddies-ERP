@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Ship, DollarSign, FileCheck, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2 } from "lucide-react";
+import { X, Ship, DollarSign, FileCheck, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { TransferOrderDialog } from "@/components/admin/transfer-order-dialog";
 
 interface ShipmentDetailPanelProps {
   open: boolean;
@@ -32,6 +33,7 @@ function formatDate(d: any) {
 export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: initialData, onEdit, onDelete, onTrack, onAttachments, onTimeline }: ShipmentDetailPanelProps) {
   const [ship, setShip] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
 
   // Display names come pre-resolved from denormalized API (_display* fields)
 
@@ -137,6 +139,15 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
                     title="Live SeaRates Tracking"
                   >
                     <MapPin className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {ship && (
+                  <button
+                    onClick={() => { setTransferDialogOpen(true); }}
+                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                    title="Transfers"
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
                   </button>
                 )}
                 {onEdit && (
@@ -360,6 +371,29 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
           )}
         </div>
       </div>
+
+      {/* Transfer Order Dialog — self-contained, no parent wiring needed */}
+      {ship && (
+        <TransferOrderDialog
+          open={transferDialogOpen}
+          onOpenChange={setTransferDialogOpen}
+          shipmentId={ship._id || ""}
+          shipmentLabel={ship.VBShipmentNumber || ship.svbid || ""}
+          warehouseName={ship._displayWarehouse || "-"}
+          warehouseId=""
+          supplierId={ship.supplier || ""}
+          supplierName={ship._displaySupplier || ship.supplier || "-"}
+          shipmentProducts={(() => {
+            const names: string[] = ship._displayProducts || [];
+            const pIds: string[] = Array.isArray(ship.products)
+              ? ship.products
+              : typeof ship.products === 'string'
+              ? ship.products.split(',').filter(Boolean)
+              : ship.product ? [ship.product] : [];
+            return pIds.map((pid: string, i: number) => ({ _id: pid, name: names[i] || pid }));
+          })()}
+        />
+      )}
     </>
   );
 }

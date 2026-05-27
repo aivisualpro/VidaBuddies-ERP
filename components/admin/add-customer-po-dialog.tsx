@@ -134,7 +134,7 @@ export function AddCustomerPODialog({
   const warehouseOptions = useMemo(
     () =>
       (warehouses || []).map((w: any) => ({
-        value: w.name,
+        value: w._id,
         label: w.name,
       })),
     [warehouses]

@@ -18,6 +18,7 @@ import {
   FileCheck,
   AlertTriangle,
   CheckCircle2,
+  ArrowRightLeft,
 } from "lucide-react";
 
 export interface ShippingCardShip {
@@ -90,6 +91,7 @@ interface ShippingCardProps {
   onAttachments?: (ship: ShippingCardShip) => void;
   onTimeline?: (ship: ShippingCardShip) => void;
   onLiveTracking?: (ship: ShippingCardShip) => void;
+  onTransfers?: (ship: ShippingCardShip) => void;
   /** If true, open by default */
   defaultOpen?: boolean;
 }
@@ -118,6 +120,7 @@ export function ShippingCard({
   onAttachments,
   onTimeline,
   onLiveTracking,
+  onTransfers,
   defaultOpen = false,
 }: ShippingCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -248,6 +251,17 @@ export function ShippingCard({
                 onClick={(e) => { e.stopPropagation(); onLiveTracking(ship); }}
               >
                 <MapPin className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {onTransfers && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                title="Transfers"
+                onClick={(e) => { e.stopPropagation(); onTransfers(ship); }}
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
               </Button>
             )}
             {onEdit && (
