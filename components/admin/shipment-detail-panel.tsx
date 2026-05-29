@@ -380,7 +380,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
           shipmentId={ship._id || ""}
           shipmentLabel={ship.VBShipmentNumber || ship.svbid || ""}
           warehouseName={ship._displayWarehouse || "-"}
-          warehouseId=""
+          warehouseId={ship._displayWarehouse || ""}
           supplierId={ship.supplier || ""}
           supplierName={ship._displaySupplier || ship.supplier || "-"}
           shipmentProducts={(() => {

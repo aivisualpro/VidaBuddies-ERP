@@ -1201,7 +1201,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         shipmentId={transferDialogShip?._id || ""}
         shipmentLabel={transferDialogShip?.VBShipmentNumber || transferDialogShip?.svbid || ""}
         warehouseName="-"
-        warehouseId=""
+        warehouseId={transferDialogShip?._displayWarehouse || ""}
         supplierId={transferDialogShip?.supplier || ""}
         supplierName={transferDialogShip?._displaySupplier || supplierLocations[transferDialogShip?.supplierLocation || ''] || "-"}
         shipmentProducts={(() => {

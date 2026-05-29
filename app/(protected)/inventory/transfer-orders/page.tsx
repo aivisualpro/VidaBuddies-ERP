@@ -6,7 +6,7 @@ import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, ArrowRightLeft, X, RotateCcw, ChevronDown, Plus, Check } from "lucide-react";
+import { Pencil, Trash2, ArrowRightLeft, X, RotateCcw, ChevronDown, Plus, Check, Loader2, Copy } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +31,10 @@ import { Label } from "@/components/ui/label";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
-
+import { useProducts } from "@/hooks/queries/useProducts";
+import { useShippings, shippingKeys } from "@/hooks/queries/useShippings";
+import { useQueryClient } from "@tanstack/react-query";
+import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 
 interface TransferOrder {
   _id: string;
@@ -49,9 +52,19 @@ interface TransferOrder {
   createdAt?: string;
 }
 
+interface NewProductRow {
+  productId: string;
+  productName: string;
+  serialNumber: string;
+  qty: number;
+  batchNumber: string;
+  uom: string;
+  weight: number;
+}
+
 const FILTER_DEFAULTS = { search: "", warehouse: "", dateFrom: "", dateTo: "" };
 
-/* ── Searchable UOM Combobox ── */
+/* ── Searchable UOM Combobox — used outside Dialog so focus trap is not an issue ── */
 function UomCombobox({
   value,
   onChange,
@@ -143,7 +156,7 @@ function UomCombobox({
   );
 }
 
-/* ── Header Filters (extracted to avoid re-render loop) ── */
+/* ── Header Filters ── */
 function HeaderFilters({
   inputs,
   setFilter,
@@ -173,12 +186,9 @@ function HeaderFilters({
       >
         <option value="">All Warehouses</option>
         {warehouses.map((w: any) => (
-          <option key={w._id} value={w._id}>
-            {w.name}
-          </option>
+          <option key={w._id} value={w._id}>{w.name}</option>
         ))}
       </select>
-
       <input
         type="date"
         value={inputs.dateFrom}
@@ -226,10 +236,27 @@ function TransferOrdersContent() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TransferOrder | null>(null);
 
+  // ── Add dialog state ──
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addShipmentId, setAddShipmentId] = useState("");
+  const [addShipmentSearch, setAddShipmentSearch] = useState("");
+  const [addShipmentOpen, setAddShipmentOpen] = useState(false);
+  const [createShipmentLoading, setCreateShipmentLoading] = useState(false);
+  const [createShipDialogOpen, setCreateShipDialogOpen] = useState(false);
+  const [createShipPresetNumber, setCreateShipPresetNumber] = useState("");
+  const shipmentDropRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const [addWarehouseId, setAddWarehouseId] = useState("");
+  const [addTransferDate, setAddTransferDate] = useState(new Date().toISOString().split("T")[0]);
+  const [addRows, setAddRows] = useState<NewProductRow[]>([
+    { productId: "", productName: "", serialNumber: "", qty: 0, batchNumber: "", uom: "", weight: 0 },
+  ]);
+
   const { data: storeWarehouses = [] } = useWarehouses();
+  const { data: storeProducts = [] } = useProducts();
+  const { data: storeShippings = [] } = useShippings();
 
-
-  // Fetch distinct UOM values from the collection
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   useEffect(() => {
     fetch("/api/admin/transfer-orders/uoms")
@@ -240,7 +267,6 @@ function TransferOrdersContent() {
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
-  // ── Header (static — only runs once) ──
   useEffect(() => {
     setLeftContent(
       <div className="flex items-center gap-2">
@@ -250,13 +276,29 @@ function TransferOrdersContent() {
         </h1>
       </div>
     );
+    setRightContent(
+      <Button size="sm" className="flex items-center gap-1.5" onClick={() => setAddOpen(true)}>
+        <Plus className="h-4 w-4" />
+        Add Transfer Order
+      </Button>
+    );
     return () => {
       setLeftContent(null);
       setRightContent(null);
     };
   }, []);
 
-  // ── Fetch ──
+  // Close shipment dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (shipmentDropRef.current && !shipmentDropRef.current.contains(e.target as Node)) {
+        setAddShipmentOpen(false);
+      }
+    };
+    if (addShipmentOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [addShipmentOpen]);
+
   const fetchData = async () => {
     try {
       const res = await fetch("/api/admin/transfer-orders");
@@ -269,11 +311,8 @@ function TransferOrdersContent() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  // ── Helpers ──
   const resolveStr = (val: any, field: string = "name"): string => {
     if (!val) return "-";
     if (typeof val === "object") return val[field] || val._id || "-";
@@ -287,19 +326,14 @@ function TransferOrdersContent() {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
-  // ── Filtering ──
   const filteredData = useMemo(() => {
     let result = data;
-
     if (filters.warehouse) {
       result = result.filter((r) => {
         const wId = typeof r.warehouse === "object" ? r.warehouse?._id : r.warehouse;
         return wId === filters.warehouse;
       });
     }
-
-
-
     if (filters.dateFrom) {
       const from = new Date(filters.dateFrom);
       result = result.filter((r) => r.receivedDate && new Date(r.receivedDate) >= from);
@@ -309,39 +343,27 @@ function TransferOrdersContent() {
       to.setHours(23, 59, 59, 999);
       result = result.filter((r) => r.receivedDate && new Date(r.receivedDate) <= to);
     }
-
     if (filters.search) {
       const q = filters.search.toLowerCase();
       result = result.filter((r) => {
         const searchable = [
-          resolveStr(r.warehouse),
-          resolveStr(r.product),
-          resolveStr(r.supplier),
-          r.serialNumber,
-          r.batchNumber,
-          r.uom,
+          resolveStr(r.warehouse), resolveStr(r.product), resolveStr(r.supplier),
+          r.serialNumber, r.batchNumber, r.uom,
           resolveStr(r.vbShipmentNumber, "VBShipmentNumber"),
           resolveStr(r.vbShipmentNumber, "svbid"),
-          resolveStr(r.createdBy),
-          String(r.qty),
-          String(r.weight),
-          formatDate(r.receivedDate),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+          resolveStr(r.createdBy), String(r.qty), String(r.weight), formatDate(r.receivedDate),
+        ].filter(Boolean).join(" ").toLowerCase();
         return searchable.includes(q);
       });
     }
-
     return result;
   }, [data, filters]);
 
-  // ── CRUD: Delete ──
+  // ── Delete ──
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/transfer-orders/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error();
       toast.success("Transfer order deleted");
       fetchData();
     } catch {
@@ -351,24 +373,23 @@ function TransferOrdersContent() {
     }
   };
 
-  // ── CRUD: Edit (inline dialog) ──
+  // ── Edit ──
   const handleSaveEdit = async () => {
     if (!editingItem) return;
     try {
-      const payload = {
-        serialNumber: editingItem.serialNumber,
-        qty: editingItem.qty,
-        batchNumber: editingItem.batchNumber,
-        uom: editingItem.uom,
-        weight: editingItem.weight,
-        receivedDate: editingItem.receivedDate,
-      };
       const res = await fetch(`/api/admin/transfer-orders/${editingItem._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          serialNumber: editingItem.serialNumber,
+          qty: editingItem.qty,
+          batchNumber: editingItem.batchNumber,
+          uom: editingItem.uom,
+          weight: editingItem.weight,
+          receivedDate: editingItem.receivedDate,
+        }),
       });
-      if (!res.ok) throw new Error("Failed to update");
+      if (!res.ok) throw new Error();
       toast.success("Transfer order updated");
       setEditingItem(null);
       fetchData();
@@ -377,112 +398,133 @@ function TransferOrdersContent() {
     }
   };
 
+  // ── Add ──
+  const resetAddForm = () => {
+    setAddShipmentId("");
+    setAddShipmentSearch("");
+    setAddWarehouseId("");
+    setAddTransferDate(new Date().toISOString().split("T")[0]);
+    setAddRows([{ productId: "", productName: "", serialNumber: "", qty: 0, batchNumber: "", uom: "", weight: 0 }]);
+  };
+
+  const handleAddSave = async () => {
+    const validRows = addRows.filter((r) => r.productId && r.qty > 0);
+    if (validRows.length === 0) {
+      toast.error("Add at least one product with qty > 0");
+      return;
+    }
+    setAddSaving(true);
+    try {
+      const res = await fetch("/api/admin/transfer-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vbShipmentNumber: addShipmentId || null,
+          warehouse: addWarehouseId || null,
+          supplier: selectedShipment?.supplier || null,
+          transferDate: addTransferDate,
+          products: validRows.map((r) => ({
+            product: r.productId,
+            serialNumber: r.serialNumber,
+            qty: r.qty,
+            batchNumber: r.batchNumber,
+            uom: r.uom,
+            weight: r.weight,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Transfer order(s) created");
+      setAddOpen(false);
+      resetAddForm();
+      fetchData();
+    } catch {
+      toast.error("Failed to create transfer order");
+    } finally {
+      setAddSaving(false);
+    }
+  };
+
+  const updateRow = (i: number, field: keyof NewProductRow, val: any) => {
+    setAddRows((prev) => { const u = [...prev]; u[i] = { ...u[i], [field]: val }; return u; });
+  };
+  const duplicateRow = (i: number) => {
+    setAddRows((prev) => {
+      const dup = { ...prev[i], serialNumber: "", qty: 0, batchNumber: "", weight: 0 };
+      const u = [...prev]; u.splice(i + 1, 0, dup); return u;
+    });
+  };
+  const removeRow = (i: number) => {
+    setAddRows((prev) => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i));
+  };
+
+  const filteredShipments = useMemo(() => {
+    if (!addShipmentSearch) return storeShippings.slice(0, 50);
+    const q = addShipmentSearch.toLowerCase();
+    return storeShippings.filter((s: any) =>
+      (s.VBShipmentNumber || "").toLowerCase().includes(q) || (s.svbid || "").toLowerCase().includes(q)
+    ).slice(0, 50);
+  }, [storeShippings, addShipmentSearch]);
+
+  const shipmentSearchExactMatch = addShipmentSearch.trim()
+    ? storeShippings.some((s: any) =>
+        (s.VBShipmentNumber || "").toLowerCase() === addShipmentSearch.trim().toLowerCase()
+      )
+    : true;
+
+  const handleCreateShipment = async (shipmentNumber: string) => {
+    if (!shipmentNumber.trim()) return;
+    // Open the full AddShippingDialog pre-filled with the typed number
+    setCreateShipPresetNumber(shipmentNumber.trim().toUpperCase());
+    setAddShipmentOpen(false); // close the picker dropdown
+    setCreateShipDialogOpen(true);
+  };
+
+  const selectedShipment = storeShippings.find((s: any) => s._id === addShipmentId);
+  const selectedShipmentLabel = selectedShipment
+    ? (selectedShipment.VBShipmentNumber || selectedShipment.svbid || selectedShipment._id)
+    : "";
+  // Auto-derive supplier from selected shipment
+  const derivedSupplierLabel = selectedShipment
+    ? (selectedShipment._displaySupplier || selectedShipment.supplier || "")
+    : "";
+
   // ── Columns ──
   const columns: ColumnDef<TransferOrder>[] = [
     {
-      id: "shipment",
-      header: "Shipment #",
+      id: "shipment", header: "Shipment #",
       accessorFn: (row) => resolveStr(row.vbShipmentNumber, "VBShipmentNumber") || resolveStr(row.vbShipmentNumber, "svbid"),
       cell: ({ row }) => {
         const val = resolveStr(row.original.vbShipmentNumber, "VBShipmentNumber") || resolveStr(row.original.vbShipmentNumber, "svbid");
         return <span className="font-mono font-semibold text-primary">{val}</span>;
       },
     },
+    { id: "warehouse", header: "Warehouse", accessorFn: (row) => resolveStr(row.warehouse), cell: ({ row }) => resolveStr(row.original.warehouse) },
     {
-      id: "warehouse",
-      header: "Warehouse",
-      accessorFn: (row) => resolveStr(row.warehouse),
-      cell: ({ row }) => resolveStr(row.original.warehouse),
-    },
-    {
-      id: "product",
-      header: "Product",
-      accessorFn: (row) => resolveStr(row.product),
+      id: "product", header: "Product", accessorFn: (row) => resolveStr(row.product),
       cell: ({ row }) => {
         const p = row.original.product;
-        if (typeof p === "object" && p) {
-          return (
-            <span>
-              {p.name}
-              {p.vbId && <span className="text-[10px] text-muted-foreground ml-1">({p.vbId})</span>}
-            </span>
-          );
-        }
+        if (typeof p === "object" && p) return <span>{p.name}{p.vbId && <span className="text-[10px] text-muted-foreground ml-1">({p.vbId})</span>}</span>;
         return resolveStr(p);
       },
     },
+    { id: "supplier", header: "Supplier", accessorFn: (row) => resolveStr(row.supplier), cell: ({ row }) => resolveStr(row.original.supplier) },
+    { accessorKey: "serialNumber", header: "Serial #", cell: ({ row }) => row.original.serialNumber || "-" },
+    { accessorKey: "qty", header: "Qty", cell: ({ row }) => <span className="font-bold">{row.original.qty?.toLocaleString() || "-"}</span> },
+    { accessorKey: "batchNumber", header: "Batch #", cell: ({ row }) => row.original.batchNumber || "-" },
+    { accessorKey: "uom", header: "UOM", cell: ({ row }) => row.original.uom || "-" },
+    { accessorKey: "weight", header: "Weight", cell: ({ row }) => row.original.weight || "-" },
+    { id: "receivedDate", header: "Received Date", accessorFn: (row) => row.receivedDate ? new Date(row.receivedDate).getTime() : 0, cell: ({ row }) => formatDate(row.original.receivedDate) },
+    { id: "createdBy", header: "Created By", accessorFn: (row) => resolveStr(row.createdBy), cell: ({ row }) => resolveStr(row.original.createdBy) },
+    { id: "createdAt", header: "Created", accessorFn: (row) => row.createdAt ? new Date(row.createdAt).getTime() : 0, cell: ({ row }) => formatDate(row.original.createdAt) },
     {
-      id: "supplier",
-      header: "Supplier",
-      accessorFn: (row) => resolveStr(row.supplier),
-      cell: ({ row }) => resolveStr(row.original.supplier),
-    },
-    {
-      accessorKey: "serialNumber",
-      header: "Serial #",
-      cell: ({ row }) => row.original.serialNumber || "-",
-    },
-    {
-      accessorKey: "qty",
-      header: "Qty",
-      cell: ({ row }) => (
-        <span className="font-bold">{row.original.qty?.toLocaleString() || "-"}</span>
-      ),
-    },
-    {
-      accessorKey: "batchNumber",
-      header: "Batch #",
-      cell: ({ row }) => row.original.batchNumber || "-",
-    },
-    {
-      accessorKey: "uom",
-      header: "UOM",
-      cell: ({ row }) => row.original.uom || "-",
-    },
-    {
-      accessorKey: "weight",
-      header: "Weight",
-      cell: ({ row }) => row.original.weight || "-",
-    },
-    {
-      id: "receivedDate",
-      header: "Received Date",
-      accessorFn: (row) => row.receivedDate ? new Date(row.receivedDate).getTime() : 0,
-      cell: ({ row }) => formatDate(row.original.receivedDate),
-    },
-    {
-      id: "createdBy",
-      header: "Created By",
-      accessorFn: (row) => resolveStr(row.createdBy),
-      cell: ({ row }) => resolveStr(row.original.createdBy),
-    },
-    {
-      id: "createdAt",
-      header: "Created",
-      accessorFn: (row) => row.createdAt ? new Date(row.createdAt).getTime() : 0,
-      cell: ({ row }) => formatDate(row.original.createdAt),
-    },
-    {
-      id: "actions",
-      header: "",
+      id: "actions", header: "",
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingItem(row.original);
-            }}
-            className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-          >
+          <button onClick={(e) => { e.stopPropagation(); setEditingItem(row.original); }} className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteId(row.original._id);
-            }}
-            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          >
+          <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.original._id); }} className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -492,124 +534,281 @@ function TransferOrdersContent() {
   ];
 
   const headerFilters = useMemo(() => (
-    <HeaderFilters
-      inputs={inputs}
-      setFilter={setFilter}
-      resetFilters={resetFilters}
-      hasActiveFilters={hasActiveFilters}
-      warehouses={storeWarehouses}
-    />
+    <HeaderFilters inputs={inputs} setFilter={setFilter} resetFilters={resetFilters} hasActiveFilters={hasActiveFilters} warehouses={storeWarehouses} />
   ), [inputs, setFilter, resetFilters, hasActiveFilters, storeWarehouses]);
 
   if (loading) return <TablePageSkeleton />;
 
   return (
     <div className="w-full h-full">
-      <SimpleDataTable
-        columns={columns}
-        data={filteredData}
-        showColumnToggle={false}
-        headerExtra={headerFilters}
+      <SimpleDataTable columns={columns} data={filteredData} showColumnToggle={false} headerExtra={headerFilters} />
+
+      {/* ── Add Transfer Order Dialog ── */}
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); resetAddForm(); } else setAddOpen(true); }}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-primary" />
+              Add Transfer Order
+            </DialogTitle>
+            <DialogDescription>Create one or more transfer order records.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-5 p-1">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Shipment picker */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Shipment # (optional)</Label>
+                <div className="relative" ref={shipmentDropRef}>
+                  <button
+                    type="button"
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm flex items-center justify-between gap-1 hover:bg-muted/50 transition-colors"
+                    onClick={() => { setAddShipmentOpen(!addShipmentOpen); setAddShipmentSearch(""); }}
+                  >
+                    <span className={selectedShipmentLabel ? "font-mono font-semibold text-primary" : "text-muted-foreground"}>
+                      {selectedShipmentLabel || "Select shipment..."}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {addShipmentId && <X className="h-3 w-3 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); setAddShipmentId(""); }} />}
+                      <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                    </div>
+                  </button>
+                  {addShipmentOpen && (
+                    <div className="absolute z-50 top-full mt-1 left-0 w-full min-w-[240px] bg-popover border rounded-md shadow-lg overflow-hidden">
+                      <div className="p-1.5 border-b">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="Search shipment..."
+                          value={addShipmentSearch}
+                          onChange={(e) => setAddShipmentSearch(e.target.value)}
+                          className="w-full h-7 px-2 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                      <div className="max-h-[200px] overflow-y-auto p-1">
+                        {filteredShipments.length > 0 ? filteredShipments.map((s: any) => (
+                          <button key={s._id} type="button"
+                            className={`w-full text-left px-2 py-1.5 text-xs rounded-sm hover:bg-accent transition-colors flex items-center justify-between ${addShipmentId === s._id ? "bg-accent font-semibold" : ""}`}
+                            onClick={() => { setAddShipmentId(s._id); setAddShipmentOpen(false); }}
+                          >
+                            <span className="font-mono">{s.VBShipmentNumber || s.svbid || s._id}</span>
+                            {addShipmentId === s._id && <Check className="h-3 w-3 text-primary" />}
+                          </button>
+                        )) : (
+                          <p className="text-[10px] text-muted-foreground text-center py-2">No shipments found</p>
+                        )}
+                        {addShipmentSearch.trim() && !shipmentSearchExactMatch && (
+                          <>
+                            {filteredShipments.length > 0 && <div className="border-t my-1" />}
+                            <button
+                              type="button"
+                              disabled={createShipmentLoading}
+                              className="w-full text-left px-2 py-1.5 text-xs rounded-sm hover:bg-accent transition-colors flex items-center gap-1.5 text-primary font-medium disabled:opacity-60"
+                              onClick={() => handleCreateShipment(addShipmentSearch.trim())}
+                            >
+                              {createShipmentLoading
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Plus className="h-3 w-3" />
+                              }
+                              Create &ldquo;{addShipmentSearch.trim().toUpperCase()}&rdquo;
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Transfer Date */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Transfer Date</Label>
+                <Input type="date" value={addTransferDate} onChange={(e) => setAddTransferDate(e.target.value)} className="h-9" />
+              </div>
+
+              {/* Warehouse */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Warehouse</Label>
+                <select value={addWarehouseId} onChange={(e) => setAddWarehouseId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                  <option value="">— None —</option>
+                  {storeWarehouses.map((w: any) => <option key={w._id} value={w._id}>{w.name}</option>)}
+                </select>
+              </div>
+
+              {/* Supplier — auto-filled from shipment */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Supplier</Label>
+                <div className={`h-9 w-full rounded-md border border-input px-3 text-sm flex items-center ${
+                  derivedSupplierLabel ? "bg-background text-foreground" : "bg-muted/30 text-muted-foreground"
+                }`}>
+                  {derivedSupplierLabel || "Auto-filled from shipment"}
+                </div>
+              </div>
+            </div>
+
+            {/* Products table */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Products</p>
+                <button type="button"
+                  className="h-7 px-2 text-xs rounded-md border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
+                  onClick={() => setAddRows((prev) => [...prev, { productId: "", productName: "", serialNumber: "", qty: 0, batchNumber: "", uom: "", weight: 0 }])}
+                >
+                  <Plus className="h-3 w-3" /> Add Row
+                </button>
+              </div>
+              <div className="border rounded-lg overflow-visible">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 border-b">
+                      <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Product</th>
+                      <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">Serial #</th>
+                      <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-20">Qty</th>
+                      <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">Batch #</th>
+                      <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">UOM</th>
+                      <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-24">Weight</th>
+                      <th className="w-16"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {addRows.map((row, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-2 py-1.5">
+                          <select value={row.productId}
+                            onChange={(e) => {
+                              const prod = storeProducts.find((p: any) => p._id === e.target.value);
+                              updateRow(i, "productId", e.target.value);
+                              updateRow(i, "productName", prod?.name || "");
+                            }}
+                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            <option value="">— Select product —</option>
+                            {storeProducts.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input value={row.serialNumber} onChange={(e) => updateRow(i, "serialNumber", e.target.value)} className="h-8 text-center text-sm" placeholder="—" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} value={row.qty || ""} onChange={(e) => updateRow(i, "qty", Number(e.target.value))} className="h-8 text-center text-sm" placeholder="0" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input value={row.batchNumber} onChange={(e) => updateRow(i, "batchNumber", e.target.value)} className="h-8 text-center text-sm" placeholder="—" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <UomCombobox value={row.uom} onChange={(val) => updateRow(i, "uom", val)} options={uomOptions} onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} step="0.01" value={row.weight || ""} onChange={(e) => updateRow(i, "weight", Number(e.target.value))} className="h-8 text-center text-sm" placeholder="0" />
+                        </td>
+                        <td className="px-1 py-1.5">
+                          <div className="flex items-center gap-0.5">
+                            <button type="button" title="Duplicate row" className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" onClick={() => duplicateRow(i)}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            {addRows.length > 1 && (
+                              <button type="button" title="Remove row" className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" onClick={() => removeRow(i)}>
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t pt-4 mt-auto">
+            <Button variant="outline" onClick={() => { setAddOpen(false); resetAddForm(); }}>Cancel</Button>
+            <Button onClick={handleAddSave} disabled={addSaving}>
+              {addSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Transfer Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Full Shipment Create Dialog ── */}
+      <AddShippingDialog
+        open={createShipDialogOpen}
+        onClose={() => setCreateShipDialogOpen(false)}
+        mode="standalone"
+        editingData={createShipPresetNumber ? { VBShipmentNumber: createShipPresetNumber } : null}
+        onSaved={async () => {
+          // Refresh shipments cache, then auto-select the newly created one
+          await queryClient.invalidateQueries({ queryKey: shippingKeys.all });
+          // Find the newly created shipment by its number
+          const refreshed = await fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []);
+          const match = Array.isArray(refreshed)
+            ? refreshed.find((s: any) => s.VBShipmentNumber === createShipPresetNumber)
+            : null;
+          if (match) {
+            setAddShipmentId(match._id);
+            setAddShipmentSearch("");
+          }
+          setCreateShipPresetNumber("");
+        }}
       />
 
-      {/* Delete Confirmation */}
+
       <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Transfer Order</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this transfer order? This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Are you sure? This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteId && handleDelete(deleteId)}
-            >
-              Delete
-            </AlertDialogAction>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Dialog */}
+      {/* Edit */}
       <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-4 w-4 text-primary" />
-              Edit Transfer Order
-            </DialogTitle>
-            <DialogDescription>
-              Update the details of this transfer order.
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="h-4 w-4 text-primary" /> Edit Transfer Order</DialogTitle>
+            <DialogDescription>Update the details of this transfer order.</DialogDescription>
           </DialogHeader>
           {editingItem && (
             <div className="space-y-4 pt-2">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Serial Number</Label>
-                  <Input
-                    value={editingItem.serialNumber || ""}
-                    onChange={(e) => setEditingItem({ ...editingItem, serialNumber: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input value={editingItem.serialNumber || ""} onChange={(e) => setEditingItem({ ...editingItem, serialNumber: e.target.value })} className="h-9" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Qty</Label>
-                  <Input
-                    type="number"
-                    value={editingItem.qty || ""}
-                    onChange={(e) => setEditingItem({ ...editingItem, qty: Number(e.target.value) })}
-                    className="h-9"
-                  />
+                  <Input type="number" value={editingItem.qty || ""} onChange={(e) => setEditingItem({ ...editingItem, qty: Number(e.target.value) })} className="h-9" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Batch #</Label>
-                  <Input
-                    value={editingItem.batchNumber || ""}
-                    onChange={(e) => setEditingItem({ ...editingItem, batchNumber: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input value={editingItem.batchNumber || ""} onChange={(e) => setEditingItem({ ...editingItem, batchNumber: e.target.value })} className="h-9" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">UOM</Label>
-                  <UomCombobox
-                    value={editingItem.uom || ""}
-                    onChange={(val) => setEditingItem({ ...editingItem, uom: val })}
-                    options={uomOptions}
-                    onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())}
-                  />
+                  <UomCombobox value={editingItem.uom || ""} onChange={(val) => setEditingItem({ ...editingItem, uom: val })} options={uomOptions} onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Weight</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editingItem.weight || ""}
-                    onChange={(e) => setEditingItem({ ...editingItem, weight: Number(e.target.value) })}
-                    className="h-9"
-                  />
+                  <Input type="number" step="0.01" value={editingItem.weight || ""} onChange={(e) => setEditingItem({ ...editingItem, weight: Number(e.target.value) })} className="h-9" />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Received Date</Label>
-                <Input
-                  type="date"
-                  value={editingItem.receivedDate ? new Date(editingItem.receivedDate).toISOString().split("T")[0] : ""}
-                  onChange={(e) => setEditingItem({ ...editingItem, receivedDate: e.target.value })}
-                  className="h-9"
-                />
+                <Input type="date" value={editingItem.receivedDate ? new Date(editingItem.receivedDate).toISOString().split("T")[0] : ""} onChange={(e) => setEditingItem({ ...editingItem, receivedDate: e.target.value })} className="h-9" />
               </div>
             </div>
           )}
           <DialogFooter className="border-t pt-4">
-            <Button variant="outline" onClick={() => setEditingItem(null)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
             <Button onClick={handleSaveEdit}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>

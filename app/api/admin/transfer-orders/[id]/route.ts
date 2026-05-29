@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaTransferOrder from "@/lib/models/VidaTransferOrder";
+import VidaWarehouse from "@/lib/models/VidaWarehouse";
 
 export const dynamic = "force-dynamic";
 

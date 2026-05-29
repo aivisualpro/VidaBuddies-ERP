@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/admin/transfer-orders
  * Body: { vbShipmentNumber, warehouse, supplier, transferDate, products: [{ product, serialNumber, qty, batchNumber, uom, weight }] }
- * Creates one document per product in vidaTransferOrders
+ * Creates one document per product in vidaTransferOrders.
+ * Warehouse can be an ObjectId string or a warehouse name string — we resolve name→ObjectId automatically.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -59,8 +60,20 @@ export async function POST(req: NextRequest) {
 
     const { vbShipmentNumber, warehouse, supplier, transferDate, products } = body;
 
-    if (!vbShipmentNumber || !products || !Array.isArray(products) || products.length === 0) {
-      return NextResponse.json({ error: "vbShipmentNumber and products array required" }, { status: 400 });
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      return NextResponse.json({ error: "products array required" }, { status: 400 });
+    }
+
+    // Resolve warehouse: if it's a valid ObjectId use it directly, otherwise look up by name
+    let warehouseId = null;
+    if (warehouse) {
+      if (/^[a-fA-F0-9]{24}$/.test(warehouse)) {
+        warehouseId = warehouse;
+      } else {
+        // Warehouse was passed as a name string — resolve to ObjectId
+        const wDoc = await VidaWarehouse.findOne({ name: warehouse }).select("_id").lean();
+        warehouseId = wDoc?._id || null;
+      }
     }
 
     const createdBy = session.id || null;
@@ -68,7 +81,7 @@ export async function POST(req: NextRequest) {
     // Create one document per product line
     const docs = products.map((p: any) => ({
       vbShipmentNumber,
-      warehouse: warehouse || null,
+      warehouse: warehouseId,
       product: p.product,
       supplier: supplier || null,
       serialNumber: p.serialNumber || "",
