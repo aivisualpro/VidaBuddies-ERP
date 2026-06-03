@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useProducts } from "@/hooks/queries/useProducts";
 import { useCategories } from "@/hooks/queries/useCategories";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
@@ -20,10 +21,20 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight, Warehouse, Building, ArrowUpDown } from "lucide-react";
+import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight, Warehouse, Building } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -60,7 +71,16 @@ interface Category {
 
 
 export default function ProductsPage() {
+  return (
+    <Suspense>
+      <ProductsContent />
+    </Suspense>
+  );
+}
+
+function ProductsContent() {
   const router = useRouter();
+  const { filters, inputs, setFilter } = useUrlFilters({ search: "" }, ["search"], 300);
   
   const { data = [], isLoading } = useProducts();
   const { data: categories = [] } = useCategories();
@@ -130,8 +150,9 @@ export default function ProductsPage() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
 
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) return;
     try {
       const response = await fetch(`/api/admin/products/${id}`, {
         method: "DELETE",
@@ -141,6 +162,8 @@ export default function ProductsPage() {
       refetchProducts();
     } catch (error) {
       toast.error("Failed to delete product");
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -176,11 +199,16 @@ export default function ProductsPage() {
     }
   };
 
-  const filteredData = data.filter(item => {
-    if (selectedSubcategory) return item.subcategory === selectedSubcategory;
-    if (selectedCategory) return item.category === selectedCategory;
-    return true;
-  });
+  const filteredData = useMemo(() => {
+    let result = data;
+    if (selectedSubcategory) result = result.filter(item => item.subcategory === selectedSubcategory);
+    else if (selectedCategory) result = result.filter(item => item.category === selectedCategory);
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter(item => item.name?.toLowerCase().includes(q));
+    }
+    return result;
+  }, [data, selectedCategory, selectedSubcategory, filters.search]);
 
   const columns: ColumnDef<Product>[] = [
     {
@@ -205,18 +233,7 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "name",
-      header: ({ column }) => {
-        return (
-           <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
-          >
-            Name
-            <ArrowUpDown className="ml-2 h-3 w-3" />
-          </Button>
-        )
-      },
+      header: "Name",
       cell: ({ row }) => <span>{row.original.name}</span>
     },
     {
@@ -225,18 +242,7 @@ export default function ProductsPage() {
         const pBalances = stockBalances[row._id] || {};
         return Object.values(pBalances).reduce((sum, qty) => sum + qty, 0);
       },
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
-          >
-            Stock by Warehouse
-            <ArrowUpDown className="ml-2 h-3 w-3" />
-          </Button>
-        )
-      },
+      header: "Stock by Warehouse",
       cell: ({ row }) => {
         const item = row.original;
         const pBalances = stockBalances[item._id] || {};
@@ -271,18 +277,7 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "salePrice",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
-          >
-            Sale Price
-            <ArrowUpDown className="ml-2 h-3 w-3" />
-          </Button>
-        )
-      },
+      header: "Sale Price",
       cell: ({ row }) => {
         const val = row.getValue("salePrice");
         return val ? `$${Number(val).toFixed(2)}` : "-";
@@ -290,18 +285,7 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "isOnWebsite",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 -ml-2 text-xs font-semibold hover:bg-muted/50"
-          >
-            Status
-            <ArrowUpDown className="ml-2 h-3 w-3" />
-          </Button>
-        )
-      },
+      header: "Status",
       cell: ({ row }) => (
         <Badge variant={row.original.isOnWebsite ? "default" : "secondary"}>
           {row.original.isOnWebsite ? "On Website" : "Hidden"}
@@ -327,7 +311,7 @@ export default function ProductsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleDelete(item._id)}
+              onClick={(e) => { e.stopPropagation(); setDeleteId(item._id); }}
               className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
               title="Delete"
             >
@@ -462,7 +446,8 @@ export default function ProductsPage() {
         <SimpleDataTable
           columns={columns}
           data={filteredData}
-          searchKey="name"
+          globalFilter={inputs.search}
+          onGlobalFilterChange={(val) => setFilter("search", val)}
           onAdd={openAddSheet}
           title={selectedSubcategory || selectedCategory || "All Products"}
           showColumnToggle={false}
@@ -478,6 +463,19 @@ export default function ProductsPage() {
         allProducts={data}
         onSuccess={refetchProducts}
       />
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>Are you sure you want to delete this product? This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

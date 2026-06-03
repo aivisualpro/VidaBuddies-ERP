@@ -240,10 +240,12 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const data = await req.json();
 
-    // Sanitize ObjectId fields — empty strings → null
+    // Sanitize ObjectId fields — empty strings or invalid ObjectIds → null
     const oidFields = ['VBNumber', 'VBSerialNumber', 'supplier', 'supplierLocation'];
     for (const f of oidFields) {
-      if (data[f] === '' || data[f] === undefined) data[f] = null;
+      if (!data[f] || data[f] === '' || (typeof data[f] === 'string' && !/^[a-fA-F0-9]{24}$/.test(data[f]))) {
+        data[f] = null;
+      }
     }
     // Sanitize products array
     if (Array.isArray(data.products)) {

@@ -32,6 +32,7 @@ import { TablePageSkeleton } from "@/components/skeletons";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
 import { useProducts } from "@/hooks/queries/useProducts";
+import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { useShippings, shippingKeys } from "@/hooks/queries/useShippings";
 import { useQueryClient } from "@tanstack/react-query";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
@@ -98,7 +99,7 @@ function UomCombobox({
         className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm flex items-center justify-between gap-1 hover:bg-muted/50 transition-colors"
         onClick={() => { setOpen(!open); setSearch(""); }}
       >
-        <span className={value ? "" : "text-muted-foreground"}>{value || "Select UOM"}</span>
+        <span className={value ? "" : "text-muted-foreground"}>{value || "UOM"}</span>
         <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
       </button>
       {open && (
@@ -156,6 +157,80 @@ function UomCombobox({
   );
 }
 
+/* ── Generic Searchable Select ── */
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Select...",
+  className = "",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()));
+  const selectedLabel = options.find((o) => o.value === value)?.label || "";
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className={`h-9 w-full rounded-md border border-input bg-background px-2 text-sm flex items-center justify-between gap-1 hover:bg-muted/50 transition-colors ${className}`}
+        onClick={() => { setOpen(!open); setSearch(""); }}
+      >
+        <span className={`truncate ${selectedLabel ? "" : "text-muted-foreground"}`}>{selectedLabel || placeholder}</span>
+        <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 left-0 w-full min-w-[200px] bg-popover border rounded-md shadow-lg overflow-hidden">
+          <div className="p-1.5 border-b">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-7 px-2 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div className="max-h-[200px] overflow-y-auto p-1">
+            {filtered.length > 0 ? (
+              filtered.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-sm hover:bg-accent transition-colors flex items-center justify-between ${value === opt.value ? "bg-accent font-semibold" : ""}`}
+                  onClick={() => { onChange(opt.value); setOpen(false); }}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  {value === opt.value && <Check className="h-3 w-3 text-primary shrink-0" />}
+                </button>
+              ))
+            ) : (
+              <p className="text-[10px] text-muted-foreground text-center py-2">No matches</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Header Filters ── */
 function HeaderFilters({
   inputs,
@@ -172,13 +247,6 @@ function HeaderFilters({
 }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <input
-        type="text"
-        placeholder="Search..."
-        value={inputs.search}
-        onChange={(e) => setFilter("search", e.target.value)}
-        className="h-8 w-[140px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
       <select
         value={inputs.warehouse}
         onChange={(e) => setFilter("warehouse", e.target.value)}
@@ -236,6 +304,19 @@ function TransferOrdersContent() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TransferOrder | null>(null);
 
+  // ── Edit dialog state ──
+  const [editSaving, setEditSaving] = useState(false);
+  const [editShipmentId, setEditShipmentId] = useState("");
+  const [editWarehouseId, setEditWarehouseId] = useState("");
+  const [editSupplierId, setEditSupplierId] = useState("");
+  const [editTransferDate, setEditTransferDate] = useState("");
+  const [editProductId, setEditProductId] = useState("");
+  const [editSerialNumber, setEditSerialNumber] = useState("");
+  const [editQty, setEditQty] = useState<number>(0);
+  const [editBatchNumber, setEditBatchNumber] = useState("");
+  const [editUom, setEditUom] = useState("");
+  const [editWeight, setEditWeight] = useState<number>(0);
+
   // ── Add dialog state ──
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
@@ -248,6 +329,7 @@ function TransferOrdersContent() {
   const shipmentDropRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const [addWarehouseId, setAddWarehouseId] = useState("");
+  const [addSupplierId, setAddSupplierId] = useState("");
   const [addTransferDate, setAddTransferDate] = useState(new Date().toISOString().split("T")[0]);
   const [addRows, setAddRows] = useState<NewProductRow[]>([
     { productId: "", productName: "", serialNumber: "", qty: 0, batchNumber: "", uom: "", weight: 0 },
@@ -256,6 +338,7 @@ function TransferOrdersContent() {
   const { data: storeWarehouses = [] } = useWarehouses();
   const { data: storeProducts = [] } = useProducts();
   const { data: storeShippings = [] } = useShippings();
+  const { data: storeSuppliers = [] } = useSuppliers();
 
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   useEffect(() => {
@@ -267,6 +350,7 @@ function TransferOrdersContent() {
 
   const { setLeftContent, setRightContent } = useHeaderActions();
 
+  // Build header content — needs to re-run when inputs change
   useEffect(() => {
     setLeftContent(
       <div className="flex items-center gap-2">
@@ -275,12 +359,6 @@ function TransferOrdersContent() {
           Transfer Orders
         </h1>
       </div>
-    );
-    setRightContent(
-      <Button size="sm" className="flex items-center gap-1.5" onClick={() => setAddOpen(true)}>
-        <Plus className="h-4 w-4" />
-        Add Transfer Order
-      </Button>
     );
     return () => {
       setLeftContent(null);
@@ -373,20 +451,45 @@ function TransferOrdersContent() {
     }
   };
 
+  // ── Populate edit state when editingItem changes ──
+  useEffect(() => {
+    if (editingItem) {
+      const shipId = typeof editingItem.vbShipmentNumber === "object" ? editingItem.vbShipmentNumber?._id : (editingItem.vbShipmentNumber || "");
+      const whId = typeof editingItem.warehouse === "object" ? editingItem.warehouse?._id : (editingItem.warehouse || "");
+      const supId = typeof editingItem.supplier === "object" ? editingItem.supplier?._id : (editingItem.supplier || "");
+      const prodId = typeof editingItem.product === "object" ? editingItem.product?._id : (editingItem.product || "");
+      setEditShipmentId(shipId || "");
+      setEditWarehouseId(whId || "");
+      setEditSupplierId(supId || "");
+      setEditProductId(prodId || "");
+      setEditSerialNumber(editingItem.serialNumber || "");
+      setEditQty(editingItem.qty || 0);
+      setEditBatchNumber(editingItem.batchNumber || "");
+      setEditUom(editingItem.uom || "");
+      setEditWeight(editingItem.weight || 0);
+      setEditTransferDate(editingItem.receivedDate ? new Date(editingItem.receivedDate).toISOString().split("T")[0] : "");
+    }
+  }, [editingItem]);
+
   // ── Edit ──
   const handleSaveEdit = async () => {
     if (!editingItem) return;
+    setEditSaving(true);
     try {
       const res = await fetch(`/api/admin/transfer-orders/${editingItem._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          serialNumber: editingItem.serialNumber,
-          qty: editingItem.qty,
-          batchNumber: editingItem.batchNumber,
-          uom: editingItem.uom,
-          weight: editingItem.weight,
-          receivedDate: editingItem.receivedDate,
+          vbShipmentNumber: editShipmentId || null,
+          warehouse: editWarehouseId || null,
+          supplier: editSupplierId || null,
+          product: editProductId || null,
+          serialNumber: editSerialNumber,
+          qty: editQty,
+          batchNumber: editBatchNumber,
+          uom: editUom,
+          weight: editWeight,
+          receivedDate: editTransferDate,
         }),
       });
       if (!res.ok) throw new Error();
@@ -395,6 +498,8 @@ function TransferOrdersContent() {
       fetchData();
     } catch {
       toast.error("Failed to update");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -403,6 +508,7 @@ function TransferOrdersContent() {
     setAddShipmentId("");
     setAddShipmentSearch("");
     setAddWarehouseId("");
+    setAddSupplierId("");
     setAddTransferDate(new Date().toISOString().split("T")[0]);
     setAddRows([{ productId: "", productName: "", serialNumber: "", qty: 0, batchNumber: "", uom: "", weight: 0 }]);
   };
@@ -421,7 +527,7 @@ function TransferOrdersContent() {
         body: JSON.stringify({
           vbShipmentNumber: addShipmentId || null,
           warehouse: addWarehouseId || null,
-          supplier: selectedShipment?.supplier || null,
+          supplier: addSupplierId || selectedShipment?.supplier || null,
           transferDate: addTransferDate,
           products: validRows.map((r) => ({
             product: r.productId,
@@ -489,6 +595,40 @@ function TransferOrdersContent() {
     ? (selectedShipment._displaySupplier || selectedShipment.supplier || "")
     : "";
 
+  // Auto-set supplier and products when a shipment is selected
+  useEffect(() => {
+    if (selectedShipment) {
+      // Auto-set supplier
+      const shipSupplier = typeof selectedShipment.supplier === "object"
+        ? (selectedShipment.supplier as any)?._id
+        : selectedShipment.supplier;
+      if (shipSupplier) {
+        setAddSupplierId(shipSupplier);
+      }
+
+      // Auto-populate product rows from the shipment's products
+      const shipProducts = selectedShipment.products as any[];
+      const displayProducts = (selectedShipment as any)._displayProducts as string[] | undefined;
+      if (Array.isArray(shipProducts) && shipProducts.length > 0) {
+        const newRows: NewProductRow[] = shipProducts.map((pid: any, idx: number) => {
+          const productId = typeof pid === "object" ? pid._id || pid.toString() : String(pid);
+          // Try to get display name from _displayProducts or from storeProducts
+          const displayName = displayProducts?.[idx] || storeProducts.find((p: any) => p._id === productId)?.name || "";
+          return {
+            productId,
+            productName: displayName,
+            serialNumber: "",
+            qty: 0,
+            batchNumber: "",
+            uom: "",
+            weight: 0,
+          };
+        });
+        setAddRows(newRows);
+      }
+    }
+  }, [addShipmentId]);
+
   // ── Columns ──
   const columns: ColumnDef<TransferOrder>[] = [
     {
@@ -533,19 +673,76 @@ function TransferOrdersContent() {
     },
   ];
 
-  const headerFilters = useMemo(() => (
-    <HeaderFilters inputs={inputs} setFilter={setFilter} resetFilters={resetFilters} hasActiveFilters={hasActiveFilters} warehouses={storeWarehouses} />
-  ), [inputs, setFilter, resetFilters, hasActiveFilters, storeWarehouses]);
+
+  // Use refs to break the render cycle (setRightContent updates context → re-render → effect fires again)
+  const headerRefs = useRef({ inputs, setFilter, resetFilters, hasActiveFilters, storeWarehouses, setAddOpen });
+  headerRefs.current = { inputs, setFilter, resetFilters, hasActiveFilters, storeWarehouses, setAddOpen };
+
+  // Derive a stable key that changes only when the actual values change
+  const headerKey = `${inputs.search}|${inputs.warehouse}|${inputs.dateFrom}|${inputs.dateTo}|${hasActiveFilters}|${storeWarehouses.length}`;
+
+  // Set right content with search, filters, and add button
+  useEffect(() => {
+    const { inputs: i, setFilter: sf, resetFilters: rf, hasActiveFilters: haf, storeWarehouses: sw, setAddOpen: sao } = headerRefs.current;
+    setRightContent(
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={i.search}
+          onChange={(e) => sf("search", e.target.value)}
+          className="h-8 w-[180px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <select
+          value={i.warehouse}
+          onChange={(e) => sf("warehouse", e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <option value="">All Warehouses</option>
+          {sw.map((w: any) => (
+            <option key={w._id} value={w._id}>{w.name}</option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={i.dateFrom}
+          onChange={(e) => sf("dateFrom", e.target.value)}
+          className="h-8 w-[130px] text-xs rounded-md border border-input bg-background px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          title="From Date"
+        />
+        <input
+          type="date"
+          value={i.dateTo}
+          onChange={(e) => sf("dateTo", e.target.value)}
+          className="h-8 w-[130px] text-xs rounded-md border border-input bg-background px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          title="To Date"
+        />
+        {haf && (
+          <button
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 rounded-md hover:bg-destructive/10 transition-colors"
+            onClick={() => headerRefs.current.resetFilters()}
+          >
+            <RotateCcw className="h-3 w-3" />
+            Reset
+          </button>
+        )}
+        <Button size="sm" className="flex items-center gap-1.5" onClick={() => headerRefs.current.setAddOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Add Transfer Order
+        </Button>
+      </div>
+    );
+  }, [headerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <TablePageSkeleton />;
 
   return (
     <div className="w-full h-full">
-      <SimpleDataTable columns={columns} data={filteredData} showColumnToggle={false} headerExtra={headerFilters} />
+      <SimpleDataTable columns={columns} data={filteredData} showColumnToggle={false} />
 
       {/* ── Add Transfer Order Dialog ── */}
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); resetAddForm(); } else setAddOpen(true); }}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-5xl min-h-[550px] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowRightLeft className="h-5 w-5 text-primary" />
@@ -629,21 +826,23 @@ function TransferOrdersContent() {
               {/* Warehouse */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Warehouse</Label>
-                <select value={addWarehouseId} onChange={(e) => setAddWarehouseId(e.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                  <option value="">— None —</option>
-                  {storeWarehouses.map((w: any) => <option key={w._id} value={w._id}>{w.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={addWarehouseId}
+                  onChange={setAddWarehouseId}
+                  options={storeWarehouses.map((w: any) => ({ value: w._id, label: w.name }))}
+                  placeholder="— Select Warehouse —"
+                />
               </div>
 
-              {/* Supplier — auto-filled from shipment */}
+              {/* Supplier — auto-filled from shipment or manually selectable */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Supplier</Label>
-                <div className={`h-9 w-full rounded-md border border-input px-3 text-sm flex items-center ${
-                  derivedSupplierLabel ? "bg-background text-foreground" : "bg-muted/30 text-muted-foreground"
-                }`}>
-                  {derivedSupplierLabel || "Auto-filled from shipment"}
-                </div>
+                <SearchableSelect
+                  value={addSupplierId}
+                  onChange={setAddSupplierId}
+                  options={storeSuppliers.map((s: any) => ({ value: s._id, label: s.name }))}
+                  placeholder="— Select Supplier —"
+                />
               </div>
             </div>
 
@@ -675,17 +874,17 @@ function TransferOrdersContent() {
                     {addRows.map((row, i) => (
                       <tr key={i} className="border-b last:border-0">
                         <td className="px-2 py-1.5">
-                          <select value={row.productId}
-                            onChange={(e) => {
-                              const prod = storeProducts.find((p: any) => p._id === e.target.value);
-                              updateRow(i, "productId", e.target.value);
+                          <SearchableSelect
+                            value={row.productId}
+                            onChange={(val) => {
+                              const prod = storeProducts.find((p: any) => p._id === val);
+                              updateRow(i, "productId", val);
                               updateRow(i, "productName", prod?.name || "");
                             }}
-                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          >
-                            <option value="">— Select product —</option>
-                            {storeProducts.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
-                          </select>
+                            options={storeProducts.map((p: any) => ({ value: p._id, label: p.name }))}
+                            placeholder="— Select product —"
+                            className="h-8"
+                          />
                         </td>
                         <td className="px-2 py-1.5">
                           <Input value={row.serialNumber} onChange={(e) => updateRow(i, "serialNumber", e.target.value)} className="h-8 text-center text-sm" placeholder="—" />
@@ -770,46 +969,113 @@ function TransferOrdersContent() {
 
       {/* Edit */}
       <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-5xl min-h-[550px] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Pencil className="h-4 w-4 text-primary" /> Edit Transfer Order</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Edit Transfer Order
+            </DialogTitle>
             <DialogDescription>Update the details of this transfer order.</DialogDescription>
           </DialogHeader>
+
           {editingItem && (
-            <div className="space-y-4 pt-2">
+            <div className="flex-1 overflow-y-auto space-y-5 p-1">
               <div className="grid grid-cols-2 gap-4">
+                {/* Shipment picker */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Serial Number</Label>
-                  <Input value={editingItem.serialNumber || ""} onChange={(e) => setEditingItem({ ...editingItem, serialNumber: e.target.value })} className="h-9" />
+                  <Label className="text-xs">Shipment # (optional)</Label>
+                  <SearchableSelect
+                    value={editShipmentId}
+                    onChange={setEditShipmentId}
+                    options={storeShippings.map((s: any) => ({ value: s._id, label: s.VBShipmentNumber || s.svbid || s._id }))}
+                    placeholder="Select shipment..."
+                  />
                 </div>
+
+                {/* Transfer Date */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Qty</Label>
-                  <Input type="number" value={editingItem.qty || ""} onChange={(e) => setEditingItem({ ...editingItem, qty: Number(e.target.value) })} className="h-9" />
+                  <Label className="text-xs">Transfer Date</Label>
+                  <Input type="date" value={editTransferDate} onChange={(e) => setEditTransferDate(e.target.value)} className="h-9" />
+                </div>
+
+                {/* Warehouse */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Warehouse</Label>
+                  <SearchableSelect
+                    value={editWarehouseId}
+                    onChange={setEditWarehouseId}
+                    options={storeWarehouses.map((w: any) => ({ value: w._id, label: w.name }))}
+                    placeholder="— Select Warehouse —"
+                  />
+                </div>
+
+                {/* Supplier */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Supplier</Label>
+                  <SearchableSelect
+                    value={editSupplierId}
+                    onChange={setEditSupplierId}
+                    options={storeSuppliers.map((s: any) => ({ value: s._id, label: s.name }))}
+                    placeholder="— Select Supplier —"
+                  />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Batch #</Label>
-                  <Input value={editingItem.batchNumber || ""} onChange={(e) => setEditingItem({ ...editingItem, batchNumber: e.target.value })} className="h-9" />
+
+              {/* Product details */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Product</p>
+                <div className="border rounded-lg overflow-visible">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 border-b">
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Product</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">Serial #</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-20">Qty</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">Batch #</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-28">UOM</th>
+                        <th className="text-center px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-24">Weight</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="px-2 py-1.5">
+                          <SearchableSelect
+                            value={editProductId}
+                            onChange={setEditProductId}
+                            options={storeProducts.map((p: any) => ({ value: p._id, label: p.name }))}
+                            placeholder="— Select product —"
+                            className="h-8"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input value={editSerialNumber} onChange={(e) => setEditSerialNumber(e.target.value)} className="h-8 text-center text-sm" placeholder="—" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} value={editQty || ""} onChange={(e) => setEditQty(Number(e.target.value))} className="h-8 text-center text-sm" placeholder="0" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input value={editBatchNumber} onChange={(e) => setEditBatchNumber(e.target.value)} className="h-8 text-center text-sm" placeholder="—" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <UomCombobox value={editUom} onChange={setEditUom} options={uomOptions} onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} step="0.01" value={editWeight || ""} onChange={(e) => setEditWeight(Number(e.target.value))} className="h-8 text-center text-sm" placeholder="0" />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">UOM</Label>
-                  <UomCombobox value={editingItem.uom || ""} onChange={(val) => setEditingItem({ ...editingItem, uom: val })} options={uomOptions} onAddNew={(val) => setUomOptions((prev) => [...new Set([...prev, val])].sort())} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Weight</Label>
-                  <Input type="number" step="0.01" value={editingItem.weight || ""} onChange={(e) => setEditingItem({ ...editingItem, weight: Number(e.target.value) })} className="h-9" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Received Date</Label>
-                <Input type="date" value={editingItem.receivedDate ? new Date(editingItem.receivedDate).toISOString().split("T")[0] : ""} onChange={(e) => setEditingItem({ ...editingItem, receivedDate: e.target.value })} className="h-9" />
               </div>
             </div>
           )}
-          <DialogFooter className="border-t pt-4">
+
+          <DialogFooter className="border-t pt-4 mt-auto">
             <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
+            <Button onClick={handleSaveEdit} disabled={editSaving}>
+              {editSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -97,7 +97,6 @@ export function SimpleDataTable<TData, TValue>({
       rowSelection,
       ...(externalGlobalFilter !== undefined && { globalFilter: externalGlobalFilter }),
     },
-    ...(onGlobalFilterChange && { onGlobalFilterChange }),
     initialState: {
       pagination: {
         pageSize: 99999,
@@ -107,17 +106,21 @@ export function SimpleDataTable<TData, TValue>({
 
   const { setActions, setLeftContent } = useHeaderActions();
 
+  // Use a ref to avoid onGlobalFilterChange (often an inline arrow) triggering the effect
+  const globalFilterChangeRef = React.useRef(onGlobalFilterChange);
+  globalFilterChangeRef.current = onGlobalFilterChange;
+
   // Use useLayoutEffect to set header actions synchronously,
   // preventing race conditions where old page cleanup wipes new page's actions
   React.useLayoutEffect(() => {
     const headerContent = (
       <div className="flex items-center gap-2">
         {headerExtra}
-        {externalGlobalFilter !== undefined && onGlobalFilterChange ? (
+        {externalGlobalFilter !== undefined && globalFilterChangeRef.current ? (
           <Input
             placeholder="Search..."
             value={externalGlobalFilter}
-            onChange={(event) => onGlobalFilterChange(event.target.value)}
+            onChange={(event) => globalFilterChangeRef.current?.(event.target.value)}
             className="max-w-sm h-8"
           />
         ) : searchKey ? (
@@ -205,7 +208,7 @@ export function SimpleDataTable<TData, TValue>({
     showColumnToggle,
     headerExtra,
     externalGlobalFilter,
-    onGlobalFilterChange,
+    columnFilters,
   ]);
 
   return (

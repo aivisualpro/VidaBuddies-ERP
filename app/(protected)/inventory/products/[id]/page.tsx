@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Edit, Tag, Hash, Package, Globe, Star, Image as ImageIcon, Layers, FileText, Share2, Check, ChevronRight, Plus, Minus } from "lucide-react";
+import { ArrowLeft, Edit, Tag, Hash, Package, Globe, Star, Image as ImageIcon, Layers, FileText, Share2, Check, ChevronRight, Plus, Minus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -10,6 +10,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import Image from "next/image";
 import { ProductFormDialog } from "@/components/admin/product-form-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 
@@ -48,8 +58,20 @@ export default function ProductDetailPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
 
   const [openSection, setOpenSection] = useState<string | null>("details");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const handleEdit = () => setIsEditOpen(true);
+
+  const handleDelete = async () => {
+    try {
+      const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete");
+      toast.success("Product deleted");
+      router.replace("/inventory/products");
+    } catch {
+      toast.error("Failed to delete product");
+    }
+  };
 
   // Set Global Header Actions
   useEffect(() => {
@@ -61,12 +83,18 @@ export default function ProductDetailPage() {
        </Button>
     );
 
-    // Right: Edit Button
+    // Right: Edit + Delete Buttons
     setRightContent(
-       <Button size="sm" onClick={() => setIsEditOpen(true)} className="h-8">
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => setDeleteConfirmOpen(true)} className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+          <Trash2 className="w-4 h-4 mr-2" />
+          Delete
+        </Button>
+        <Button size="sm" onClick={() => setIsEditOpen(true)} className="h-8">
           <Edit className="w-4 h-4 mr-2" />
           Edit Product
-       </Button>
+        </Button>
+      </div>
     );
 
     return () => {
@@ -269,6 +297,21 @@ export default function ProductDetailPage() {
             fetchProduct();
         }}
       />
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{product.name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
