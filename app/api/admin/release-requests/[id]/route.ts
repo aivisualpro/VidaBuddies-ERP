@@ -5,10 +5,11 @@ import VidaProduct from "@/lib/models/VidaProduct";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Ensure all populated models are registered (prevents tree-shaking in production)
-const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser };
+const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO };
 
 export async function GET(
   request: Request,
@@ -21,6 +22,7 @@ export async function GET(
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
+      .populate("poNo", "customerPONo VBSerialNumber customer")
       .populate({
         path: 'releaseOrderProducts.product',
         model: _models.VidaProduct.modelName,
@@ -54,6 +56,7 @@ export async function PUT(
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
+      .populate("poNo", "customerPONo VBSerialNumber customer")
       .populate({
         path: 'releaseOrderProducts.product',
         model: _models.VidaProduct.modelName,

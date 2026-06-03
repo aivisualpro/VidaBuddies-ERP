@@ -7,7 +7,7 @@ export interface IReleaseOrderProduct {
 }
 
 export interface IVidaReleaseRequest extends Document {
-  poNo: string; // Customer PO
+  poNo: mongoose.Types.ObjectId; // Customer PO ref → VBcustomerPO._id
   date: Date;
   warehouse: mongoose.Types.ObjectId;
   requestedBy: mongoose.Types.ObjectId; // User
@@ -34,7 +34,7 @@ const ReleaseOrderProductSchema = new Schema({
 });
 
 const VidaReleaseRequestSchema: Schema = new Schema({
-  poNo: { type: String, required: true },
+  poNo: { type: Schema.Types.ObjectId, ref: 'VBcustomerPO', required: true },
   date: { type: Date, default: Date.now },
   warehouse: { type: Schema.Types.ObjectId, ref: 'VidaWarehouse', required: true },
   requestedBy: { type: Schema.Types.ObjectId, ref: 'VidaUser' },

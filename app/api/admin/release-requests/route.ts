@@ -5,6 +5,7 @@ import VidaProduct from "@/lib/models/VidaProduct";
 import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import { getSession } from "@/lib/auth";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
@@ -12,7 +13,7 @@ import { broadcastMutation } from "@/lib/pusher/broadcast";
 export const dynamic = "force-dynamic";
 
 // Ensure all populated models are registered (prevents tree-shaking in production)
-const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser };
+const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO };
 
 export async function GET() {
   try {
@@ -21,6 +22,7 @@ export async function GET() {
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
+      .populate("poNo", "customerPONo VBSerialNumber customer")
       .populate({
          path: 'releaseOrderProducts.product',
          model: _models.VidaProduct.modelName,
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
       .populate("warehouse")
       .populate("customer")
       .populate("requestedBy")
+      .populate("poNo", "customerPONo VBSerialNumber customer")
       .populate({
          path: 'releaseOrderProducts.product',
          model: 'VidaProduct'

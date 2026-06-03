@@ -46,6 +46,7 @@ import { useWarehouses } from "@/hooks/queries/useWarehouses";
 import { useCustomers } from "@/hooks/queries/useCustomers";
 import { useUsers } from "@/hooks/queries/useUsers";
 import { useCarriers } from "@/hooks/queries/useCarriers";
+import { useCustomerPOs } from "@/hooks/queries/useCustomerPOs";
 import { useQueryClient } from "@tanstack/react-query";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
@@ -58,7 +59,7 @@ interface IReleaseOrderProduct {
 
 interface ReleaseRequest {
   _id: string;
-  poNo: string;
+  poNo: any;
   date: string;
   warehouse: any;
   requestedBy: any;
@@ -159,6 +160,7 @@ function ReleaseRequestsContent() {
   const { data: customers = [] } = useCustomers();
   const { data: users = [] } = useUsers();
   const { data: carriers = [] } = useCarriers();
+  const { data: customerPOs = [] } = useCustomerPOs();
   const queryClient = useQueryClient();
 
   // Release requests — own fetch
@@ -185,6 +187,8 @@ function ReleaseRequestsContent() {
   // Search states for dropdowns
   const [carrierSearch, setCarrierSearch] = useState("");
   const [carrierPopoverOpen, setCarrierPopoverOpen] = useState(false);
+  const [cpoSearch, setCpoSearch] = useState("");
+  const [cpoPopoverOpen, setCpoPopoverOpen] = useState(false);
 
   const defaultFormData: Partial<ReleaseRequest> = {
     poNo: "",
@@ -281,6 +285,7 @@ function ReleaseRequestsContent() {
     setEditingItem(item);
     setFormData({
       ...item,
+      poNo: item.poNo?._id || item.poNo,
       warehouse: item.warehouse?._id || item.warehouse,
       requestedBy: item.requestedBy?._id || item.requestedBy,
       customer: item.customer?._id || item.customer,
@@ -344,8 +349,9 @@ function ReleaseRequestsContent() {
   const globalFilterFn = useCallback((row: any, _columnId: string, filterValue: string) => {
     const search = filterValue.toLowerCase();
     const d = row.original as ReleaseRequest;
+    const poLabel = typeof d.poNo === 'object' && d.poNo ? ((d.poNo as any).customerPONo || (d.poNo as any).VBSerialNumber || '') : (d.poNo || '');
     return [
-      d.poNo,
+      poLabel,
       d.customer?.name,
       d.warehouse?.name,
       d.carrier,
@@ -373,7 +379,12 @@ function ReleaseRequestsContent() {
   const columns: ColumnDef<ReleaseRequest>[] = [
     {
       accessorKey: "poNo",
-      header: "PO No",
+      header: "Customer PO #",
+      cell: ({ row }) => {
+        const po = row.original.poNo;
+        if (typeof po === 'object' && po) return po.customerPONo || po.VBSerialNumber || '-';
+        return po || '-';
+      },
     },
     {
       accessorKey: "customer",
@@ -541,8 +552,15 @@ function ReleaseRequestsContent() {
                     <div className="space-y-2">
                         <Label>Contact / Location</Label>
                         <Select 
-                            value={formData.contact} 
-                            onValueChange={(val) => setFormData({ ...formData, contact: val })}
+                            value={
+                              selectedCustomer?.location?.find((loc: any) => 
+                                (loc.locationName || loc.fullAddress || '') === formData.contact
+                              )?._id || formData.contact || ""
+                            }
+                            onValueChange={(val) => {
+                              const loc = selectedCustomer?.location?.find((l: any) => l._id === val);
+                              setFormData({ ...formData, contact: loc?.locationName || loc?.fullAddress || val });
+                            }}
                             disabled={!selectedCustomer}
                             >
                             <SelectTrigger className="w-full">
@@ -550,8 +568,8 @@ function ReleaseRequestsContent() {
                             </SelectTrigger>
                             <SelectContent>
                                 {selectedCustomer?.location?.map((loc: any, i: number) => (
-                                    <SelectItem key={i} value={loc.locationName || `Loc ${i+1}`}>
-                                        {loc.locationName || loc.fullAddress || "Unknown Location"}
+                                    <SelectItem key={`loc-${i}`} value={loc._id || `loc-${i}`}>
+                                        {loc.locationName || loc.fullAddress || `Location ${i + 1}`}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -560,12 +578,70 @@ function ReleaseRequestsContent() {
 
                     <div className="space-y-2">
                         <Label>Customer PO #</Label>
-                        <Input 
-                                value={formData.poNo || ""}
-                                onChange={(e) => setFormData({...formData, poNo: e.target.value})}
-                                placeholder="Enter PO Number"
-                                required
-                        />
+                        <Popover open={cpoPopoverOpen} onOpenChange={setCpoPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={cpoPopoverOpen}
+                              className="w-full justify-between font-normal"
+                            >
+                              <span className="truncate">
+                                {formData.poNo
+                                  ? (customerPOs.find((c: any) => c._id === formData.poNo)?.customerPONo ||
+                                     customerPOs.find((c: any) => c._id === formData.poNo)?.VBSerialNumber ||
+                                     'Selected')
+                                  : 'Select Customer PO...'}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Search customer POs..."
+                                value={cpoSearch}
+                                onValueChange={setCpoSearch}
+                              />
+                              <CommandList
+                                className="pointer-events-auto"
+                                onWheel={(e) => e.stopPropagation()}
+                                onTouchMove={(e) => e.stopPropagation()}
+                              >
+                                <CommandEmpty>No customer POs found.</CommandEmpty>
+                                <CommandGroup>
+                                  {customerPOs
+                                    .filter((c: any) => {
+                                      if (!cpoSearch) return true;
+                                      const q = cpoSearch.toLowerCase();
+                                      return (c.customerPONo || '').toLowerCase().includes(q) ||
+                                             (c.VBSerialNumber || '').toLowerCase().includes(q);
+                                    })
+                                    .slice(0, 50)
+                                    .map((c: any) => (
+                                      <CommandItem
+                                        key={c._id}
+                                        value={c._id}
+                                        onSelect={() => {
+                                          setFormData({ ...formData, poNo: c._id });
+                                          setCpoPopoverOpen(false);
+                                          setCpoSearch('');
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            formData.poNo === c._id ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        <span>{c.customerPONo || c.VBSerialNumber || c._id}</span>
+                                      </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                     </div>
                 </div>
             </div>
@@ -682,7 +758,7 @@ function ReleaseRequestsContent() {
                                      .map((c) => (
                                        <CommandItem
                                          key={c._id}
-                                         value={c.name}
+                                         value={c._id}
                                          onSelect={() => {
                                            setFormData({ ...formData, carrier: c.name });
                                            setCarrierPopoverOpen(false);
