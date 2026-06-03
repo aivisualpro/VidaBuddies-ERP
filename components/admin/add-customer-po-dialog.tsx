@@ -167,7 +167,19 @@ export function AddCustomerPODialog({
       setQtyReceived(editingData.qtyReceived || 0);
     } else {
       setSelectedVBPO(defaultVbpoId || "");
-      setPoNo("");
+      // Auto-generate Contract # when a default VB PO is provided
+      if (defaultVbpoId) {
+        const matchedPO = (purchaseOrders || []).find(
+          (p: any) => p._id === defaultVbpoId
+        );
+        const displayName = matchedPO?.VBNumber || defaultVbpoId;
+        const count = existingCPOs.filter(
+          (cpo) => cpo.VBNumber === defaultVbpoId
+        ).length;
+        setPoNo(`${displayName}-${count + 1}`);
+      } else {
+        setPoNo("");
+      }
       setCustomerPONo("");
       setSelectedCustomer("");
       setSelectedLocation("");
@@ -178,6 +190,7 @@ export function AddCustomerPODialog({
       setQtyOrdered("");
       setQtyReceived(0);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingData, defaultVbpoId]);
 
   /* ──── Auto-select single location when customer changes ──── */

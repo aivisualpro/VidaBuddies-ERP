@@ -65,25 +65,7 @@ import { useProducts } from "@/hooks/queries/useProducts";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
 import { ShippingCard, ShippingEmptyState } from "@/components/admin/shipping-card";
 import { TransferOrderDialog } from "@/components/admin/transfer-order-dialog";
-
-const UOM_OPTIONS = [
-  { value: "EA", label: "EA (Each)" },
-  { value: "CS", label: "CS (Case)" },
-  { value: "PL", label: "PL (Pallet)" },
-  { value: "DR", label: "DR (Drum)" },
-  { value: "GL", label: "GL (Gallon)" },
-  { value: "LB", label: "LB (Pound)" },
-  { value: "KG", label: "KG (Kilogram)" },
-  { value: "LT", label: "LT (Liter)" },
-  { value: "BX", label: "BX (Box)" },
-  { value: "BG", label: "BG (Bag)" },
-  { value: "RL", label: "RL (Roll)" },
-  { value: "FT", label: "FT (Foot)" },
-  { value: "MT", label: "MT (Meter)" },
-  { value: "PC", label: "PC (Piece)" },
-  { value: "SET", label: "SET" },
-  { value: "TON", label: "TON" },
-];
+import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 
 interface Shipping {
   _id?: string;
@@ -202,10 +184,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const { id } = use(params);
   const router = useRouter();
   const [selectedSupplierForShipping, setSelectedSupplierForShipping] = useState<string>("");
-  const [selectedCustomerForCPO, setSelectedCustomerForCPO] = useState<string>("");
-  const [selectedLocationForCPO, setSelectedLocationForCPO] = useState<string>("");
-  const [selectedWarehouseForCPO, setSelectedWarehouseForCPO] = useState<string>("");
-  const [selectedUOMForCPO, setSelectedUOMForCPO] = useState<string>("");
+  const [editingCPOData, setEditingCPOData] = useState<Record<string, any> | null>(null);
   const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
 
   // ─── Reference data from TanStack Query hooks ───
@@ -367,8 +346,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   // Action States
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
-  const [editingCPO, setEditingCPO] = useState<{ idx: number, data: any } | null>(null);
-  const [autoPoNo, setAutoPoNo] = useState<string>("");
   const [autoSvbid, setAutoSvbid] = useState<string>("");
   const [addingShippingToCPO, setAddingShippingToCPO] = useState<{ idx: number, poNo: string } | null>(null);
 
@@ -476,20 +453,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     return () => window.removeEventListener("vb-email-records-updated", handler);
   }, [po?.VBNumber]);
 
-  // Auto-select single location when customer changes
-  useEffect(() => {
-    if (selectedCustomerForCPO) {
-      const cust = customers.find((c: any) => c._id === selectedCustomerForCPO);
-      if (cust?.location?.length === 1) {
-        setSelectedLocationForCPO(cust.location[0]._id);
-      } else {
-        // Reset location if customer changed (unless editing)
-        if (!editingCPO) setSelectedLocationForCPO("");
-      }
-    } else {
-      setSelectedLocationForCPO("");
-    }
-  }, [selectedCustomerForCPO, customers]);
+
 
   // Calculate total shippings
   const allShippings = po?.customerPO?.flatMap((cpo, cpoIdx) =>
@@ -565,50 +529,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         }
       }
     });
-  };
-
-  const handleSaveCPO = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setActionLoading(true);
-    const formData = new FormData(e.target as HTMLFormElement);
-    const data = Object.fromEntries(formData.entries());
-
-    // Basic formatting
-    const formattedData: any = { ...data };
-    if (formattedData.qtyOrdered) formattedData.qtyOrdered = Number(formattedData.qtyOrdered);
-    if (formattedData.qtyReceived) formattedData.qtyReceived = Number(formattedData.qtyReceived);
-
-    try {
-      if (editingCPO) {
-        // Update existing standalone VBcustomerPO
-        const cpoId = po?.customerPO?.[editingCPO.idx]?._id;
-        if (!cpoId) throw new Error("Missing CPO ID");
-        const response = await fetch(`/api/admin/vb-customer-po/${cpoId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formattedData)
-        });
-        if (!response.ok) throw new Error("Failed to update");
-      } else {
-        // Create new standalone VBcustomerPO linked to this PO
-        formattedData.VBNumber = po?._id || '';
-        const response = await fetch('/api/admin/vb-customer-po', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formattedData)
-        });
-        if (!response.ok) throw new Error("Failed to create");
-      }
-
-      toast.success(editingCPO ? "Customer PO Updated" : "Customer PO Added");
-      setIsAddCPOOpen(false);
-      setEditingCPO(null);
-      invalidateDetail();
-    } catch (e) {
-      toast.error("Error saving Customer PO");
-    } finally {
-      setActionLoading(false);
-    }
   };
 
   const handleDeleteShipping = (shipId: string, cpoIdx: number, shipIdx: number) => {
@@ -806,11 +726,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           Timeline
         </Button>
         <Button variant="outline" size="sm" className="h-8" onClick={() => {
-          // Auto-generate next CPO serial number
-          const existingCount = po?.customerPO?.length || 0;
-          const displayName = po?.VBNumber || 'VB';
-          const nextPoNo = `${displayName}-${existingCount + 1}`;
-          setAutoPoNo(nextPoNo);
+          setEditingCPOData(null);
           setIsAddCPOOpen(true);
         }}>
           <Plus className="h-3.5 w-3.5 mr-2" />
@@ -845,14 +761,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   return (
     <TooltipProvider>
       <div className="flex flex-col h-full bg-background overflow-hidden relative">
-        {/* Global Page Background Pattern Overlay */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.05] mix-blend-multiply dark:mix-blend-overlay overflow-hidden">
-          <img
-            src="/images/nano_banana_bg.png"
-            alt=""
-            className="w-full h-full object-cover scale-150 rotate-1 rounded-full opacity-60"
-          />
-        </div>
+
 
         <div className="grid grid-cols-10 gap-[14px] p-0 h-full relative z-10">
 
@@ -879,13 +788,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       selectedCpoId === cpo._id ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border"
                     )}
                   >
-                    {/* Background Nano Banana Gradient & Pattern */}
+                    {/* Background Gradient Pattern */}
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-40 group-hover:opacity-100 transition-opacity duration-1000" />
-                    <img
-                      src="/images/nano_banana_bg.png"
-                      alt="bg"
-                      className="absolute inset-0 w-full h-full object-cover opacity-[0.15] dark:opacity-40 mix-blend-multiply dark:mix-blend-overlay group-hover:scale-110 transition-all duration-1000 pointer-events-none"
-                    />
 
                     <div className="relative z-10 flex flex-col gap-4">
                       {/* Row 1: VBSerialNumber & customerPONo */}
@@ -980,11 +884,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingCPO({ idx, data: cpo });
-                              setSelectedCustomerForCPO(cpo.customer || "");
-                              setSelectedLocationForCPO(cpo.customerLocation || "");
-                              setSelectedWarehouseForCPO(cpo.warehouse || "");
-                              setSelectedUOMForCPO(cpo.UOM || "");
+                              setEditingCPOData(cpo);
                             }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -1101,127 +1001,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         </div>
         </div>
       </div>
-      <Dialog open={isAddCPOOpen || !!editingCPO} onOpenChange={(v) => { if (!v) { setIsAddCPOOpen(false); setEditingCPO(null); setSelectedCustomerForCPO(""); setSelectedLocationForCPO(""); setSelectedWarehouseForCPO(""); setSelectedUOMForCPO(""); } }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingCPO ? "Edit Customer PO" : "Add Customer PO"}</DialogTitle>
-            <DialogDescription className="sr-only">{editingCPO ? "Update customer purchase order details" : "Add a new customer purchase order"}</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSaveCPO} className="space-y-4">
-            {/* Row 1: PO # (Internal) | Customer PO # */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Contract #</Label>
-                <Input name="VBSerialNumber" defaultValue={editingCPO?.data?.VBSerialNumber || editingCPO?.data?.poNo || autoPoNo} required />
-              </div>
-              <div className="space-y-1">
-                <Label>Customer PO #</Label>
-                <Input name="customerPONo" defaultValue={editingCPO?.data?.customerPONo || ''} placeholder="e.g. CPO-2024-001" />
-              </div>
-            </div>
-            {/* Row 2: Customer Ref | Customer Location */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Customer Ref</Label>
-                <SearchableSelect
-                  name="customer"
-                  options={customers.map((cust: any) => ({ value: cust._id, label: cust.name }))}
-                  value={selectedCustomerForCPO}
-                  onChange={(val) => setSelectedCustomerForCPO(val)}
-                  placeholder="Select Customer"
-                  searchPlaceholder="Search customers..."
-                  emptyMessage="No customers found."
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Customer Location</Label>
-                <SearchableSelect
-                  name="customerLocation"
-                  options={(() => {
-                    const selectedCust = customers.find((c: any) => c._id === selectedCustomerForCPO);
-                    if (selectedCust?.location?.length) {
-                      return selectedCust.location.map((loc: any) => ({ value: loc._id, label: loc.locationName || loc.vbId }));
-                    }
-                    return Object.entries(locations).map(([id, name]) => ({ value: id, label: name }));
-                  })()}
-                  value={selectedLocationForCPO}
-                  onChange={(val) => setSelectedLocationForCPO(val)}
-                  placeholder="Select Location"
-                  searchPlaceholder="Search locations..."
-                  emptyMessage="No locations found."
-                />
-              </div>
-            </div>
-            {/* Row 3: Dispatch Warehouse (full width) */}
-            <div className="grid grid-cols-1 gap-4">
-              <div className="space-y-1">
-                <Label>Dispatch Warehouse</Label>
-                <SearchableSelect
-                  name="warehouse"
-                  options={warehouses.map((w: any) => ({ value: w.name, label: w.name }))}
-                  value={selectedWarehouseForCPO}
-                  onChange={(val) => setSelectedWarehouseForCPO(val)}
-                  placeholder="Select Warehouse"
-                  searchPlaceholder="Search warehouses..."
-                  emptyMessage="No warehouses found."
-                />
-              </div>
-            </div>
-            {/* Row 4: PO Date | Requested Delivery */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>PO Date</Label>
-                <Input name="customerPODate" type="date" defaultValue={editingCPO?.data?.customerPODate ? new Date(editingCPO.data.customerPODate).toISOString().split('T')[0] : ''} />
-              </div>
-              <div className="space-y-1">
-                <Label>Requested Delivery</Label>
-                <Input name="requestedDeliveryDate" type="date" defaultValue={editingCPO?.data?.requestedDeliveryDate ? new Date(editingCPO.data.requestedDeliveryDate).toISOString().split('T')[0] : ''} />
-              </div>
-            </div>
-            {/* Row 5: Qty Ordered | Received | UOM */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <Label>Qty Ordered</Label>
-                <Input name="qtyOrdered" type="number" defaultValue={editingCPO?.data?.qtyOrdered} />
-              </div>
-              <div className="space-y-1">
-                <Label>Received (Auto-computed)</Label>
-                <Input
-                  name="qtyReceived"
-                  type="number"
-                  readOnly
-                  className="bg-muted cursor-not-allowed"
-                  value={
-                    editingCPO?.data?.shipping?.reduce((acc: number, ship: any) => {
-                      const s = (ship.status || '').toLowerCase().trim();
-                      if (s === 'delivered' || s === 'arrived') {
-                        return acc + (Number(ship.drums) || 0);
-                      }
-                      return acc;
-                    }, 0) || 0
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>UOM</Label>
-                <SearchableSelect
-                  name="UOM"
-                  options={UOM_OPTIONS}
-                  value={selectedUOMForCPO}
-                  onChange={(val) => setSelectedUOMForCPO(val)}
-                  placeholder="Select UOM"
-                  searchPlaceholder="Search units..."
-                  emptyMessage="No units found."
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setIsAddCPOOpen(false); setEditingCPO(null); setSelectedCustomerForCPO(""); setSelectedLocationForCPO(""); setSelectedWarehouseForCPO(""); setSelectedUOMForCPO(""); }}>Cancel</Button>
-              <Button type="submit" disabled={actionLoading}>{actionLoading ? "Saving..." : "Save Changes"}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddCustomerPODialog
+        open={isAddCPOOpen || !!editingCPOData}
+        onClose={() => {
+          setIsAddCPOOpen(false);
+          setEditingCPOData(null);
+        }}
+        defaultVbpoId={po?._id}
+        editingData={editingCPOData}
+        mode="standalone"
+        onSaved={() => {
+          invalidateDetail();
+          queryClient.invalidateQueries({ queryKey: ["vb-customer-po"] });
+        }}
+        existingCPOs={cpoList}
+      />
 
       {(() => {
         const SHIPPING_SECTIONS = [
