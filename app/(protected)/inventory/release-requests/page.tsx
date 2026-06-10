@@ -222,6 +222,11 @@ function ReleaseRequestsContent() {
         router.replace('/inventory/release-requests', { scroll: false });
       }
     }
+    const addParam = searchParams.get('add');
+    if (addParam === 'true') {
+      openAddDialog();
+      router.replace('/inventory/release-requests', { scroll: false });
+    }
   }, [searchParams, data]);
   
   // Search states for dropdowns

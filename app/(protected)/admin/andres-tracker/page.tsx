@@ -15,6 +15,8 @@ import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
 import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
+import { AddTransferOrderDialog } from "@/components/admin/add-transfer-order-dialog";
+import { AddReleaseRequestDialog } from "@/components/admin/add-release-request-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { toast } from "sonner";
 import { useUrlFilters } from "@/hooks/use-url-filters";
@@ -87,6 +89,8 @@ function AndresTrackerContent() {
   const globalSearch = filters.search;
   const [isAddPOOpen, setIsAddPOOpen] = useState(false);
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
+  const [isAddTransferOpen, setIsAddTransferOpen] = useState(false);
+  const [isAddReleaseOpen, setIsAddReleaseOpen] = useState(false);
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
   const { data: storeProducts = [] } = useProducts();
   const { data: storeCustomers = [] } = useCustomers();
@@ -152,9 +156,9 @@ function AndresTrackerContent() {
   }>({ key: "date", dir: "desc" });
 
   const [invSort, setInvSort] = useState<{
-    key: "vbpoNo" | "date" | "product" | "warehouse" | "qty" | "cost";
+    key: "warehouse" | "origin" | "product" | "qty";
     dir: "asc" | "desc";
-  }>({ key: "date", dir: "desc" });
+  }>({ key: "qty", dir: "desc" });
 
   const [activePOForDrilldown, setActivePOForDrilldown] = useState<any | null>(null);
   const [activeCPOForDrilldown, setActiveCPOForDrilldown] = useState<any | null>(null);
@@ -465,64 +469,57 @@ function AndresTrackerContent() {
     }));
   };
 
+  // Inventory data from inventory-management API (available qty > 0)
+  const [inventoryData, setInventoryData] = useState<any[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  useEffect(() => {
+    fetch('/api/admin/inventory-management')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setInventoryData(d); })
+      .catch(() => {})
+      .finally(() => setInventoryLoading(false));
+  }, []);
+
   const sortedInventory = useMemo(() => {
-    const warehouseMap = new Map();
-    if (storeWarehouses && Array.isArray(storeWarehouses)) {
-      storeWarehouses.forEach(w => {
-        if (w._id && w.name) warehouseMap.set(w._id, w.name);
-        if (w.vbId && w.name) warehouseMap.set(w.vbId, w.name);
-      });
-    }
-
-    const productMap = new Map();
-    if (storeProducts && Array.isArray(storeProducts)) {
-      storeProducts.forEach(p => {
-        if (p._id && p.name) productMap.set(p._id, p.name);
-      });
-    }
-
-    let flatList: any[] = [];
-    (purchaseOrders || [])
-      .filter(po => !po.isArchived && po.orderType === "Inventory")
-      .forEach(po => {
-        (po.customerPO || []).forEach((cpo: any) => {
-           const wname = warehouseMap.get(cpo.warehouse) || cpo.warehouse || "-";
-           const pname = productMap.get(cpo.product) || cpo.product || "-";
-           flatList.push({
-              ...cpo,
-              poId: po._id,
-              cpoIdForUpdate: cpo._id || cpo.customerPONo,
-              vbpoNo: po.vbpoNo,
-              date: po.date,
-              warehouseName: wname,
-              productName: pname,
-              cost: cpo.cost,
-           });
-        });
-      });
+    let list = inventoryData.filter(r => r.availableQty > 0);
 
     if (globalSearch) {
       const q = globalSearch.toLowerCase();
-      flatList = flatList.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+      list = list.filter(item => {
+        const wName = typeof item.warehouse === 'object' ? item.warehouse?.name || '' : '';
+        const origin = typeof item.vbShipmentNumber === 'object' ? item.vbShipmentNumber?.VBShipmentNumber || item.vbShipmentNumber?.svbid || '' : '';
+        const pName = typeof item.product === 'object' ? item.product?.name || '' : '';
+        return wName.toLowerCase().includes(q) || origin.toLowerCase().includes(q) || pName.toLowerCase().includes(q);
+      });
     }
 
-    flatList.sort((a, b) => {
-      let aVal, bVal;
+    list.sort((a, b) => {
+      let aVal: any, bVal: any;
       switch (invSort.key) {
-        case "vbpoNo": aVal = a.vbpoNo?.toLowerCase() || ""; bVal = b.vbpoNo?.toLowerCase() || ""; break;
-        case "date": aVal = a.date ? new Date(a.date).getTime() : 0; bVal = b.date ? new Date(b.date).getTime() : 0; break;
-        case "product": aVal = (a.productName || "").toLowerCase(); bVal = (b.productName || "").toLowerCase(); break;
-        case "warehouse": aVal = (a.warehouseName || "").toLowerCase(); bVal = (b.warehouseName || "").toLowerCase(); break;
-        case "qty": aVal = parseFloat(a.qtyOrdered) || 0; bVal = parseFloat(b.qtyOrdered) || 0; break;
-        case "cost": aVal = parseFloat(a.cost) || 0; bVal = parseFloat(b.cost) || 0; break;
+        case "warehouse":
+          aVal = (typeof a.warehouse === 'object' ? a.warehouse?.name || '' : '').toLowerCase();
+          bVal = (typeof b.warehouse === 'object' ? b.warehouse?.name || '' : '').toLowerCase();
+          break;
+        case "origin":
+          aVal = (typeof a.vbShipmentNumber === 'object' ? a.vbShipmentNumber?.VBShipmentNumber || a.vbShipmentNumber?.svbid || '' : '').toLowerCase();
+          bVal = (typeof b.vbShipmentNumber === 'object' ? b.vbShipmentNumber?.VBShipmentNumber || b.vbShipmentNumber?.svbid || '' : '').toLowerCase();
+          break;
+        case "product":
+          aVal = (typeof a.product === 'object' ? a.product?.name || '' : '').toLowerCase();
+          bVal = (typeof b.product === 'object' ? b.product?.name || '' : '').toLowerCase();
+          break;
+        case "qty":
+          aVal = a.availableQty || 0;
+          bVal = b.availableQty || 0;
+          break;
       }
       if (aVal < bVal) return invSort.dir === "asc" ? -1 : 1;
       if (aVal > bVal) return invSort.dir === "asc" ? 1 : -1;
       return 0;
     });
 
-    return flatList;
-  }, [purchaseOrders, storeWarehouses, storeProducts, invSort, globalSearch]);
+    return list;
+  }, [inventoryData, invSort, globalSearch]);
 
   const toggleInvSort = (key: typeof invSort.key) => {
     setInvSort(prev => ({
@@ -895,12 +892,20 @@ function AndresTrackerContent() {
               <h2 className="font-bold text-sm uppercase tracking-wider">Inventory</h2>
               <span className="text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-bold border border-orange-500/20">{sortedInventory.length}</span>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 4 ? null : 4)}>
-              {expandedCol === 4 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-orange-500/20 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400" onClick={() => setIsAddTransferOpen(true)}>
+                Transfer
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2 shadow-sm rounded-md border-orange-500/20 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400" onClick={() => setIsAddReleaseOpen(true)}>
+                Release
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 4 ? null : 4)}>
+                {expandedCol === 4 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
-            {isLoading ? (
+            {inventoryLoading ? (
               <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
             ) : sortedInventory.length === 0 ? (
               <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No Inventory records found</div>
@@ -908,49 +913,44 @@ function AndresTrackerContent() {
               <table className="w-full text-left border-collapse whitespace-nowrap">
                 <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("vbpoNo")}>
-                      VB # {invSort.key === "vbpoNo" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("warehouse")}>
+                      Warehouse {invSort.key === "warehouse" && (invSort.dir === "asc" ? "↑" : "↓")}
                     </th>
-                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("date")}>
-                      Date {invSort.key === "date" && (invSort.dir === "asc" ? "↑" : "↓")}
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleInvSort("origin")}>
+                      Origin {invSort.key === "origin" && (invSort.dir === "asc" ? "↑" : "↓")}
                     </th>
-                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[150px]" onClick={() => toggleInvSort("product")}>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[180px]" onClick={() => toggleInvSort("product")}>
                       Product {invSort.key === "product" && (invSort.dir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleInvSort("warehouse")}>
-                      Location {invSort.key === "warehouse" && (invSort.dir === "asc" ? "↑" : "↓")}
                     </th>
                     <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleInvSort("qty")}>
                       Qty {invSort.key === "qty" && (invSort.dir === "asc" ? "↑" : "↓")}
                     </th>
-                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors text-center" onClick={() => toggleInvSort("cost")}>
-                      Cost {invSort.key === "cost" && (invSort.dir === "asc" ? "↑" : "↓")}
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                  {sortedInventory.map((inv, idx) => (
-                    <tr key={`${inv.poId}-${inv.cpoIdForUpdate}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group">
-                      <td className="px-3 py-2.5 font-bold text-orange-600 dark:text-orange-400">
-                        {inv.vbpoNo || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground font-medium">
-                        {inv.date ? new Date(inv.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[150px]" title={inv.productName}>
-                        {inv.productName}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[120px]" title={inv.warehouseName}>
-                        {inv.warehouseName}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-center">
-                        <EditableCell value={inv.qtyOrdered} type="number" isExpanded={expandedCol === 4} onSave={(val: string) => handleInlineUpdate(inv.poId, 'cpo', inv.cpoIdForUpdate, '', 'qtyOrdered', val)} />
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-center text-muted-foreground">
-                        <EditableCell value={inv.cost} type="number" className="w-[80px]" isExpanded={expandedCol === 4} onSave={(val: string) => handleInlineUpdate(inv.poId, 'cpo', inv.cpoIdForUpdate, '', 'cost', val)} />
-                      </td>
-                    </tr>
-                  ))}
+                  {sortedInventory.map((inv, idx) => {
+                    const wName = typeof inv.warehouse === 'object' ? inv.warehouse?.name || '-' : '-';
+                    const origin = typeof inv.vbShipmentNumber === 'object' ? (inv.vbShipmentNumber?.VBShipmentNumber || inv.vbShipmentNumber?.svbid || '-') : '-';
+                    const pName = typeof inv.product === 'object' ? inv.product?.name || '-' : '-';
+                    return (
+                      <tr key={`${inv._id}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group">
+                        <td className="px-3 py-2.5 text-foreground font-medium truncate max-w-[120px]" title={wName}>
+                          {wName}
+                        </td>
+                        <td className="px-3 py-2.5 font-bold font-mono text-orange-600 dark:text-orange-400">
+                          {origin}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground truncate max-w-[180px]" title={pName}>
+                          {pName}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono font-bold text-center">
+                          <span className="bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded">
+                            {inv.availableQty}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -960,6 +960,12 @@ function AndresTrackerContent() {
       </div>
       <AddCustomerPODialog open={isAddCPOOpen} onClose={() => setIsAddCPOOpen(false)} defaultVbpoId={activePOForDrilldown?._id} />
       <AddPurchaseOrderDialog open={isAddPOOpen} onOpenChange={setIsAddPOOpen} />
+      <AddTransferOrderDialog open={isAddTransferOpen} onOpenChange={setIsAddTransferOpen} onSaved={() => {
+        fetch('/api/admin/inventory-management').then(r => r.json()).then(d => { if (Array.isArray(d)) setInventoryData(d); }).catch(() => {});
+      }} />
+      <AddReleaseRequestDialog open={isAddReleaseOpen} onOpenChange={setIsAddReleaseOpen} onSaved={() => {
+        fetch('/api/admin/inventory-management').then(r => r.json()).then(d => { if (Array.isArray(d)) setInventoryData(d); }).catch(() => {});
+      }} />
 
       {/* Drill-down PO Modal */}
       {activePOForDrilldown && (

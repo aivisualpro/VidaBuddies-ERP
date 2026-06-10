@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
@@ -319,6 +319,15 @@ function TransferOrdersContent() {
 
   // ── Add dialog state ──
   const [addOpen, setAddOpen] = useState(false);
+
+  // Auto-open add dialog when navigated with ?add=true
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('add') === 'true') {
+      setAddOpen(true);
+      router.replace('/inventory/transfer-orders', { scroll: false });
+    }
+  }, [searchParams]);
   const [addSaving, setAddSaving] = useState(false);
   const [addShipmentId, setAddShipmentId] = useState("");
   const [addShipmentSearch, setAddShipmentSearch] = useState("");
