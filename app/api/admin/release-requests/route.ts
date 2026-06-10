@@ -22,7 +22,7 @@ export async function GET() {
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
-      .populate("poNo", "customerPONo VBSerialNumber customer")
+      // poNo is populated separately below to handle non-ObjectId values gracefully
       .populate({
          path: 'releaseOrderProducts.product',
          model: _models.VidaProduct.modelName,
@@ -30,6 +30,39 @@ export async function GET() {
       })
       .sort({ createdAt: -1 })
       .lean();
+
+    // Manually populate poNo – some documents may have a plain string (e.g.
+    // "ZK052926-885") instead of an ObjectId, which would crash a normal
+    // .populate() call.  Collect the valid ObjectIds, fetch them in one query,
+    // and stitch the results back.
+    const { Types } = await import("mongoose");
+    const poIdMap = new Map<string, any>();
+    const validPoIds: string[] = [];
+
+    for (const r of requests as any[]) {
+      if (r.poNo && Types.ObjectId.isValid(r.poNo) && String(new Types.ObjectId(r.poNo)) === String(r.poNo)) {
+        validPoIds.push(String(r.poNo));
+      }
+    }
+
+    if (validPoIds.length > 0) {
+      const pos = await _models.VBcustomerPO
+        .find({ _id: { $in: validPoIds } })
+        .select("customerPONo VBSerialNumber customer")
+        .lean();
+      for (const po of pos) {
+        poIdMap.set(String(po._id), po);
+      }
+    }
+
+    for (const r of requests as any[]) {
+      const key = r.poNo ? String(r.poNo) : null;
+      if (key && poIdMap.has(key)) {
+        r.poNo = poIdMap.get(key);
+      }
+      // else: leave poNo as the raw value (string or null)
+    }
+
     return NextResponse.json(requests);
   } catch (error: any) {
     console.error("Release Requests GET Error:", error);
