@@ -633,10 +633,36 @@ function ReleaseRequestsContent() {
                                       <CommandItem
                                         key={s.shipId}
                                         value={s.shipId}
-                                        onSelect={() => {
+                                        onSelect={async () => {
                                           setFormData({ ...formData, transferOrder: s.shipId });
                                           setToPopoverOpen(false);
                                           setToSearch('');
+                                          // Auto-populate products from inventory management (available qty > 0)
+                                          try {
+                                            const res = await fetch('/api/admin/inventory-management');
+                                            const invData = await res.json();
+                                            if (Array.isArray(invData)) {
+                                              const matching = invData.filter((row: any) => {
+                                                const shipId = row.vbShipmentNumber?._id ? String(row.vbShipmentNumber._id) : String(row.vbShipmentNumber || '');
+                                                return shipId === s.shipId && (row.availableQty || 0) > 0;
+                                              });
+                                              if (matching.length > 0) {
+                                                const autoProducts = matching.map((row: any) => ({
+                                                  product: row.product?._id ? String(row.product._id) : String(row.product || ''),
+                                                  qty: row.availableQty || 0,
+                                                  lotSerial: row.serialNumber || '',
+                                                }));
+                                                // Auto-fill warehouse from first match
+                                                const warehouseId = matching[0].warehouse?._id ? String(matching[0].warehouse._id) : String(matching[0].warehouse || '');
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  transferOrder: s.shipId,
+                                                  warehouse: warehouseId || prev.warehouse,
+                                                  releaseOrderProducts: autoProducts,
+                                                }));
+                                              }
+                                            }
+                                          } catch {}
                                         }}
                                       >
                                         <Check

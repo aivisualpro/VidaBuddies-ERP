@@ -41,8 +41,6 @@ import {
   Boxes,
 } from "lucide-react";
 import { format } from "date-fns";
-import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
-import { useProducts } from "@/hooks/queries/useProducts";
 
 interface WarehouseContact {
   name: string;
@@ -103,87 +101,74 @@ export default function WarehouseDetailPage() {
     isPrimary: false,
   });
 
-  const { data: purchaseOrders = [] } = usePurchaseOrders();
-  const { data: storeProducts = [] } = useProducts();
+  // ── Transfer Orders (IN) & Release Requests (OUT) for this warehouse ──
+  const [transferOrders, setTransferOrders] = useState<any[]>([]);
+  const [releaseRequests, setReleaseRequests] = useState<any[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
 
-  // Release requests — fetch directly until a dedicated hook is created
-  const [releaseRequests, setReleaseRequests] = React.useState<any[]>([]);
-  React.useEffect(() => {
-    fetch('/api/admin/release-requests').then(r => r.json()).then(d => { if (Array.isArray(d)) setReleaseRequests(d); }).catch(() => {});
-  }, []);
-
-  const inventoryTransactions = React.useMemo(() => {
-    if (!data) return [];
-    
-    // fast O(1) map for product ID to Name
-    const productMap = new Map();
-    if (storeProducts && Array.isArray(storeProducts)) {
-      storeProducts.forEach(p => {
-        if (p._id && p.name) productMap.set(p._id, p.name);
-      });
-    }
-
-    const transactions: any[] = [];
-    
-    if (purchaseOrders && Array.isArray(purchaseOrders)) {
-      purchaseOrders.forEach(po => {
-        if (po.isArchived || (po.orderType !== "Inventory" && po.orderType !== "INVENTORY")) return;
-        (po.customerPO || []).forEach((cpo: any) => {
-          if (String(cpo.warehouse) === id || String(cpo.warehouse) === data._id || String(cpo.warehouse) === data.name) {
-             const pname = productMap.get(cpo.product) || cpo.product || "Unknown Product";
-             transactions.push({
-               id: `in-${po._id}-${cpo._id || Math.random()}`,
-               type: "IN",
-               date: po.date || po.createdAt,
-               reference: po.vbpoNo || "Unknown PO",
-               productName: pname,
-               qty: cpo.qtyOrdered || 0,
-             });
-          }
-        });
-      });
-    }
-
-    if (releaseRequests && Array.isArray(releaseRequests)) {
-      releaseRequests.forEach(rr => {
-        if (rr.warehouse && (rr.warehouse === id || rr.warehouse._id === id || rr.warehouse === data.name)) {
-           (rr.releaseOrderProducts || []).forEach((rop: any) => {
-             const pname = rop.productName || productMap.get(rop.product) || productMap.get(rop.product?._id) || "Unknown Product";
-             transactions.push({
-               id: `out-${rr._id}-${rop._id || Math.random()}`,
-               type: "OUT",
-               date: rr.date || rr.createdAt,
-               reference: rr.poNo || "Unknown RR",
-               productName: pname,
-               qty: rop.qty || 0,
-             });
-           });
+  useEffect(() => {
+    if (activeTab === "transactions" && id) {
+      setTxLoading(true);
+      Promise.all([
+        fetch('/api/admin/transfer-orders').then(r => r.json()),
+        fetch('/api/admin/release-requests').then(r => r.json()),
+      ]).then(([tos, rrs]) => {
+        if (Array.isArray(tos)) {
+          setTransferOrders(tos.filter((to: any) => {
+            const whId = to.warehouse?._id || to.warehouse;
+            return String(whId) === id;
+          }));
         }
-      });
+        if (Array.isArray(rrs)) {
+          setReleaseRequests(rrs.filter((rr: any) => {
+            const whId = rr.warehouse?._id || rr.warehouse;
+            return String(whId) === id;
+          }));
+        }
+      }).catch(() => {}).finally(() => setTxLoading(false));
     }
+  }, [activeTab, id]);
 
-    return transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [data, purchaseOrders, releaseRequests, storeProducts, id]);
+  // Merge INTO + OUT, sorted by date descending
+  const mergedTransactions = useMemo(() => {
+    const rows: any[] = [];
 
-  const productBalances = React.useMemo(() => {
-    const balances: Record<string, { productName: string; totalIn: number; totalOut: number; netBalance: number }> = {};
-    
-    inventoryTransactions.forEach(tx => {
-       const name = tx.productName;
-       if (!balances[name]) {
-         balances[name] = { productName: name, totalIn: 0, totalOut: 0, netBalance: 0 };
-       }
-       if (tx.type === "IN") {
-         balances[name].totalIn += Number(tx.qty) || 0;
-         balances[name].netBalance += Number(tx.qty) || 0;
-       } else {
-         balances[name].totalOut += Number(tx.qty) || 0;
-         balances[name].netBalance -= Number(tx.qty) || 0;
-       }
+    transferOrders.forEach(to => {
+      const shipLabel = to.vbShipmentNumber?.VBShipmentNumber || to.vbShipmentNumber?.svbid || "-";
+      const productLabel = to.product?.name || "-";
+      const supplierLabel = to.supplier?.name || "-";
+      rows.push({
+        id: `in-${to._id}`,
+        type: "IN",
+        date: to.receivedDate || to.createdAt,
+        reference: shipLabel,
+        product: productLabel,
+        supplier: supplierLabel,
+        qty: to.qty || 0,
+        serial: to.serialNumber || "-",
+      });
     });
 
-    return Object.values(balances).sort((a, b) => b.netBalance - a.netBalance);
-  }, [inventoryTransactions]);
+    releaseRequests.forEach(rr => {
+      const poLabel = typeof rr.poNo === 'object' && rr.poNo ? (rr.poNo.customerPONo || rr.poNo.VBSerialNumber || "-") : (rr.poNo || "-");
+      const customerLabel = rr.customer?.name || "-";
+      (rr.releaseOrderProducts || []).forEach((rop: any, i: number) => {
+        const pname = rop.product?.name || rop.productName || "-";
+        rows.push({
+          id: `out-${rr._id}-${i}`,
+          type: "OUT",
+          date: rr.date || rr.createdAt,
+          reference: poLabel,
+          product: pname,
+          supplier: customerLabel,
+          qty: rop.qty || 0,
+          serial: rop.lotSerial || "-",
+        });
+      });
+    });
+
+    return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [transferOrders, releaseRequests]);
 
   // ── Inventory Management data (from /api/admin/inventory-management, filtered by this warehouse) ──
   const [inventoryMgmtData, setInventoryMgmtData] = useState<any[]>([]);
@@ -437,9 +422,11 @@ export default function WarehouseDetailPage() {
               <TabsTrigger value="transactions" className="gap-2">
                 <Package className="h-4 w-4" />
                 Transactions
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                  {inventoryTransactions.length}
-                </Badge>
+                {mergedTransactions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                    {mergedTransactions.length}
+                  </Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="emails" className="gap-2">
                 <Mail className="h-4 w-4" />
@@ -663,61 +650,79 @@ export default function WarehouseDetailPage() {
 
           {/* Transactions Tab */}
           <TabsContent value="transactions" className="flex-1 overflow-auto px-6 py-4">
-            <div className="max-w-5xl space-y-6">
+            <div className="space-y-6">
               <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
                 <div className="px-5 py-3 bg-muted/40 border-b flex items-center justify-between">
                   <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
                     <Package className="w-4 h-4 text-primary" />
                     Transactions
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">{mergedTransactions.length}</Badge>
                   </h3>
                 </div>
-                {inventoryTransactions.length === 0 ? (
+                {txLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading transactions...</span>
+                  </div>
+                ) : mergedTransactions.length === 0 ? (
                   <div className="p-10 text-center text-muted-foreground">
                     <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
                     <p className="text-sm font-medium">No transactions found</p>
-                    <p className="text-xs mt-1">Incoming inventory and release requests will appear here</p>
+                    <p className="text-xs mt-1">Transfer orders and release requests for this warehouse will appear here</p>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
-                      <tr>
-                         <th className="px-5 py-3">Type</th>
-                         <th className="px-5 py-3">Date</th>
-                         <th className="px-5 py-3">Reference #</th>
-                         <th className="px-5 py-3">Product</th>
-                         <th className="px-5 py-3 text-right">Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y text-sm">
-                      {inventoryTransactions.map(tx => (
-                        <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="px-5 py-3">
-                            {tx.type === "IN" ? (
-                               <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0 flex w-fit items-center gap-1 text-[10px]">
-                                 <ArrowDownToLine className="h-3 w-3" /> IN
-                               </Badge>
-                            ) : (
-                               <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 flex w-fit items-center gap-1 text-[10px]">
-                                 <ArrowUpFromLine className="h-3 w-3" /> OUT
-                               </Badge>
-                            )}
-                          </td>
-                          <td className="px-5 py-3 font-medium">
-                            {tx.date ? format(new Date(tx.date), "MMM dd, yyyy") : "-"}
-                          </td>
-                          <td className="px-5 py-3 text-muted-foreground font-mono">
-                            {tx.reference}
-                          </td>
-                          <td className="px-5 py-3 text-muted-foreground truncate max-w-[200px]" title={tx.productName}>
-                            {tx.productName}
-                          </td>
-                          <td className="px-5 py-3 text-right font-bold text-foreground">
-                            {tx.type === "IN" ? "+" : "-"}{tx.qty}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">Type</th>
+                          <th className="px-4 py-3">Date</th>
+                          <th className="px-4 py-3">Reference #</th>
+                          <th className="px-4 py-3">Product</th>
+                          <th className="px-4 py-3">Supplier / Customer</th>
+                          <th className="px-4 py-3">Serial/Lot</th>
+                          <th className="px-4 py-3 text-right">Qty</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y text-sm">
+                        {mergedTransactions.map(tx => (
+                          <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-3">
+                              {tx.type === "IN" ? (
+                                <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0 flex w-fit items-center gap-1 text-[10px]">
+                                  <ArrowDownToLine className="h-3 w-3" /> Transfer In
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 flex w-fit items-center gap-1 text-[10px]">
+                                  <ArrowUpFromLine className="h-3 w-3" /> Release Out
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 font-medium">
+                              {tx.date ? format(new Date(tx.date), "MMM dd, yyyy") : "-"}
+                            </td>
+                            <td className="px-4 py-3 text-primary font-mono font-semibold">
+                              {tx.reference}
+                            </td>
+                            <td className="px-4 py-3 font-medium truncate max-w-[200px]" title={tx.product}>
+                              {tx.product}
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              {tx.supplier}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                              {tx.serial}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-base">
+                              <span className={tx.type === "IN" ? "text-emerald-600" : "text-amber-600"}>
+                                {tx.type === "IN" ? "+" : "-"}{tx.qty}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
