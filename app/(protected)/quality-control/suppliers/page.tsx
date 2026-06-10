@@ -287,16 +287,7 @@ function SuppliersContent() {
   const columns: ColumnDef<Supplier>[] = React.useMemo(() => [
     {
       accessorKey: "name",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4 hover:bg-transparent"
-        >
-          Name
-          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
+      header: "Name",
       cell: ({ row }) => {
         const item = row.original;
         return (
@@ -365,16 +356,7 @@ function SuppliersContent() {
     {
       id: "uploaded",
       accessorFn: (row) => getSupplierStats(row).uploaded,
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4 hover:bg-transparent"
-        >
-          Uploaded
-          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
+      header: "Uploaded",
       cell: ({ getValue }) => (
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <Upload className="h-3.5 w-3.5" />
@@ -385,16 +367,7 @@ function SuppliersContent() {
     {
       id: "verified",
       accessorFn: (row) => getSupplierStats(row).verified,
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4 hover:bg-transparent"
-        >
-          Verified
-          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
+      header: "Verified",
       cell: ({ getValue }) => (
         <div className="flex items-center gap-1.5 text-blue-500 font-medium">
           <CheckCircle className="h-3.5 w-3.5" />
@@ -405,16 +378,7 @@ function SuppliersContent() {
     {
       id: "remaining",
       accessorFn: (row) => getSupplierStats(row).remaining,
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4 hover:bg-transparent"
-        >
-          Remaining
-          <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
+      header: "Remaining",
       cell: ({ row, getValue }) => {
         const stats = getSupplierStats(row.original);
         const remaining = getValue() as number;
