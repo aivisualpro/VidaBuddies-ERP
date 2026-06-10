@@ -106,14 +106,14 @@ const data = {
       icon: IconPackage,
     },
     {
-      name: "Release Requests",
-      url: "/inventory/release-requests",
-      icon: IconFileDescription,
-    },
-    {
       name: "Transfer Orders",
       url: "/inventory/transfer-orders",
       icon: IconRoute,
+    },
+    {
+      name: "Release Requests",
+      url: "/inventory/release-requests",
+      icon: IconFileDescription,
     },
     {
       name: "Inventory Mgt.",
