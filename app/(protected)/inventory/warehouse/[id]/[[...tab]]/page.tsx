@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useLayoutEffect } from "react";
+import React, { useEffect, useState, useLayoutEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { Button } from "@/components/ui/button";
@@ -82,7 +82,13 @@ export default function WarehouseDetailPage() {
   const [emails, setEmails] = useState<EmailRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [emailsLoading, setEmailsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("details");
+  const VALID_TABS = ["details", "inventory", "transactions", "emails"];
+  const tabParam = Array.isArray(params.tab) ? params.tab[0] : undefined;
+  const activeTab = VALID_TABS.includes(tabParam || "") ? tabParam! : "details";
+
+  const setActiveTab = (tab: string) => {
+    router.replace(`/inventory/warehouse/${id}/${tab}`, { scroll: false });
+  };
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", body: "" });
@@ -178,6 +184,30 @@ export default function WarehouseDetailPage() {
 
     return Object.values(balances).sort((a, b) => b.netBalance - a.netBalance);
   }, [inventoryTransactions]);
+
+  // ── Inventory Management data (from /api/admin/inventory-management, filtered by this warehouse) ──
+  const [inventoryMgmtData, setInventoryMgmtData] = useState<any[]>([]);
+  const [inventoryMgmtLoading, setInventoryMgmtLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "inventory" && id) {
+      setInventoryMgmtLoading(true);
+      fetch('/api/admin/inventory-management')
+        .then(r => r.json())
+        .then(d => {
+          if (Array.isArray(d)) {
+            // Filter by this warehouse
+            const filtered = d.filter((row: any) => {
+              const whId = row.warehouse?._id || row.warehouse;
+              return String(whId) === id;
+            });
+            setInventoryMgmtData(filtered);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setInventoryMgmtLoading(false));
+    }
+  }, [activeTab, id]);
 
   useEffect(() => {
     fetchData();
@@ -400,12 +430,9 @@ export default function WarehouseDetailPage() {
                 <FileText className="h-4 w-4" />
                 Details
               </TabsTrigger>
-              <TabsTrigger value="stock" className="gap-2">
+              <TabsTrigger value="inventory" className="gap-2">
                 <Boxes className="h-4 w-4" />
                 Inventory
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                  {productBalances.length}
-                </Badge>
               </TabsTrigger>
               <TabsTrigger value="transactions" className="gap-2">
                 <Package className="h-4 w-4" />
@@ -696,53 +723,79 @@ export default function WarehouseDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Stock Balance Tab */}
-          <TabsContent value="stock" className="flex-1 overflow-auto px-6 py-4">
-            <div className="max-w-5xl space-y-6">
+          {/* Inventory Management Tab (from /api/admin/inventory-management) */}
+          <TabsContent value="inventory" className="flex-1 overflow-auto px-6 py-4">
+            <div className="max-w-6xl space-y-6">
               <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
                 <div className="px-5 py-3 bg-muted/40 border-b flex items-center justify-between">
                   <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
                     <Boxes className="w-4 h-4 text-primary" />
                     Inventory
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">{inventoryMgmtData.length}</Badge>
                   </h3>
                 </div>
-                {productBalances.length === 0 ? (
+                {inventoryMgmtLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading inventory...</span>
+                  </div>
+                ) : inventoryMgmtData.length === 0 ? (
                   <div className="p-10 text-center text-muted-foreground">
                     <Boxes className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium">No stock available</p>
-                    <p className="text-xs mt-1">Stock balances will appear here when transactions exist</p>
+                    <p className="text-sm font-medium">No inventory records</p>
+                    <p className="text-xs mt-1">Transfer orders for this warehouse will appear here</p>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
-                      <tr>
-                         <th className="px-5 py-3">Product Name</th>
-                         <th className="px-5 py-3 text-right">Total In</th>
-                         <th className="px-5 py-3 text-right">Total Out</th>
-                         <th className="px-5 py-3 text-right text-primary">Net Balance</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y text-sm">
-                      {productBalances.map((item, i) => (
-                        <tr key={i} className="hover:bg-muted/10 transition-colors">
-                          <td className="px-5 py-3 font-medium truncate max-w-[300px]" title={item.productName}>
-                            {item.productName}
-                          </td>
-                          <td className="px-5 py-3 text-right text-emerald-600 font-mono">
-                            {item.totalIn > 0 ? `+${item.totalIn}` : 0}
-                          </td>
-                          <td className="px-5 py-3 text-right text-amber-600 font-mono">
-                            {item.totalOut > 0 ? `-${item.totalOut}` : 0}
-                          </td>
-                          <td className="px-5 py-3 text-right font-bold text-base">
-                            <span className={item.netBalance > 0 ? "text-emerald-600" : item.netBalance < 0 ? "text-red-500" : "text-muted-foreground"}>
-                              {item.netBalance}
-                            </span>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead className="bg-muted/20 text-xs uppercase text-muted-foreground font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">Origin VB #</th>
+                          <th className="px-4 py-3">Product</th>
+                          <th className="px-4 py-3">Supplier</th>
+                          <th className="px-4 py-3">Serial/Lot</th>
+                          <th className="px-4 py-3 text-right">Transfer Qty</th>
+                          <th className="px-4 py-3 text-right">Released</th>
+                          <th className="px-4 py-3 text-right text-primary">Available Qty</th>
+                          <th className="px-4 py-3">Batch #</th>
+                          <th className="px-4 py-3">UOM</th>
+                          <th className="px-4 py-3 text-right">Weight/Unit</th>
+                          <th className="px-4 py-3">Received Date</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y text-sm">
+                        {inventoryMgmtData.map((row: any) => {
+                          const shipLabel = row.vbShipmentNumber?.VBShipmentNumber || row.vbShipmentNumber?.svbid || "-";
+                          const productLabel = row.product?.name || "-";
+                          const productVbId = row.product?.vbId;
+                          const supplierLabel = row.supplier?.name || "-";
+                          const rcvDate = row.receivedDate ? format(new Date(row.receivedDate), "MMM dd, yyyy") : "-";
+                          return (
+                            <tr key={row._id} className="hover:bg-muted/10 transition-colors">
+                              <td className="px-4 py-3 font-mono font-semibold text-primary">{shipLabel}</td>
+                              <td className="px-4 py-3">
+                                <span className="font-medium">{productLabel}</span>
+                                {productVbId && <span className="text-[10px] text-muted-foreground ml-1">({productVbId})</span>}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">{supplierLabel}</td>
+                              <td className="px-4 py-3 font-mono text-xs">{row.serialNumber || "-"}</td>
+                              <td className="px-4 py-3 text-right font-medium">{row.qty || 0}</td>
+                              <td className="px-4 py-3 text-right text-amber-600 font-medium">{row.releasedQty || 0}</td>
+                              <td className="px-4 py-3 text-right font-bold text-base">
+                                <span className={row.availableQty > 0 ? "text-emerald-600" : row.availableQty < 0 ? "text-red-500" : "text-muted-foreground"}>
+                                  {row.availableQty}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">{row.batchNumber || "-"}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{row.uom || "-"}</td>
+                              <td className="px-4 py-3 text-right text-muted-foreground">{row.weight || "-"}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{rcvDate}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
