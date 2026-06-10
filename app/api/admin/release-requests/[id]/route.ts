@@ -6,10 +6,12 @@ import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
 import VBcustomerPO from "@/lib/models/VBcustomerPO";
+import VidaTransferOrder from "@/lib/models/VidaTransferOrder";
+import VBshipping from "@/lib/models/VBshipping";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 // Ensure all populated models are registered (prevents tree-shaking in production)
-const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO };
+const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO, VidaTransferOrder, VBshipping };
 
 export async function GET(
   request: Request,
@@ -22,7 +24,8 @@ export async function GET(
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
-      .populate("poNo", "customerPONo VBSerialNumber customer")
+      // poNo is populated manually below to handle non-ObjectId values gracefully
+      .populate("transferOrder", "VBShipmentNumber svbid")
       .populate({
         path: 'releaseOrderProducts.product',
         model: _models.VidaProduct.modelName,
@@ -33,7 +36,21 @@ export async function GET(
     if (!requestItem) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json(requestItem);
+
+    // Manually populate poNo to handle non-ObjectId values (e.g. "ZK052926-885")
+    const item = requestItem as any;
+    if (item.poNo) {
+      const { Types } = await import("mongoose");
+      if (Types.ObjectId.isValid(item.poNo) && String(new Types.ObjectId(item.poNo)) === String(item.poNo)) {
+        const po = await _models.VBcustomerPO
+          .findById(item.poNo)
+          .select("customerPONo VBSerialNumber customer")
+          .lean();
+        if (po) item.poNo = po;
+      }
+    }
+
+    return NextResponse.json(item);
   } catch (error: any) {
     console.error("Release Request GET [id] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -56,7 +73,8 @@ export async function PUT(
       .populate("warehouse", "name")
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
-      .populate("poNo", "customerPONo VBSerialNumber customer")
+      // poNo is populated manually below to handle non-ObjectId values gracefully
+      .populate("transferOrder", "VBShipmentNumber svbid")
       .populate({
         path: 'releaseOrderProducts.product',
         model: _models.VidaProduct.modelName,
@@ -67,9 +85,23 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    // Manually populate poNo to handle non-ObjectId values
+    const item = updated as any;
+    if (item.poNo) {
+      const { Types } = await import("mongoose");
+      if (Types.ObjectId.isValid(item.poNo) && String(new Types.ObjectId(item.poNo)) === String(item.poNo)) {
+        const po = await _models.VBcustomerPO
+          .findById(item.poNo)
+          .select("customerPONo VBSerialNumber customer")
+          .lean();
+        if (po) item.poNo = po;
+      }
+    }
+
     broadcastMutation("release-requests", "update", id);
 
-    return NextResponse.json(updated);
+    return NextResponse.json(item);
   } catch (error: any) {
     console.error("Release Request PUT Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

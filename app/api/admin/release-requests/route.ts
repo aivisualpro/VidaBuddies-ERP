@@ -6,6 +6,8 @@ import VidaWarehouse from "@/lib/models/VidaWarehouse";
 import VidaCustomer from "@/lib/models/VidaCustomer";
 import VidaUser from "@/lib/models/VidaUser";
 import VBcustomerPO from "@/lib/models/VBcustomerPO";
+import VidaTransferOrder from "@/lib/models/VidaTransferOrder";
+import VBshipping from "@/lib/models/VBshipping";
 import { getSession } from "@/lib/auth";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
@@ -13,7 +15,7 @@ import { broadcastMutation } from "@/lib/pusher/broadcast";
 export const dynamic = "force-dynamic";
 
 // Ensure all populated models are registered (prevents tree-shaking in production)
-const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO };
+const _models = { VidaProduct, VidaWarehouse, VidaCustomer, VidaUser, VBcustomerPO, VidaTransferOrder, VBshipping };
 
 export async function GET() {
   try {
@@ -23,6 +25,7 @@ export async function GET() {
       .populate("customer", "name location")
       .populate("requestedBy", "name email")
       // poNo is populated separately below to handle non-ObjectId values gracefully
+      .populate("transferOrder", "VBShipmentNumber svbid")
       .populate({
          path: 'releaseOrderProducts.product',
          model: _models.VidaProduct.modelName,
@@ -90,6 +93,7 @@ export async function POST(request: Request) {
       .populate("customer")
       .populate("requestedBy")
       .populate("poNo", "customerPONo VBSerialNumber customer")
+      .populate("transferOrder", "VBShipmentNumber svbid")
       .populate({
          path: 'releaseOrderProducts.product',
          model: 'VidaProduct'

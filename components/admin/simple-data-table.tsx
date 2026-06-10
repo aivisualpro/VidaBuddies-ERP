@@ -271,7 +271,7 @@ export function SimpleDataTable<TData, TValue>({
                   data-row-id={rowDataId?.(row.original)}
                   onClick={() => onRowClick?.(row.original)}
                   onMouseEnter={() => onRowHover?.(row.original)}
-                  className={`${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row.original) || ""}`}
+                  className={`border-b border-border ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row.original) || ""}`}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="py-0.5 h-8 text-[14px] font-normal">

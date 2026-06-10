@@ -8,6 +8,7 @@ export interface IReleaseOrderProduct {
 
 export interface IVidaReleaseRequest extends Document {
   poNo: mongoose.Types.ObjectId; // Customer PO ref → VBcustomerPO._id
+  transferOrder: mongoose.Types.ObjectId; // VBshipping ref — stores vbShipmentNumber from VidaTransferOrder (displayed as Shipment #)
   date: Date;
   warehouse: mongoose.Types.ObjectId;
   requestedBy: mongoose.Types.ObjectId; // User
@@ -34,7 +35,8 @@ const ReleaseOrderProductSchema = new Schema({
 });
 
 const VidaReleaseRequestSchema: Schema = new Schema({
-  poNo: { type: Schema.Types.ObjectId, ref: 'VBcustomerPO', required: true },
+  poNo: { type: Schema.Types.Mixed, ref: 'VBcustomerPO', required: true },
+  transferOrder: { type: Schema.Types.ObjectId, ref: 'VBshipping', default: null },
   date: { type: Date, default: Date.now },
   warehouse: { type: Schema.Types.ObjectId, ref: 'VidaWarehouse', required: true },
   requestedBy: { type: Schema.Types.ObjectId, ref: 'VidaUser' },
@@ -52,7 +54,7 @@ const VidaReleaseRequestSchema: Schema = new Schema({
 
   createdBy: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
-});
+}, {});
 
 // Index for the main listing query which sorts by createdAt descending
 VidaReleaseRequestSchema.index({ createdAt: -1 });

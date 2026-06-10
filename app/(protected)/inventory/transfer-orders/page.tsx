@@ -639,6 +639,7 @@ function TransferOrdersContent() {
         return <span className="font-mono font-semibold text-primary">{val}</span>;
       },
     },
+    { id: "receivedDate", header: "Received Date", accessorFn: (row) => row.receivedDate ? new Date(row.receivedDate).getTime() : 0, cell: ({ row }) => formatDate(row.original.receivedDate) },
     { id: "warehouse", header: "Warehouse", accessorFn: (row) => resolveStr(row.warehouse), cell: ({ row }) => resolveStr(row.original.warehouse) },
     {
       id: "product", header: "Product", accessorFn: (row) => resolveStr(row.product),
@@ -654,7 +655,6 @@ function TransferOrdersContent() {
     { accessorKey: "batchNumber", header: "Batch #", cell: ({ row }) => row.original.batchNumber || "-" },
     { accessorKey: "uom", header: "UOM", cell: ({ row }) => row.original.uom || "-" },
     { accessorKey: "weight", header: "Weight", cell: ({ row }) => row.original.weight || "-" },
-    { id: "receivedDate", header: "Received Date", accessorFn: (row) => row.receivedDate ? new Date(row.receivedDate).getTime() : 0, cell: ({ row }) => formatDate(row.original.receivedDate) },
     { id: "createdBy", header: "Created By", accessorFn: (row) => resolveStr(row.createdBy), cell: ({ row }) => resolveStr(row.original.createdBy) },
     { id: "createdAt", header: "Created", accessorFn: (row) => row.createdAt ? new Date(row.createdAt).getTime() : 0, cell: ({ row }) => formatDate(row.original.createdAt) },
     {

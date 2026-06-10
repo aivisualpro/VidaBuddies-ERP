@@ -116,7 +116,7 @@ const data = {
       icon: IconRoute,
     },
     {
-      name: "Inventory Management",
+      name: "Inventory Mgt.",
       url: "/inventory/management",
       icon: IconClipboardList,
     },

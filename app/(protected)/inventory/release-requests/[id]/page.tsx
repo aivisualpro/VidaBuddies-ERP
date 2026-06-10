@@ -35,6 +35,8 @@ import {
   XCircle,
   Loader2,
   Paperclip,
+  Pencil,
+  Trash,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -138,6 +140,30 @@ export default function ReleaseRequestDetailPage() {
     setEmailDialogOpen(true);
   }, [data]);
 
+  const handleEdit = React.useCallback(() => {
+    router.push(`/inventory/release-requests?edit=${id}`);
+  }, [router, id]);
+
+  const handleDelete = React.useCallback(async () => {
+    toast.warning("Are you sure you want to delete this release request?", {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            const res = await fetch(`/api/admin/release-requests/${id}`, { method: "DELETE" });
+            if (!res.ok) throw new Error("Failed");
+            toast.success("Release request deleted");
+            router.push("/inventory/release-requests");
+          } catch {
+            toast.error("Failed to delete release request");
+          }
+        },
+      },
+      cancel: { label: "Cancel", onClick: () => {} },
+    });
+  }, [id, router]);
+
   // Inject into global header
   React.useLayoutEffect(() => {
     if (!data) return;
@@ -168,6 +194,25 @@ export default function ReleaseRequestDetailPage() {
 
     const rightContent = (
       <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleEdit}
+          className="gap-2"
+        >
+          <Pencil className="h-4 w-4" />
+          Edit
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDelete}
+          className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+        >
+          <Trash className="h-4 w-4" />
+          Delete
+        </Button>
+        <div className="h-6 w-px bg-border" />
         <Button
           variant="outline"
           size="sm"
@@ -202,7 +247,7 @@ export default function ReleaseRequestDetailPage() {
       setLeftContent(null);
       setActions(null);
     };
-  }, [data, pdfLoading, router, setLeftContent, setActions, handleDownloadPDF, handleSendEmailDialog]);
+  }, [data, pdfLoading, router, setLeftContent, setActions, handleDownloadPDF, handleSendEmailDialog, handleEdit, handleDelete]);
 
   const fetchData = async () => {
     try {

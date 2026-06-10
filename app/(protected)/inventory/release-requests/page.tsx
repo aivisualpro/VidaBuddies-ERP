@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ interface IReleaseOrderProduct {
 interface ReleaseRequest {
   _id: string;
   poNo: any;
+  transferOrder: any;
   date: string;
   warehouse: any;
   requestedBy: any;
@@ -163,6 +164,31 @@ function ReleaseRequestsContent() {
   const { data: customerPOs = [] } = useCustomerPOs();
   const queryClient = useQueryClient();
 
+  // Transfer orders — for Shipment # picker (deduplicated by vbShipmentNumber)
+  const [uniqueShipments, setUniqueShipments] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/transfer-orders')
+      .then(r => r.json())
+      .then(d => {
+        if (!Array.isArray(d)) return;
+        // Deduplicate by vbShipmentNumber ObjectId
+        const seen = new Map<string, any>();
+        for (const to of d) {
+          const ship = to.vbShipmentNumber;
+          if (!ship) continue;
+          const shipId = typeof ship === 'object' ? ship._id : ship;
+          if (shipId && !seen.has(String(shipId))) {
+            seen.set(String(shipId), {
+              shipId: String(shipId),
+              label: typeof ship === 'object' ? (ship.VBShipmentNumber || ship.svbid || String(shipId)) : String(shipId),
+            });
+          }
+        }
+        setUniqueShipments(Array.from(seen.values()));
+      })
+      .catch(() => {});
+  }, []);
+
   // Release requests — own fetch
   const [rawData, setRawData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,15 +209,32 @@ function ReleaseRequestsContent() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ReleaseRequest | null>(null);
+
+  // Handle ?edit=<id> query param (from detail page Edit button)
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && data.length > 0) {
+      const item = data.find((r: any) => r._id === editId);
+      if (item) {
+        openEditDialog(item);
+        // Clean up URL
+        router.replace('/inventory/release-requests', { scroll: false });
+      }
+    }
+  }, [searchParams, data]);
   
   // Search states for dropdowns
   const [carrierSearch, setCarrierSearch] = useState("");
   const [carrierPopoverOpen, setCarrierPopoverOpen] = useState(false);
   const [cpoSearch, setCpoSearch] = useState("");
   const [cpoPopoverOpen, setCpoPopoverOpen] = useState(false);
+  const [toSearch, setToSearch] = useState("");
+  const [toPopoverOpen, setToPopoverOpen] = useState(false);
 
   const defaultFormData: Partial<ReleaseRequest> = {
     poNo: "",
+    transferOrder: "",
     date: new Date().toISOString().split('T')[0],
     warehouse: "",
     requestedBy: "",
@@ -285,7 +328,8 @@ function ReleaseRequestsContent() {
     setEditingItem(item);
     setFormData({
       ...item,
-      poNo: item.poNo?._id || item.poNo,
+      poNo: typeof item.poNo === 'object' && item.poNo?._id ? item.poNo._id : (item.poNo || ""),
+      transferOrder: typeof item.transferOrder === 'object' && item.transferOrder?._id ? item.transferOrder._id : (item.transferOrder || ""),
       warehouse: item.warehouse?._id || item.warehouse,
       requestedBy: item.requestedBy?._id || item.requestedBy,
       customer: item.customer?._id || item.customer,
@@ -378,6 +422,30 @@ function ReleaseRequestsContent() {
 
   const columns: ColumnDef<ReleaseRequest>[] = [
     {
+      accessorKey: "date",
+      header: "Date",
+      cell: ({ row }) => row.original.date ? format(new Date(row.original.date), "MMM dd, yyyy") : "-",
+    },
+    {
+      id: "shipment",
+      header: "Shipment #",
+      accessorFn: (row) => {
+        const to = row.transferOrder;
+        if (!to) return "-";
+        // transferOrder is now populated directly from VBshipping
+        if (typeof to === 'object') return to.VBShipmentNumber || to.svbid || "-";
+        return "-";
+      },
+      cell: ({ row }) => {
+        const to = row.original.transferOrder;
+        if (!to) return "-";
+        if (typeof to === 'object') {
+          return <span className="font-mono font-semibold text-primary">{to.VBShipmentNumber || to.svbid || "-"}</span>;
+        }
+        return "-";
+      },
+    },
+    {
       accessorKey: "poNo",
       header: "Customer PO #",
       cell: ({ row }) => {
@@ -392,19 +460,42 @@ function ReleaseRequestsContent() {
       cell: ({ row }) => row.original.customer?.name || "-",
     },
     {
-      accessorKey: "date",
-      header: "Date",
-      cell: ({ row }) => row.original.date ? format(new Date(row.original.date), "MMM dd, yyyy") : "-",
-    },
-    {
       accessorKey: "warehouse.name",
       header: "Warehouse",
       cell: ({ row }) => row.original.warehouse?.name || "-",
     },
     {
-        accessorKey: "products",
-        header: "Items",
-        cell: ({ row }) => row.original.releaseOrderProducts?.length || 0,
+        id: "productsList",
+        header: "Products",
+        cell: ({ row }) => {
+          const items = row.original.releaseOrderProducts;
+          if (!items || items.length === 0) return <span className="text-muted-foreground">-</span>;
+          return (
+            <div className="flex flex-col divide-y divide-border">
+              {items.map((item, i) => {
+                const name = typeof item.product === 'object' && item.product
+                  ? (item.product as any).name || (item.product as any).vbId || '-'
+                  : '-';
+                return <span key={i} className="text-xs leading-snug truncate max-w-[220px] py-1">{name}</span>;
+              })}
+            </div>
+          );
+        },
+    },
+    {
+        id: "productQty",
+        header: "Qty",
+        cell: ({ row }) => {
+          const items = row.original.releaseOrderProducts;
+          if (!items || items.length === 0) return <span className="text-muted-foreground">-</span>;
+          return (
+            <div className="flex flex-col divide-y divide-border">
+              {items.map((item, i) => (
+                <span key={i} className="text-xs leading-snug font-mono py-1">{item.qty}</span>
+              ))}
+            </div>
+          );
+        },
     },
     {
       accessorKey: "createdBy",
@@ -493,6 +584,70 @@ function ReleaseRequestsContent() {
                             onChange={(e) => setFormData({...formData, date: e.target.value})}
                             required
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Shipment #</Label>
+                        <Popover open={toPopoverOpen} onOpenChange={setToPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={toPopoverOpen}
+                              className="w-full justify-between font-normal"
+                            >
+                              <span className="truncate">
+                                {formData.transferOrder
+                                  ? (uniqueShipments.find((s: any) => s.shipId === formData.transferOrder)?.label || 'Selected')
+                                  : 'Select Shipment...'}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Search shipments..."
+                                value={toSearch}
+                                onValueChange={setToSearch}
+                              />
+                              <CommandList
+                                className="pointer-events-auto"
+                                onWheel={(e) => e.stopPropagation()}
+                                onTouchMove={(e) => e.stopPropagation()}
+                              >
+                                <CommandEmpty>No shipments found.</CommandEmpty>
+                                <CommandGroup>
+                                  {uniqueShipments
+                                    .filter((s: any) => {
+                                      if (!toSearch) return true;
+                                      return s.label.toLowerCase().includes(toSearch.toLowerCase());
+                                    })
+                                    .slice(0, 50)
+                                    .map((s: any) => (
+                                      <CommandItem
+                                        key={s.shipId}
+                                        value={s.shipId}
+                                        onSelect={() => {
+                                          setFormData({ ...formData, transferOrder: s.shipId });
+                                          setToPopoverOpen(false);
+                                          setToSearch('');
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            formData.transferOrder === s.shipId ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        <span className="font-mono">{s.label}</span>
+                                      </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                     </div>
                     
                     <div className="space-y-2">
@@ -590,8 +745,8 @@ function ReleaseRequestsContent() {
                                 {formData.poNo
                                   ? (customerPOs.find((c: any) => c._id === formData.poNo)?.customerPONo ||
                                      customerPOs.find((c: any) => c._id === formData.poNo)?.VBSerialNumber ||
-                                     'Selected')
-                                  : 'Select Customer PO...'}
+                                     String(formData.poNo))
+                                  : 'Select or type Customer PO...'}
                               </span>
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
@@ -599,7 +754,7 @@ function ReleaseRequestsContent() {
                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                             <Command shouldFilter={false}>
                               <CommandInput
-                                placeholder="Search customer POs..."
+                                placeholder="Search or type PO #..."
                                 value={cpoSearch}
                                 onValueChange={setCpoSearch}
                               />
@@ -608,8 +763,24 @@ function ReleaseRequestsContent() {
                                 onWheel={(e) => e.stopPropagation()}
                                 onTouchMove={(e) => e.stopPropagation()}
                               >
-                                <CommandEmpty>No customer POs found.</CommandEmpty>
-                                <CommandGroup>
+                                {/* Allow using the typed text as a custom value */}
+                                {cpoSearch && !customerPOs.find((c: any) =>
+                                  (c.customerPONo || '').toLowerCase() === cpoSearch.toLowerCase() ||
+                                  (c.VBSerialNumber || '').toLowerCase() === cpoSearch.toLowerCase()
+                                ) && (
+                                  <CommandItem
+                                    value={`custom:${cpoSearch}`}
+                                    onSelect={() => {
+                                      setFormData({ ...formData, poNo: cpoSearch });
+                                      setCpoPopoverOpen(false);
+                                      setCpoSearch('');
+                                    }}
+                                  >
+                                    <span className="text-muted-foreground mr-2">Use:</span>
+                                    <span className="font-semibold">&quot;{cpoSearch}&quot;</span>
+                                  </CommandItem>
+                                )}
+                                <CommandGroup heading="From Customer POs">
                                   {customerPOs
                                     .filter((c: any) => {
                                       if (!cpoSearch) return true;
