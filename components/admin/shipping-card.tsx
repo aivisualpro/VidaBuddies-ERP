@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRightLeft,
+  Weight,
 } from "lucide-react";
 
 export interface ShippingCardShip {
@@ -45,6 +46,8 @@ export interface ShippingCardShip {
   drums?: number;
   pallets?: number;
   gallons?: number;
+  netWeightKG?: number;
+  grossWeightKG?: number;
   invValue?: number;
   estTrumpDuties?: number;
   feesAmount?: number;
@@ -363,33 +366,39 @@ export function ShippingCard({
               </div>
             </div>
 
-            {/* Row 4: Products & Measures */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="min-w-0">
-                <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider mb-1.5">Products</p>
-                <div className="flex flex-col gap-1">
-                  {productIds.length > 0
-                    ? productIds.map((pid, i) => (
-                        <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg w-fit">
-                          {products[pid] || pid}
-                        </span>
-                      ))
-                    : <span className="text-xs text-muted-foreground">—</span>}
-                </div>
+            {/* Row 4: Products */}
+            <div>
+              <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider mb-1.5">Products</p>
+              <div className="flex flex-wrap gap-1">
+                {productIds.length > 0
+                  ? productIds.map((pid, i) => (
+                      <span key={i} className="inline-flex items-center text-[10px] font-semibold bg-primary/8 text-primary border border-primary/15 px-2.5 py-1 rounded-lg w-fit">
+                        {products[pid] || pid}
+                      </span>
+                    ))
+                  : <span className="text-xs text-muted-foreground">—</span>}
               </div>
-              <div className="flex flex-wrap items-start gap-x-6 gap-y-1 pt-5">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Drums</p>
-                  <p className="text-xs font-bold text-foreground">{(ship.drums || 0).toLocaleString()}</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Pallets</p>
-                  <p className="text-xs font-bold text-foreground">{(ship.pallets || 0).toLocaleString()}</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-[9px] font-semibold uppercase text-foreground/60 tracking-wider">Gallons</p>
-                  <p className="text-xs font-bold text-foreground">{(ship.gallons || 0).toLocaleString()}</p>
-                </div>
+            </div>
+
+            {/* Row 5: Weights & Measures */}
+            <div className="rounded-xl bg-muted/30 dark:bg-muted/20 border border-border/40 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Weight className="h-3.5 w-3.5 text-primary/70" />
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Weights & Measures</p>
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { label: "Drums", value: (ship.drums || 0).toLocaleString() },
+                  { label: "Pallets", value: (ship.pallets || 0).toLocaleString() },
+                  { label: "Gallons", value: (ship.gallons || 0).toLocaleString() },
+                  { label: "Net Wt (KG)", value: (ship.netWeightKG || 0).toLocaleString() },
+                  { label: "Gross Wt (KG)", value: (ship.grossWeightKG || 0).toLocaleString() },
+                ].map((item, i) => (
+                  <div key={i} className="text-center bg-background/60 rounded-lg py-1.5 px-1 border border-border/30">
+                    <p className="text-xs font-bold text-foreground">{item.value}</p>
+                    <p className="text-[7px] font-semibold uppercase text-muted-foreground/50 tracking-wider">{item.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
 

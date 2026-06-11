@@ -391,13 +391,15 @@ function ShipmentsCardContent() {
                 )}
               </div>
 
-              {/* Quantities */}
-              {(item.drums || item.pallets || item.gallons) && (
+              {/* Quantities / Weights & Measures */}
+              {(item.drums || item.pallets || item.gallons || (item as any).netWeightKG || (item as any).grossWeightKG) && (
                 <div className="relative border-t border-border/50 px-4 py-2">
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
                     {item.drums ? <span><strong className="text-foreground">{item.drums}</strong> drums</span> : null}
                     {item.pallets ? <span><strong className="text-foreground">{item.pallets}</strong> pallets</span> : null}
                     {item.gallons ? <span><strong className="text-foreground">{item.gallons.toLocaleString()}</strong> gal</span> : null}
+                    {(item as any).netWeightKG ? <span><strong className="text-foreground">{(item as any).netWeightKG.toLocaleString()}</strong> net kg</span> : null}
+                    {(item as any).grossWeightKG ? <span><strong className="text-foreground">{(item as any).grossWeightKG.toLocaleString()}</strong> gross kg</span> : null}
                   </div>
                 </div>
               )}

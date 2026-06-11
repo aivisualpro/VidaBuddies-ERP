@@ -484,23 +484,23 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                 <div className="grid grid-cols-5 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Drums</Label>
-                    <Input name="drums" type="number" className="text-sm" />
+                    <Input name="drums" type="number" className="text-sm" defaultValue={editingData?.drums ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Pallets</Label>
-                    <Input name="pallets" type="number" className="text-sm" />
+                    <Input name="pallets" type="number" className="text-sm" defaultValue={editingData?.pallets ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Gallons</Label>
-                    <Input name="gallons" type="number" className="text-sm" />
+                    <Input name="gallons" type="number" className="text-sm" defaultValue={editingData?.gallons ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Net Wt (KG)</Label>
-                    <Input name="netWeightKG" type="number" className="text-sm" />
+                    <Input name="netWeightKG" type="number" className="text-sm" defaultValue={editingData?.netWeightKG ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Gross Wt (KG)</Label>
-                    <Input name="grossWeightKG" type="number" className="text-sm" />
+                    <Input name="grossWeightKG" type="number" className="text-sm" defaultValue={editingData?.grossWeightKG ?? ""} />
                   </div>
                 </div>
               </div>
@@ -514,23 +514,23 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Invoice Value ($)</Label>
-                    <Input name="invValue" type="number" step="0.01" className="text-sm" />
+                    <Input name="invValue" type="number" step="0.01" className="text-sm" defaultValue={editingData?.invValue ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Fees Amount ($)</Label>
-                    <Input name="feesAmount" type="number" step="0.01" className="text-sm" />
+                    <Input name="feesAmount" type="number" step="0.01" className="text-sm" defaultValue={editingData?.feesAmount ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Est. Regular Duties ($)</Label>
-                    <Input name="estimatedDuties" type="number" step="0.01" className="text-sm" />
+                    <Input name="estimatedDuties" type="number" step="0.01" className="text-sm" defaultValue={editingData?.estimatedDuties ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Est. Trump Duties ($)</Label>
-                    <Input name="estTrumpDuties" type="number" step="0.01" className="text-sm" />
+                    <Input name="estTrumpDuties" type="number" step="0.01" className="text-sm" defaultValue={editingData?.estTrumpDuties ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Genset Invoice #</Label>
-                    <Input name="gensetInv" placeholder="Invoice #" className="text-sm" />
+                    <Input name="gensetInv" placeholder="Invoice #" className="text-sm" defaultValue={editingData?.gensetInv || ""} />
                   </div>
                 </div>
               </div>
@@ -544,27 +544,27 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Item No</Label>
-                    <Input name="itemNo" placeholder="Item Code" className="text-sm" />
+                    <Input name="itemNo" placeholder="Item Code" className="text-sm" defaultValue={editingData?.itemNo || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Lot / Serial</Label>
-                    <Input name="lotSerial" placeholder="Lot No" className="text-sm" />
+                    <Input name="lotSerial" placeholder="Lot No" className="text-sm" defaultValue={editingData?.lotSerial || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Type</Label>
-                    <Input name="type" placeholder="e.g. Stock, Transit" className="text-sm" />
+                    <Input name="type" placeholder="e.g. Stock, Transit" className="text-sm" defaultValue={editingData?.type || ""} />
                   </div>
                   <div className="col-span-2 space-y-1">
                     <Label className="text-xs">Description</Label>
-                    <Input name="description" placeholder="Item Description" className="text-sm" />
+                    <Input name="description" placeholder="Item Description" className="text-sm" defaultValue={editingData?.description || ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Quantity</Label>
-                    <Input name="qty" type="number" className="text-sm" />
+                    <Input name="qty" type="number" className="text-sm" defaultValue={editingData?.qty ?? ""} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Inventory Date</Label>
-                    <Input name="inventoryDate" type="date" className="text-sm" />
+                    <Input name="inventoryDate" type="date" className="text-sm" defaultValue={editingData?.inventoryDate ? new Date(editingData.inventoryDate).toISOString().split('T')[0] : ""} />
                   </div>
                 </div>
               </div>
