@@ -18,6 +18,7 @@ import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { AddTransferOrderDialog } from "@/components/admin/add-transfer-order-dialog";
 import { AddReleaseRequestDialog } from "@/components/admin/add-release-request-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
+import { PendingReleaseRequestsDialog } from "@/components/admin/pending-release-requests-dialog";
 import { toast } from "sonner";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 
@@ -91,6 +92,7 @@ function AndresTrackerContent() {
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const [isAddTransferOpen, setIsAddTransferOpen] = useState(false);
   const [isAddReleaseOpen, setIsAddReleaseOpen] = useState(false);
+  const [rrDialogOpen, setRRDialogOpen] = useState(false);
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
   const { data: storeProducts = [] } = useProducts();
   const { data: storeCustomers = [] } = useCustomers();
@@ -193,6 +195,19 @@ function AndresTrackerContent() {
       setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
     });
   }, [purchaseOrders]); // re-fetch when POs change
+
+  // Pending release requests count
+  const [pendingRRCount, setPendingRRCount] = useState<number | null>(null);
+  useEffect(() => {
+    fetch('/api/admin/release-requests')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d)) {
+          setPendingRRCount(d.filter((r: any) => !r.pickedUp).length);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const sortedPOs = useMemo(() => {
     // fast O(1) map for product ID to Name
@@ -530,13 +545,34 @@ function AndresTrackerContent() {
 
   useEffect(() => {
     setLeftContent(
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
           Andres Tracker
         </h1>
+        {pendingRRCount !== null && (
+          <button
+            onClick={() => setRRDialogOpen(true)}
+            className={[
+              'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all',
+              pendingRRCount > 0
+                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20 cursor-pointer'
+                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 cursor-pointer hover:bg-emerald-500/20',
+            ].join(' ')}
+            title={`${pendingRRCount} pending release request${pendingRRCount !== 1 ? 's' : ''} — click to view`}
+          >
+            <ClipboardList className="h-3 w-3" />
+            Pending Release Requests
+            <span className={[
+              'ml-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold',
+              pendingRRCount > 0 ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white',
+            ].join(' ')}>
+              {pendingRRCount}
+            </span>
+          </button>
+        )}
       </div>
     );
      setRightContent(
@@ -554,7 +590,7 @@ function AndresTrackerContent() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [setLeftContent, setRightContent, router, inputs.search]);
+  }, [setLeftContent, setRightContent, router, inputs.search, pendingRRCount]);
 
   return (
     <div className="max-w-[2000px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">
@@ -1088,6 +1124,19 @@ function AndresTrackerContent() {
         spoNumber={attachmentsOpen?.spoNumber}
         shipNumber={attachmentsOpen?.shipNumber}
         childFolders={attachmentsOpen?.childFolders}
+      />
+
+      <PendingReleaseRequestsDialog
+        open={rrDialogOpen}
+        onOpenChange={setRRDialogOpen}
+        onRefresh={() => {
+          fetch('/api/admin/release-requests')
+            .then(r => r.json())
+            .then(d => {
+              if (Array.isArray(d)) setPendingRRCount(d.filter((r: any) => !r.pickedUp).length);
+            })
+            .catch(() => {});
+        }}
       />
     </div>
   );
