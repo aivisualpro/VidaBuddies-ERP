@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,16 @@ import { toast } from "sonner";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { useCustomers } from "@/hooks/queries/useCustomers";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { useProducts } from "@/hooks/queries/useProducts";
 import { useQueryClient } from "@tanstack/react-query";
 import { purchaseOrderKeys } from "@/hooks/queries/usePurchaseOrders";
+import { Check, ChevronsUpDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /* ──────────────────────────────────────────────────────────────
  * Shared UOM options — single source of truth
@@ -76,6 +84,7 @@ export function AddCustomerPODialog({
   const { data: purchaseOrders = [] } = usePurchaseOrders();
   const { data: customers = [] } = useCustomers();
   const { data: warehouses = [] } = useWarehouses();
+  const { data: products = [] } = useProducts();
   const queryClient = useQueryClient();
 
   const [actionLoading, setActionLoading] = useState(false);
@@ -90,6 +99,11 @@ export function AddCustomerPODialog({
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [qtyOrdered, setQtyOrdered] = useState("");
   const [qtyReceived, setQtyReceived] = useState(0);
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [productPopoverOpen, setProductPopoverOpen] = useState(false);
+  const productListRef = useRef<HTMLDivElement>(null);
 
   /* ──── Options ──── */
   const vbpoOptions = useMemo(
@@ -140,6 +154,31 @@ export function AddCustomerPODialog({
     [warehouses]
   );
 
+  const productOptions = useMemo(
+    () =>
+      (products || []).map((p: any) => ({
+        value: p._id as string,
+        label: p.name || p.vbId || p._id,
+      })),
+    [products]
+  );
+
+  const filteredProductOptions = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return productOptions;
+    return productOptions.filter((o) => o.label.toLowerCase().includes(q));
+  }, [productOptions, productSearch]);
+
+  const toggleProduct = (id: string) => {
+    setSelectedProducts((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
+
+  const removeProduct = (id: string) => {
+    setSelectedProducts((prev) => prev.filter((p) => p !== id));
+  };
+
   /* ──── Reset form on open / edit change ──── */
   useEffect(() => {
     if (!open) return;
@@ -165,6 +204,12 @@ export function AddCustomerPODialog({
       );
       setQtyOrdered(editingData.qtyOrdered?.toString() || "");
       setQtyReceived(editingData.qtyReceived || 0);
+      setIsDirectShipment(!!editingData.isDirectShipment);
+      setSelectedProducts(
+        Array.isArray(editingData.products)
+          ? editingData.products.map((p: any) => (typeof p === "string" ? p : p?._id?.toString() || p?.toString()))
+          : []
+      );
     } else {
       setSelectedVBPO(defaultVbpoId || "");
       // Auto-generate Contract # when a default VB PO is provided
@@ -189,7 +234,10 @@ export function AddCustomerPODialog({
       setRequestedDeliveryDate("");
       setQtyOrdered("");
       setQtyReceived(0);
+      setSelectedProducts([]);
+      setIsDirectShipment(false);
     }
+    setProductSearch("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingData, defaultVbpoId]);
 
@@ -239,12 +287,14 @@ export function AddCustomerPODialog({
       customerPONo,
       customer: selectedCustomer,
       customerLocation: selectedLocation,
-      warehouse: selectedWarehouse,
+      warehouse: isDirectShipment ? null : (selectedWarehouse || null),
       UOM: selectedUOM,
       customerPODate: customerPODate || undefined,
       requestedDeliveryDate: requestedDeliveryDate || undefined,
       qtyOrdered: Number(qtyOrdered) || 0,
       qtyReceived,
+      products: selectedProducts,
+      isDirectShipment,
     };
 
     try {
@@ -418,8 +468,110 @@ export function AddCustomerPODialog({
             </div>
           </div>
 
-          {/* Row 5: Qty Ordered + Received (auto) + Warehouse */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Products multi-select */}
+          <div className="grid gap-1.5">
+            <Label>Products</Label>
+            <Popover
+              open={productPopoverOpen}
+              onOpenChange={(v) => { setProductPopoverOpen(v); if (!v) setProductSearch(""); }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={productPopoverOpen}
+                  className="w-full justify-between h-9 px-3 text-sm font-normal bg-background"
+                >
+                  <span className={cn("truncate", selectedProducts.length === 0 && "text-muted-foreground")}>
+                    {selectedProducts.length === 0
+                      ? "Select products…"
+                      : `${selectedProducts.length} product${selectedProducts.length > 1 ? "s" : ""} selected`}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+              >
+                <div className="flex flex-col">
+                  {/* Search */}
+                  <div className="flex items-center border-b px-3">
+                    <svg className="mr-2 h-4 w-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input
+                      className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                      placeholder="Search products…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      autoFocus
+                    />
+                    {productSearch && (
+                      <button onClick={() => setProductSearch("")} className="text-muted-foreground hover:text-foreground p-1">
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  {/* Options */}
+                  <div
+                    ref={productListRef}
+                    className="max-h-[200px] overflow-y-auto overflow-x-hidden scrollbar-thin"
+                  >
+                    {filteredProductOptions.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">No products found.</div>
+                    ) : (
+                      filteredProductOptions.map((opt) => {
+                        const isSelected = selectedProducts.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => toggleProduct(opt.value)}
+                            className={cn(
+                              "relative flex w-full cursor-pointer select-none items-center rounded-sm px-3 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
+                              isSelected && "bg-accent"
+                            )}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                            <span className="truncate">{opt.label}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Selected pills */}
+            {selectedProducts.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {selectedProducts.map((id) => {
+                  const label = productOptions.find((o) => o.value === id)?.label || id;
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs font-medium px-2.5 py-0.5"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        onClick={() => removeProduct(id)}
+                        className="ml-0.5 hover:text-destructive transition-colors"
+                        aria-label={`Remove ${label}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Row: Qty Ordered + Direct Shipment + Warehouse */}
+          <div className="grid gap-4" style={{ gridTemplateColumns: isDirectShipment ? '1fr 1fr' : '1fr 1fr 1fr' }}>
             <div className="grid gap-1.5">
               <Label>Qty Ordered</Label>
               <Input
@@ -430,25 +582,49 @@ export function AddCustomerPODialog({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Received (Auto-computed)</Label>
-              <Input
-                type="number"
-                readOnly
-                className="bg-muted cursor-not-allowed"
-                value={qtyReceived}
-              />
+              <Label>Direct Shipment</Label>
+              <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3">
+                <button
+                  type="button"
+                  id="direct-shipment-no"
+                  onClick={() => { setIsDirectShipment(false); }}
+                  className={cn(
+                    "flex-1 rounded py-0.5 text-sm font-medium transition-colors",
+                    !isDirectShipment
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  id="direct-shipment-yes"
+                  onClick={() => { setIsDirectShipment(true); setSelectedWarehouse(""); }}
+                  className={cn(
+                    "flex-1 rounded py-0.5 text-sm font-medium transition-colors",
+                    isDirectShipment
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Yes
+                </button>
+              </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label>Warehouse</Label>
-              <SearchableSelect
-                options={warehouseOptions}
-                value={selectedWarehouse}
-                onChange={setSelectedWarehouse}
-                placeholder="Select Warehouse"
-                searchPlaceholder="Search warehouses..."
-                emptyMessage="No warehouses found."
-              />
-            </div>
+            {!isDirectShipment && (
+              <div className="grid gap-1.5">
+                <Label>Warehouse</Label>
+                <SearchableSelect
+                  options={warehouseOptions}
+                  value={selectedWarehouse}
+                  onChange={setSelectedWarehouse}
+                  placeholder="Select Warehouse"
+                  searchPlaceholder="Search warehouses..."
+                  emptyMessage="No warehouses found."
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:space-x-0">

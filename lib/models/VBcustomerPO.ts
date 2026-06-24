@@ -12,6 +12,8 @@ export interface IVBcustomerPO extends Document {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: mongoose.Types.ObjectId;  // ref to VidaWarehouse._id
+  products?: mongoose.Types.ObjectId[]; // ref to VidaProduct._id — copied from VBshipping.products
+  isDirectShipment?: boolean;           // if true, ships directly to customer (no warehouse)
   _originalCpoId?: string;           // traceability back to the nested sub-doc _id
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +32,8 @@ const VBcustomerPOSchema: Schema = new Schema(
     qtyReceived: { type: Number },
     UOM: { type: String },
     warehouse: { type: Schema.Types.ObjectId, ref: 'VidaWarehouse', default: null },
+    products: [{ type: Schema.Types.ObjectId, ref: 'VidaProduct' }],
+    isDirectShipment: { type: Boolean, default: false },
     _originalCpoId: { type: String },
     driveDocuments: [{ type: Schema.Types.Mixed }],
   },
@@ -39,6 +43,7 @@ const VBcustomerPOSchema: Schema = new Schema(
 // Index for fast lookups
 VBcustomerPOSchema.index({ VBNumber: 1 });
 VBcustomerPOSchema.index({ VBSerialNumber: 1 });
+VBcustomerPOSchema.index({ products: 1 });
 
 const VBcustomerPO: Model<IVBcustomerPO> =
   mongoose.models.VBcustomerPO || mongoose.model<IVBcustomerPO>('VBcustomerPO', VBcustomerPOSchema);

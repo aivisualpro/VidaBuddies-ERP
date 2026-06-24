@@ -15,8 +15,8 @@ import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose
 import {
   Paperclip, Upload, FolderOpen, Loader2, FileText, Image, File,
   Eye, EyeOff, Package, Ship, ShoppingCart,
-  FileVideo, FileAudio, FileSpreadsheet, FileArchive,
-  X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send,
+  FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
+  X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -86,6 +86,183 @@ function kindColor(kind: string) {
 
 function thumbUrl(fileId: string) {
   return `/api/admin/drive/thumbnail?fileId=${fileId}`;
+}
+
+/* ─── Preview Panel (extracted for its own state) ─── */
+
+function PreviewPanel({ previewFile, onClose }: { previewFile: DocRecord; onClose: () => void }) {
+  const [previewLoading, setPreviewLoading] = useState(true);
+
+  // Reset loading when file changes; instantly dismiss for audio/fallback
+  useEffect(() => {
+    const m = previewFile.mimeType || "";
+    const needsLoading = m.startsWith("image/") || m.startsWith("video/") ||
+      m.includes("pdf") || m.includes("spreadsheet") || m.includes("excel") || m.includes("csv") ||
+      m.includes("ms-excel") || m.includes("word") || m.includes("document") || m.includes("msword") ||
+      m.includes("presentation") || m.includes("powerpoint") || m.includes("google-apps") ||
+      m.startsWith("text/") || m.includes("openxmlformats");
+    setPreviewLoading(needsLoading);
+  }, [previewFile.driveFileId, previewFile.mimeType]);
+
+  const mime = previewFile.mimeType || "";
+  const drivePreviewUrl = `https://drive.google.com/file/d/${previewFile.driveFileId}/preview`;
+  const imgDirectUrl = `https://lh3.googleusercontent.com/d/${previewFile.driveFileId}=w1600`;
+  const downloadUrl = `https://drive.google.com/uc?export=download&id=${previewFile.driveFileId}`;
+
+  /** True if this mime type can be rendered inline via Google Drive preview */
+  const canDrivePreview =
+    mime.includes("pdf") ||
+    mime.includes("spreadsheet") || mime.includes("excel") || mime.includes("csv") ||
+    mime.includes("ms-excel") || mime.includes("openxmlformats-officedocument.spreadsheetml") ||
+    mime.includes("word") || mime.includes("document") || mime.includes("msword") ||
+    mime.includes("openxmlformats-officedocument.wordprocessingml") ||
+    mime.includes("presentation") || mime.includes("powerpoint") ||
+    mime.includes("openxmlformats-officedocument.presentationml") ||
+    mime.includes("google-apps") ||
+    mime.startsWith("text/");
+
+  const isImage = mime.startsWith("image/");
+  const isVideo = mime.startsWith("video/");
+  const isAudio = mime.startsWith("audio/");
+
+  const renderPreviewContent = () => {
+    // Images — use thumbnail API (much faster than proxy, Google serves it from CDN)
+    if (isImage) {
+      return (
+        <div className="w-full h-full flex items-center justify-center overflow-auto p-4" style={{ pointerEvents: "auto" }}>
+          <img
+            src={imgDirectUrl}
+            alt={previewFile.documentName}
+            className={cn("max-w-full max-h-full object-contain transition-opacity duration-300", previewLoading ? "opacity-0" : "opacity-100")}
+            onLoad={() => setPreviewLoading(false)}
+            onError={() => setPreviewLoading(false)}
+          />
+        </div>
+      );
+    }
+
+    // PDFs, Office files, Google Apps, Text — Google Drive preview iframe (loads directly from Google, no proxy)
+    if (canDrivePreview) {
+      return (
+        <iframe
+          key={previewFile.driveFileId}
+          src={drivePreviewUrl}
+          className="w-full h-full border-0"
+          title={`Preview: ${previewFile.documentName}`}
+          allow="autoplay"
+          onLoad={() => setPreviewLoading(false)}
+          style={{ pointerEvents: "auto" }}
+        />
+      );
+    }
+
+    // Video — native <video> (uses proxy for serving the actual file bytes)
+    if (isVideo) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-black p-4" style={{ pointerEvents: "auto" }}>
+          <video
+            src={`/api/admin/drive/preview/${previewFile.driveFileId}`}
+            controls
+            className="max-w-full max-h-full rounded-lg"
+            onLoadedData={() => setPreviewLoading(false)}
+            style={{ pointerEvents: "auto" }}
+          />
+        </div>
+      );
+    }
+
+    // Audio — native <audio>
+    if (isAudio) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-6 p-8" style={{ pointerEvents: "auto" }}>
+          <div className="h-24 w-24 rounded-3xl bg-gradient-to-br from-orange-500/20 to-orange-600/5 border border-orange-500/20 flex items-center justify-center shadow-xl">
+            <FileAudio className="h-10 w-10 text-orange-500" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">{previewFile.documentName}</p>
+          <audio src={`/api/admin/drive/preview/${previewFile.driveFileId}`} controls className="w-full max-w-md" style={{ pointerEvents: "auto" }} />
+        </div>
+      );
+    }
+
+    // Fallback — no inline preview
+    const ext = previewFile.documentName?.split(".").pop()?.toUpperCase() || "FILE";
+    const typeIcon = (mime.includes("zip") || mime.includes("rar") || mime.includes("archive"))
+      ? <FileArchive className="h-8 w-8 text-amber-600" />
+      : <File className="h-8 w-8 text-muted-foreground" />;
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-5 p-8" style={{ pointerEvents: "auto" }}>
+        <div className="h-28 w-28 rounded-3xl bg-gradient-to-br from-muted/40 to-muted/20 border-2 border-border/40 flex items-center justify-center shadow-xl">
+          <div className="scale-150">{typeIcon}</div>
+        </div>
+        <div className="text-center space-y-1.5">
+          <p className="text-base font-bold text-foreground">{previewFile.documentName}</p>
+          <p className="text-xs text-muted-foreground">{ext} • {fmtSize(previewFile.size)}</p>
+          <p className="text-xs text-muted-foreground/50 mt-2">Preview is not available for this file type</p>
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          {previewFile.documentLink && (
+            <Button size="sm" className="gap-1.5" asChild>
+              <a href={previewFile.documentLink} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open in Google Drive
+              </a>
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="gap-1.5" asChild>
+            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </a>
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-y-0 right-0 w-[50vw] flex flex-col bg-background border-l border-border/40 shadow-2xl animate-in slide-in-from-right duration-200"
+      style={{ zIndex: 9999, pointerEvents: "auto" }}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border/40 bg-gradient-to-r from-background to-muted/10 shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {getIcon(previewFile.mimeType)}
+          <div className="min-w-0">
+            <p className="text-sm font-bold truncate">{previewFile.documentName}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
+                previewFile.documentType === "Internal" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600")}>{previewFile.documentType}</span>
+              <span className="text-[10px] text-muted-foreground">{fmtSize(previewFile.size)}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg shrink-0" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden relative" style={{ pointerEvents: "auto" }}>
+        {/* Loading overlay */}
+        {previewLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm gap-3">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shadow-lg">
+              {getIcon(previewFile.mimeType)}
+            </div>
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Loading preview…</span>
+            </div>
+          </div>
+        )}
+        {renderPreviewContent()}
+      </div>
+    </div>
+  );
 }
 
 /* ─── Component ─── */
@@ -1047,50 +1224,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
 
       {/* RIGHT-SIDE PREVIEW PANEL — rendered via portal to escape Dialog event capture */}
       {previewFile && mounted && createPortal(
-        <div
-          className="fixed inset-y-0 right-0 w-[50vw] flex flex-col bg-background border-l border-border/40 shadow-2xl animate-in slide-in-from-right duration-200"
-          style={{ zIndex: 9999, pointerEvents: "auto" }}
-          onWheel={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border/40 bg-gradient-to-r from-background to-muted/10 shrink-0">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              {getIcon(previewFile.mimeType)}
-              <div className="min-w-0">
-                <p className="text-sm font-bold truncate">{previewFile.documentName}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                    previewFile.documentType === "Internal" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600")}>{previewFile.documentType}</span>
-                  <span className="text-[10px] text-muted-foreground">{fmtSize(previewFile.size)}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg shrink-0" onClick={() => setPreviewFile(null)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-hidden" style={{ pointerEvents: "auto" }}>
-            {previewFile.mimeType?.startsWith("image/") ? (
-              <div className="w-full h-full flex items-center justify-center overflow-auto p-4" style={{ pointerEvents: "auto" }}>
-                <img
-                  src={`/api/admin/drive/preview/${previewFile.driveFileId}`}
-                  alt={previewFile.documentName}
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
-            ) : (
-              <embed
-                key={previewFile.driveFileId}
-                src={`/api/admin/drive/preview/${previewFile.driveFileId}`}
-                type={previewFile.mimeType || "application/pdf"}
-                width="100%"
-                height="100%"
-                style={{ pointerEvents: "auto" }}
-              />
-            )}
-          </div>
-        </div>,
+        <PreviewPanel previewFile={previewFile} onClose={() => setPreviewFile(null)} />,
         document.body
       )}
     </>

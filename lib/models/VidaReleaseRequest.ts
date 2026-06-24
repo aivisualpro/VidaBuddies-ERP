@@ -18,6 +18,7 @@ export interface IVidaReleaseRequest extends Document {
   releaseOrderProducts: IReleaseOrderProduct[];
 
   hasPickupInfo: boolean;
+  pickedUp: boolean;
   carrier: string;
   requestedPickupTime: Date;
   scheduledPickupDate: Date;
@@ -46,6 +47,7 @@ const VidaReleaseRequestSchema: Schema = new Schema({
   releaseOrderProducts: [ReleaseOrderProductSchema],
 
   hasPickupInfo: { type: Boolean, default: false },
+  pickedUp: { type: Boolean, default: false },
   carrier: { type: String },
   requestedPickupTime: { type: Date },
   scheduledPickupDate: { type: Date },

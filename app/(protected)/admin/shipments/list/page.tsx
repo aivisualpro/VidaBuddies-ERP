@@ -14,10 +14,12 @@ import { AddShippingDialog } from "@/components/admin/add-shipping-dialog";
 import { ShipmentGroupSidebar } from "@/components/admin/shipment-group-sidebar";
 import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
 import { ShipmentDetailPanel } from "@/components/admin/shipment-detail-panel";
+import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 import { useSuppliers } from "@/hooks/queries/useSuppliers";
+import { useCustomerPOs } from "@/hooks/queries/useCustomerPOs";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CustomerInfoPanel } from "@/components/admin/customer-info-panel";
@@ -116,6 +118,7 @@ function ShipmentsListContent() {
   const [editingCPO, setEditingCPO] = useState<Record<string, any> | null>(null);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [customerPanelId, setCustomerPanelId] = useState<string | null>(null);
+  const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
 
   const openTracking = (item: ShipmentRecord) => {
     const cn = item.containerNo;
@@ -134,7 +137,15 @@ function ShipmentsListContent() {
 
   const { data: storeSuppliers = [] } = useSuppliers();
   const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const { data: allCPOs = [] } = useCustomerPOs();
   const suppliers = storeSuppliers;
+
+  /** Quick O(1) lookup: CPO _id → isDirectShipment */
+  const cpoDirectShipMap = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    allCPOs.forEach((c: any) => { if (c._id) map[c._id] = !!c.isDirectShipment; });
+    return map;
+  }, [allCPOs]);
 
   /** Resolve display names — now returned directly from denormalized API */
   const resolveShipNames = (ship: any) => ({
@@ -652,14 +663,28 @@ function ShipmentsListContent() {
             title: `Timeline — ${names.shipNumber || 'Shipping'}`,
           });
         }}
+        isDirectShipment={!!(detailShipment?.VBSerialNumber && cpoDirectShipMap[detailShipment.VBSerialNumber])}
       />
 
-      <AttachmentsModal
+      {/* Drive Documents Modal (new rich file manager) */}
+      <DriveDocumentsModal
         open={!!attachmentsOpen}
         onClose={() => setAttachmentsOpen(null)}
         poNumber={attachmentsOpen?.poNumber || ''}
-        spoNumber={attachmentsOpen?.spoNumber}
-        shipNumber={attachmentsOpen?.shipNumber}
+        onOpenLegacy={() => {
+          const saved = attachmentsOpen;
+          setAttachmentsOpen(null);
+          setTimeout(() => setLegacyAttachmentsOpen(saved), 100);
+        }}
+      />
+
+      {/* Legacy Attachments Modal (Google Drive upload/folder fallback) */}
+      <AttachmentsModal
+        open={!!legacyAttachmentsOpen}
+        onClose={() => setLegacyAttachmentsOpen(null)}
+        poNumber={legacyAttachmentsOpen?.poNumber || ''}
+        spoNumber={legacyAttachmentsOpen?.spoNumber}
+        shipNumber={legacyAttachmentsOpen?.shipNumber}
       />
 
       <TimelineModal

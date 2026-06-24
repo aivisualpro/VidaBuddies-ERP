@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { SimpleDataTable } from "@/components/admin/simple-data-table";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, MessageCircle, Paperclip, Clock } from "lucide-react";
+import { Pencil, Trash2, MessageCircle, Paperclip, Clock, Package, Truck, X, Plus, Check, ChevronsUpDown } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TablePageSkeleton } from "@/components/skeletons";
 import { ViewToggle } from "@/components/admin/view-toggle";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
@@ -15,9 +16,17 @@ import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { CPOGroupSidebar } from "@/components/admin/cpo-group-sidebar";
 import { useCustomers } from "@/hooks/queries/useCustomers";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useProducts } from "@/hooks/queries/useProducts";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
+import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 
 interface CustomerPO {
   _id: string;
@@ -32,6 +41,8 @@ interface CustomerPO {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: string;
+  isDirectShipment?: boolean;
+  products?: string[];
   createdAt?: string;
   updatedAt?: string;
   driveDocuments?: any[];
@@ -63,6 +74,10 @@ function CustomerPOsListContent() {
   const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; title?: string } | null>(null);
+  const [productsModal, setProductsModal] = useState<{ cpo: CustomerPO } | null>(null);
+  const [productPopoverOpen, setProductPopoverOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [savingProducts, setSavingProducts] = useState(false);
 
   const { data: storeCustomers = [] } = useCustomers();
   const { data: purchaseOrders = [] } = usePurchaseOrders();
@@ -96,6 +111,58 @@ function CustomerPOsListContent() {
     (storeWarehouses || []).forEach((w: any) => { if (w._id) map[w._id] = w.name; });
     return map;
   }, [storeWarehouses]);
+
+  // Products lookup
+  const { data: allProducts = [] } = useProducts();
+  const productNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (allProducts || []).forEach((p: any) => { if (p._id) map[p._id] = p.name || p.vbId || p._id; });
+    return map;
+  }, [allProducts]);
+  const filteredProductOptions = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    return (allProducts || []).filter((p: any) =>
+      !q || (p.name || p.vbId || '').toLowerCase().includes(q)
+    );
+  }, [allProducts, productSearch]);
+
+  // Save products list for a CPO
+  const saveProducts = async (cpoId: string, products: string[]) => {
+    setSavingProducts(true);
+    try {
+      const res = await fetch(`/api/admin/vb-customer-po/${cpoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products }),
+      });
+      if (!res.ok) throw new Error();
+      // Update local state so counter refreshes instantly
+      setData(prev => prev.map(c => c._id === cpoId ? { ...c, products } : c));
+      if (productsModal?.cpo._id === cpoId) {
+        setProductsModal(prev => prev ? { cpo: { ...prev.cpo, products } } : null);
+      }
+      toast.success('Products updated');
+    } catch {
+      toast.error('Failed to save products');
+    } finally {
+      setSavingProducts(false);
+    }
+  };
+
+  const toggleProductInModal = async (productId: string) => {
+    if (!productsModal) return;
+    const current = productsModal.cpo.products || [];
+    const next = current.includes(productId)
+      ? current.filter(p => p !== productId)
+      : [...current, productId];
+    await saveProducts(productsModal.cpo._id, next);
+  };
+
+  const removeProductFromModal = async (productId: string) => {
+    if (!productsModal) return;
+    const next = (productsModal.cpo.products || []).filter(p => p !== productId);
+    await saveProducts(productsModal.cpo._id, next);
+  };
 
   const fetchData = async () => {
     try {
@@ -282,6 +349,24 @@ function CustomerPOsListContent() {
     },
     { accessorKey: "UOM", header: "UOM" },
     {
+      id: "directShipment",
+      header: "Direct Ship",
+      cell: ({ row }) => {
+        const yes = !!row.original.isDirectShipment;
+        return (
+          <span className={cn(
+            "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border",
+            yes
+              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+              : "bg-muted text-muted-foreground border-border"
+          )}>
+            {yes ? <Truck className="h-2.5 w-2.5" /> : null}
+            {yes ? "Yes" : "No"}
+          </span>
+        );
+      },
+    },
+    {
       accessorKey: "warehouse",
       header: "Warehouse",
       cell: ({ row }) => warehouseNameMap[row.original.warehouse || ""] || row.original.warehouse || "-",
@@ -307,6 +392,32 @@ function CustomerPOsListContent() {
               />
             </div>
           </div>
+        );
+      },
+    },
+    {
+      id: "products",
+      header: "Products",
+      cell: ({ row }) => {
+        const count = (row.original.products || []).length;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setProductSearch("");
+              setProductPopoverOpen(false);
+              setProductsModal({ cpo: row.original });
+            }}
+            className={cn(
+              "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors",
+              count > 0
+                ? "bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20"
+                : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <Package className="h-3 w-3" />
+            {count > 0 ? count : "—"}
+          </button>
         );
       },
     },
@@ -441,6 +552,7 @@ function CustomerPOsListContent() {
           onAdd={openAdd}
           showColumnToggle={false}
           headerExtra={headerFilters}
+          onRowClick={(row) => openEdit(row)}
         />
       </div>
 
@@ -506,6 +618,127 @@ function CustomerPOsListContent() {
         VBSerialNumber={timelineOpen?.VBSerialNumber}
         title={timelineOpen?.title}
       />
+
+      {/* Products CRUD Modal */}
+      <Dialog
+        open={!!productsModal}
+        onOpenChange={(v) => { if (!v) { setProductsModal(null); setProductSearch(""); setProductPopoverOpen(false); } }}
+      >
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-violet-500" />
+              Products
+              <span className="text-xs font-normal text-muted-foreground">
+                {productsModal?.cpo.VBSerialNumber || productsModal?.cpo._id}
+              </span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">Manage products linked to this Customer PO</DialogDescription>
+          </DialogHeader>
+
+          {/* Add product — searchable popover */}
+          <div className="shrink-0">
+            <Popover
+              open={productPopoverOpen}
+              onOpenChange={(v) => { setProductPopoverOpen(v); if (!v) setProductSearch(""); }}
+            >
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between h-9 text-sm font-normal">
+                  <span className="text-muted-foreground">Add product…</span>
+                  <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <div className="flex flex-col">
+                  <div className="flex items-center border-b px-3">
+                    <svg className="mr-2 h-4 w-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input
+                      className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                      placeholder="Search products…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      autoFocus
+                    />
+                    {productSearch && (
+                      <button onClick={() => setProductSearch("")} className="text-muted-foreground hover:text-foreground p-1">
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto">
+                    {filteredProductOptions.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">No products found.</div>
+                    ) : (
+                      filteredProductOptions.map((p: any) => {
+                        const isSelected = (productsModal?.cpo.products || []).includes(p._id);
+                        return (
+                          <button
+                            key={p._id}
+                            type="button"
+                            onClick={() => toggleProductInModal(p._id)}
+                            className={cn(
+                              "relative flex w-full cursor-pointer select-none items-center rounded-sm px-3 py-1.5 text-sm outline-none transition-colors hover:bg-accent",
+                              isSelected && "bg-accent"
+                            )}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                            <span className="truncate">{p.name || p.vbId}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Linked products list */}
+          <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0">
+            {(productsModal?.cpo.products || []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+                <Package className="h-8 w-8 opacity-20" />
+                <p className="text-sm">No products linked yet.</p>
+                <p className="text-xs opacity-60">Use the picker above to add products.</p>
+              </div>
+            ) : (
+              (productsModal?.cpo.products || []).map((pid) => {
+                const name = productNameMap[pid] || pid;
+                return (
+                  <div
+                    key={pid}
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-md bg-violet-500/10 flex items-center justify-center shrink-0">
+                        <Package className="h-3 w-3 text-violet-500" />
+                      </div>
+                      <span className="text-sm font-medium">{name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeProductFromModal(pid)}
+                      disabled={savingProducts}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                      aria-label={`Remove ${name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer summary */}
+          {(productsModal?.cpo.products || []).length > 0 && (
+            <div className="shrink-0 pt-2 border-t border-border text-xs text-muted-foreground">
+              {(productsModal?.cpo.products || []).length} product{(productsModal?.cpo.products || []).length !== 1 ? 's' : ''} linked
+              {savingProducts && <span className="ml-2 animate-pulse">Saving…</span>}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

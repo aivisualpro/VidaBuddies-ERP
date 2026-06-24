@@ -90,6 +90,7 @@ interface CustomerPO {
   qtyReceived?: number;
   UOM?: string;
   warehouse?: string;
+  isDirectShipment?: boolean;
   shipping?: Shipping[];
 }
 
@@ -991,6 +992,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       onEdit={(s) => { const resolvedSup = suppliers.find((sup: any) => sup._id === rawSup) ? rawSup : (supplierIdByLocationId[rawSup] || rawSup); setSelectedSupplierForShipping(resolvedSup); setSelectedLocationForShipping(s.supplierLocation || (suppliers.find((sup: any) => sup._id === rawSup) ? '' : rawSup) || ''); setEditingShipping({ cpoIdx: s._cpoIdx, shipIdx: s._shipIdx, data: s }); }}
                       onDelete={(s) => handleDeleteShipping(s._id || '', s._cpoIdx, s._shipIdx)}
                       onTransfers={(s) => setTransferDialogShip(s)}
+                      isDirectShipment={!!(po?.customerPO?.[ship._cpoIdx]?.isDirectShipment)}
                     />
                   );
                 })

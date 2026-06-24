@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/command";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check, Eye } from "lucide-react";
+import { Pencil, Trash, Plus, X, Hash, Truck, MapPin, ChevronsUpDown, Check, Eye, CheckCircle, Circle } from "lucide-react";
 import { format } from "date-fns";
 import { useProducts } from "@/hooks/queries/useProducts";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
@@ -68,6 +68,7 @@ interface ReleaseRequest {
   contact: string;
   releaseOrderProducts: IReleaseOrderProduct[];
   hasPickupInfo?: boolean;
+  pickedUp?: boolean;
   carrier: string;
   requestedPickupTime?: string;
   scheduledPickupDate?: string;
@@ -143,7 +144,7 @@ function ProductCombobox({ products, value, onChange }: { products: any[]; value
   );
 }
 
-const RR_FILTER_DEFAULTS = { search: "", warehouse: "all" };
+const RELEASE_REQUEST_FILTER_DEFAULTS = { search: "", warehouse: "all", pickedUp: "all" };
 
 export default function ReleaseRequestsPage() {
   return (
@@ -155,7 +156,7 @@ export default function ReleaseRequestsPage() {
 
 function ReleaseRequestsContent() {
   const router = useRouter();
-  const { filters, inputs, setFilter } = useUrlFilters(RR_FILTER_DEFAULTS, ["search"], 300);
+  const { filters, inputs, setFilter } = useUrlFilters(RELEASE_REQUEST_FILTER_DEFAULTS, ["search", "warehouse", "pickedUp"], 300);
   const { data: products = [] } = useProducts();
   const { data: warehouses = [] } = useWarehouses();
   const { data: customers = [] } = useCustomers();
@@ -188,6 +189,17 @@ function ReleaseRequestsContent() {
       })
       .catch(() => {});
   }, []);
+
+  // Inventory data — for warehouse-based product filtering
+  const [inventoryData, setInventoryData] = useState<any[]>([]);
+  const fetchInventoryData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/inventory-management');
+      const d = await res.json();
+      if (Array.isArray(d)) setInventoryData(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchInventoryData(); }, [fetchInventoryData]);
 
   // Release requests — own fetch
   const [rawData, setRawData] = useState<any[]>([]);
@@ -377,6 +389,22 @@ function ReleaseRequestsContent() {
   // Get selected Customer object to show locations
   const selectedCustomer = customers.find(c => c._id === formData.customer);
 
+  // Products filtered by warehouse from inventory data (only products with available qty > 0)
+  const warehouseFilteredProducts = useMemo(() => {
+    if (!formData.warehouse) return products; // No warehouse selected → show all products
+    const warehouseId = formData.warehouse;
+    const productIdsInWarehouse = new Set<string>();
+    for (const row of inventoryData) {
+      const rowWarehouse = row.warehouse?._id ? String(row.warehouse._id) : String(row.warehouse || '');
+      if (rowWarehouse === warehouseId && (row.availableQty || 0) > 0) {
+        const prodId = row.product?._id ? String(row.product._id) : String(row.product || '');
+        if (prodId) productIdsInWarehouse.add(prodId);
+      }
+    }
+    if (productIdsInWarehouse.size === 0) return products; // Fallback: if no inventory data, show all
+    return products.filter((p: any) => productIdsInWarehouse.has(p._id));
+  }, [formData.warehouse, inventoryData, products]);
+
   // Derive unique warehouses from loaded data for filter
   const warehouseList = useMemo(() => {
     const map = new Map<string, string>();
@@ -388,11 +416,19 @@ function ReleaseRequestsContent() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [data]);
 
-  // Filter data by warehouse
+  // Filter data by warehouse + pickedUp
   const filteredData = useMemo(() => {
-    if (filters.warehouse === "all") return data;
-    return data.filter(d => d.warehouse?._id === filters.warehouse);
-  }, [data, filters.warehouse]);
+    let result = data;
+    if (filters.warehouse !== "all") {
+      result = result.filter(d => d.warehouse?._id === filters.warehouse);
+    }
+    if (filters.pickedUp === "yes") {
+      result = result.filter(d => !!d.pickedUp);
+    } else if (filters.pickedUp === "no") {
+      result = result.filter(d => !d.pickedUp);
+    }
+    return result;
+  }, [data, filters.warehouse, filters.pickedUp]);
 
   // Custom global filter that searches across key fields
   const globalFilterFn = useCallback((row: any, _columnId: string, filterValue: string) => {
@@ -410,19 +446,36 @@ function ReleaseRequestsContent() {
     ].some(val => val?.toLowerCase().includes(search));
   }, []);
 
-  // Header extra: warehouse filter dropdown
+  // Header extra: warehouse + picked-up filter dropdowns
   const headerExtra = (
-    <Select value={filters.warehouse} onValueChange={(v) => setFilter("warehouse", v)}>
-      <SelectTrigger className="h-8 w-[180px] text-xs">
-        <SelectValue placeholder="All Warehouses" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">All Warehouses</SelectItem>
-        {warehouseList.map(([id, name]) => (
-          <SelectItem key={id} value={id}>{name}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-2">
+      <Select value={filters.warehouse} onValueChange={(v) => setFilter("warehouse", v)}>
+        <SelectTrigger className="h-8 w-[180px] text-xs">
+          <SelectValue placeholder="All Warehouses" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Warehouses</SelectItem>
+          {warehouseList.map(([id, name]) => (
+            <SelectItem key={id} value={id}>{name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={filters.pickedUp} onValueChange={(v) => setFilter("pickedUp", v)}>
+        <SelectTrigger className={cn(
+          "h-8 w-[150px] text-xs transition-colors",
+          filters.pickedUp === "yes" && "border-emerald-500/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+          filters.pickedUp === "no"  && "border-amber-500/50 bg-amber-500/5 text-amber-700 dark:text-amber-400",
+        )}>
+          <SelectValue placeholder="Picked Up" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          <SelectItem value="yes">Picked Up</SelectItem>
+          <SelectItem value="no">Waiting</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
   );
 
   const columns: ColumnDef<ReleaseRequest>[] = [
@@ -505,6 +558,50 @@ function ReleaseRequestsContent() {
     {
       accessorKey: "createdBy",
       header: "Created By",
+    },
+    {
+      id: "pickedUp",
+      header: "Picked Up",
+      cell: ({ row }) => {
+        const item = row.original;
+        const picked = !!item.pickedUp;
+        const toggle = async (e: React.MouseEvent) => {
+          e.stopPropagation();
+          const next = !picked;
+          try {
+            const res = await fetch(`/api/admin/release-requests/${item._id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pickedUp: next }),
+            });
+            if (!res.ok) throw new Error();
+            // Optimistically update local list
+            setRawData(prev =>
+              prev.map(r => r._id === item._id ? { ...r, pickedUp: next } : r)
+            );
+            toast.success(next ? 'Marked as Picked Up' : 'Marked as Not Picked Up');
+          } catch {
+            toast.error('Failed to update');
+          }
+        };
+        return (
+          <button
+            onClick={toggle}
+            title={picked ? 'Mark as not picked up' : 'Mark as picked up'}
+            className={cn(
+              'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all duration-200',
+              picked
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20'
+                : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
+            )}
+          >
+            {picked
+              ? <CheckCircle className="h-3 w-3" />
+              : <Circle className="h-3 w-3" />}
+            {picked ? 'Yes' : 'No'}
+          </button>
+        );
+      },
     },
     {
       id: "actions",
@@ -634,35 +731,51 @@ function ReleaseRequestsContent() {
                                         key={s.shipId}
                                         value={s.shipId}
                                         onSelect={async () => {
-                                          setFormData({ ...formData, transferOrder: s.shipId });
                                           setToPopoverOpen(false);
                                           setToSearch('');
-                                          // Auto-populate products from inventory management (available qty > 0)
+
+                                          // 1. Auto-populate warehouse, customer, contact from shipment details
+                                          let autoWarehouse = '';
+                                          let autoCustomer = '';
+                                          let autoContact = '';
                                           try {
-                                            const res = await fetch('/api/admin/inventory-management');
-                                            const invData = await res.json();
-                                            if (Array.isArray(invData)) {
-                                              const matching = invData.filter((row: any) => {
-                                                const shipId = row.vbShipmentNumber?._id ? String(row.vbShipmentNumber._id) : String(row.vbShipmentNumber || '');
-                                                return shipId === s.shipId && (row.availableQty || 0) > 0;
-                                              });
-                                              if (matching.length > 0) {
-                                                const autoProducts = matching.map((row: any) => ({
-                                                  product: row.product?._id ? String(row.product._id) : String(row.product || ''),
-                                                  qty: row.availableQty || 0,
-                                                  lotSerial: row.serialNumber || '',
-                                                }));
-                                                // Auto-fill warehouse from first match
-                                                const warehouseId = matching[0].warehouse?._id ? String(matching[0].warehouse._id) : String(matching[0].warehouse || '');
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  transferOrder: s.shipId,
-                                                  warehouse: warehouseId || prev.warehouse,
-                                                  releaseOrderProducts: autoProducts,
-                                                }));
+                                            const detailRes = await fetch(`/api/admin/shipment-details?shipmentId=${s.shipId}`);
+                                            const detail = await detailRes.json();
+                                            if (detailRes.ok) {
+                                              autoWarehouse = detail.warehouse || '';
+                                              autoCustomer = detail.customer || '';
+                                              autoContact = detail.contactName || '';
+                                            }
+                                          } catch {}
+
+                                          // 2. Auto-populate products from inventory management (available qty > 0)
+                                          let autoProducts: IReleaseOrderProduct[] = [];
+                                          try {
+                                            const matching = inventoryData.filter((row: any) => {
+                                              const shipId = row.vbShipmentNumber?._id ? String(row.vbShipmentNumber._id) : String(row.vbShipmentNumber || '');
+                                              return shipId === s.shipId && (row.availableQty || 0) > 0;
+                                            });
+                                            if (matching.length > 0) {
+                                              autoProducts = matching.map((row: any) => ({
+                                                product: row.product?._id ? String(row.product._id) : String(row.product || ''),
+                                                qty: row.availableQty || 0,
+                                                lotSerial: row.serialNumber || '',
+                                              }));
+                                              // Use warehouse from inventory if shipment-details didn't return one
+                                              if (!autoWarehouse) {
+                                                autoWarehouse = matching[0].warehouse?._id ? String(matching[0].warehouse._id) : String(matching[0].warehouse || '');
                                               }
                                             }
                                           } catch {}
+
+                                          setFormData(prev => ({
+                                            ...prev,
+                                            transferOrder: s.shipId,
+                                            warehouse: autoWarehouse || prev.warehouse,
+                                            customer: autoCustomer || prev.customer,
+                                            contact: autoContact || prev.contact,
+                                            releaseOrderProducts: autoProducts.length > 0 ? autoProducts : prev.releaseOrderProducts,
+                                          }));
                                         }}
                                       >
                                         <Check
@@ -872,7 +985,7 @@ function ReleaseRequestsContent() {
                                 <tr key={idx} className="bg-background">
                                     <td className="p-2">
                                          <ProductCombobox
-                                           products={products}
+                                           products={warehouseFilteredProducts}
                                            value={row.product}
                                            onChange={(val) => updateProductRow(idx, 'product', val)}
                                          />

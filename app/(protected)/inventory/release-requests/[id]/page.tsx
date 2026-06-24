@@ -31,13 +31,14 @@ import {
   Building,
   Clock,
   Hash,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
   Loader2,
   Paperclip,
   Pencil,
   Trash,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
 
 interface ReleaseRequestDetail {
@@ -54,6 +55,7 @@ interface ReleaseRequestDetail {
     lotSerial: string;
   }[];
   hasPickupInfo?: boolean;
+  pickedUp?: boolean;
   carrier: string;
   requestedPickupTime?: string;
   scheduledPickupDate?: string;
@@ -84,6 +86,8 @@ export default function ReleaseRequestDetailPage() {
   const id = params.id as string;
 
   const [data, setData] = useState<ReleaseRequestDetail | null>(null);
+  const [pickedUpState, setPickedUpState] = useState<boolean>(false);
+  const [togglingPickedUp, setTogglingPickedUp] = useState(false);
   const [emails, setEmails] = useState<EmailRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [emailsLoading, setEmailsLoading] = useState(false);
@@ -256,6 +260,7 @@ export default function ReleaseRequestDetailPage() {
       if (!res.ok) throw new Error("Not found");
       const json = await res.json();
       setData(json);
+    setPickedUpState(!!json.pickedUp);
     } catch (err) {
       toast.error("Failed to load release request");
       router.push("/inventory/release-requests");
@@ -277,6 +282,28 @@ export default function ReleaseRequestDetailPage() {
       console.error("Failed to fetch emails:", err);
     } finally {
       setEmailsLoading(false);
+    }
+  };
+
+  const handleTogglePickedUp = async () => {
+    if (!data || togglingPickedUp) return;
+    const next = !pickedUpState;
+    setPickedUpState(next); // optimistic
+    setTogglingPickedUp(true);
+    try {
+      const res = await fetch(`/api/admin/release-requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickedUp: next }),
+      });
+      if (!res.ok) throw new Error();
+      setData(prev => prev ? { ...prev, pickedUp: next } : prev);
+      toast.success(next ? 'Marked as Picked Up ✓' : 'Marked as Not Picked Up');
+    } catch {
+      setPickedUpState(!next); // revert
+      toast.error('Failed to update');
+    } finally {
+      setTogglingPickedUp(false);
     }
   };
 
@@ -376,6 +403,43 @@ export default function ReleaseRequestDetailPage() {
                     <DetailField icon={<Building className="h-4 w-4 text-orange-500" />} label="Customer" value={data.customer?.name || "-"} />
                     <DetailField icon={<MapPin className="h-4 w-4 text-red-500" />} label="Contact / Location" value={data.contact || "-"} />
                     <DetailField icon={<Hash className="h-4 w-4 text-indigo-500" />} label="Customer PO #" value={data.poNo || "-"} highlight />
+                  </div>
+                  {/* Picked Up toggle */}
+                  <div className="mt-5 pt-5 border-t border-border/60">
+                    <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                          pickedUpState
+                            ? 'bg-emerald-500/15 shadow-[0_0_16px_rgba(16,185,129,0.25)]'
+                            : 'bg-muted'
+                        }`}>
+                          {pickedUpState
+                            ? <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                            : <XCircle className="h-5 w-5 text-muted-foreground" />}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Picked Up</p>
+                          <p className={`text-xs mt-0.5 transition-colors duration-200 ${
+                            pickedUpState ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                          }`}>
+                            {pickedUpState ? 'Order has been picked up by carrier' : 'Awaiting pickup by carrier'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-bold uppercase tracking-wider ${
+                          pickedUpState ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                        }`}>
+                          {pickedUpState ? 'Yes' : 'No'}
+                        </span>
+                        <Switch
+                          checked={pickedUpState}
+                          onCheckedChange={handleTogglePickedUp}
+                          disabled={togglingPickedUp}
+                          className="data-[state=checked]:bg-emerald-500"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -558,7 +622,7 @@ export default function ReleaseRequestDetailPage() {
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
                             email.status === "sent" ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
                           }`}>
-                            {email.status === "sent" ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                            {email.status === "sent" ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                           </div>
                           <div>
                             <p className="text-sm font-semibold">{email.subject}</p>

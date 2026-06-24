@@ -19,6 +19,8 @@ interface ShipmentDetailPanelProps {
   onTrack?: (containerNo: string) => void;
   onAttachments?: (ship: any) => void;
   onTimeline?: (ship: any) => void;
+  /** When true, the Transfer Orders button is hidden (direct shipment to customer) */
+  isDirectShipment?: boolean;
 }
 
 function formatDate(d: any) {
@@ -30,7 +32,7 @@ function formatDate(d: any) {
   } catch { return '-'; }
 }
 
-export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: initialData, onEdit, onDelete, onTrack, onAttachments, onTimeline }: ShipmentDetailPanelProps) {
+export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: initialData, onEdit, onDelete, onTrack, onAttachments, onTimeline, isDirectShipment = false }: ShipmentDetailPanelProps) {
   const [ship, setShip] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -141,7 +143,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
                     <MapPin className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {ship && (
+                {ship && !isDirectShipment && (
                   <button
                     onClick={() => { setTransferDialogOpen(true); }}
                     className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"

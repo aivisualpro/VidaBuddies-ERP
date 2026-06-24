@@ -95,6 +95,8 @@ interface ShippingCardProps {
   onTimeline?: (ship: ShippingCardShip) => void;
   onLiveTracking?: (ship: ShippingCardShip) => void;
   onTransfers?: (ship: ShippingCardShip) => void;
+  /** When true, the Transfer Orders button is hidden (direct shipment to customer) */
+  isDirectShipment?: boolean;
   /** If true, open by default */
   defaultOpen?: boolean;
 }
@@ -124,6 +126,7 @@ export function ShippingCard({
   onTimeline,
   onLiveTracking,
   onTransfers,
+  isDirectShipment = false,
   defaultOpen = false,
 }: ShippingCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -256,7 +259,7 @@ export function ShippingCard({
                 <MapPin className="h-3.5 w-3.5" />
               </Button>
             )}
-            {onTransfers && (
+            {onTransfers && !isDirectShipment && (
               <Button
                 size="icon"
                 variant="ghost"

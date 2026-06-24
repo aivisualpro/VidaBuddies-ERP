@@ -910,6 +910,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                     });
                   }}
                   onTransfers={(s) => setTransferDialogShip(s)}
+                  isDirectShipment={!!(cpos.find((c: any) => c._id === ship.VBSerialNumber)?.isDirectShipment)}
                 />
               ))
             ) : (
