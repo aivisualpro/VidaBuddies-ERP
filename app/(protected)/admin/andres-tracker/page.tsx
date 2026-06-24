@@ -93,13 +93,39 @@ function AndresTrackerContent() {
   const [isAddTransferOpen, setIsAddTransferOpen] = useState(false);
   const [isAddReleaseOpen, setIsAddReleaseOpen] = useState(false);
   const [rrDialogOpen, setRRDialogOpen] = useState(false);
-  const { data: purchaseOrders = [], isLoading } = usePurchaseOrders();
+  const queryClient = useQueryClient(); // still needed for Add dialog cache invalidation
+
+  // ── Single optimised fetch: ships + cpos + pos in one round-trip ──────────
+  const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
+  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchPageData = async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/admin/andres-tracker/page-data");
+      if (!res.ok) throw new Error("page-data failed");
+      const { ships, cpos, pos } = await res.json();
+      setStandaloneShips(Array.isArray(ships) ? ships : []);
+      setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
+      setPurchaseOrders(Array.isArray(pos) ? pos : []);
+    } catch (err) {
+      console.error("[andres-tracker] fetchPageData error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPageData(); }, []);
+
+  const refetchPurchaseOrders = fetchPageData;
+
+  // Legacy store data (still needed for Add dialogs)
   const { data: storeProducts = [] } = useProducts();
   const { data: storeCustomers = [] } = useCustomers();
   const { data: storeSuppliers = [] } = useSuppliers();
   const { data: storeWarehouses = [] } = useWarehouses();
-  const queryClient = useQueryClient();
-  const refetchPurchaseOrders = () => queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
 
   const handleInlineUpdate = async (poId: string, fieldType: 'shipping' | 'cpo' | 'po', entityId1: string, entityId2: string, field: string, newValue: string) => {
     const po = purchaseOrders.find((p: any) => p._id === poId);
@@ -182,22 +208,8 @@ function AndresTrackerContent() {
     return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm overflow-hidden animate-in fade-in duration-300";
   };
 
-  // Fetch standalone shippings + CPOs for accurate data (not stale embedded)
-  const [standaloneShips, setStandaloneShips] = useState<any[]>([]);
-  const [standaloneCPOs, setStandaloneCPOs] = useState<any[]>([]);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/admin/vb-shipping").then(r => r.json()).catch(() => []),
-      fetch("/api/admin/vb-customer-po").then(r => r.json()).catch(() => []),
-    ]).then(([ships, cpos]) => {
-      setStandaloneShips(Array.isArray(ships) ? ships : []);
-      setStandaloneCPOs(Array.isArray(cpos) ? cpos : []);
-    });
-  }, [purchaseOrders]); // re-fetch when POs change
-
   // Pending release requests count
-  const [pendingRRCount, setPendingRRCount] = useState<number | null>(null);
+  const [pendingRRCount, setPendingRRCount] = useState<number>(0);
   useEffect(() => {
     fetch('/api/admin/release-requests')
       .then(r => r.json())
@@ -552,8 +564,7 @@ function AndresTrackerContent() {
         <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
           Andres Tracker
         </h1>
-        {pendingRRCount !== null && (
-          <button
+        <button
             onClick={() => setRRDialogOpen(true)}
             className={[
               'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all',
@@ -572,7 +583,6 @@ function AndresTrackerContent() {
               {pendingRRCount}
             </span>
           </button>
-        )}
       </div>
     );
      setRightContent(

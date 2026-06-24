@@ -209,6 +209,9 @@ VBshippingSchema.index({ VBSerialNumber: 1 });
 VBshippingSchema.index({ containerNo: 1 });
 VBshippingSchema.index({ status: 1 });
 VBshippingSchema.index({ createdAt: -1 }); // for sort in list-all query
+// Compound indexes for Andres Tracker drilldown queries
+VBshippingSchema.index({ VBSerialNumber: 1, status: 1 });
+VBshippingSchema.index({ VBNumber: 1, status: 1 });
 
 const VBshipping: Model<IVBshipping> =
   mongoose.models.VBshipping || mongoose.model<IVBshipping>('VBshipping', VBshippingSchema);

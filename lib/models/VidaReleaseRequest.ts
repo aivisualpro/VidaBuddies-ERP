@@ -60,6 +60,11 @@ const VidaReleaseRequestSchema: Schema = new Schema({
 
 // Index for the main listing query which sorts by createdAt descending
 VidaReleaseRequestSchema.index({ createdAt: -1 });
+// Compound index for pickedUp filter (the "waiting" filter in the list page)
+VidaReleaseRequestSchema.index({ pickedUp: 1, createdAt: -1 });
+// Index for common population lookups
+VidaReleaseRequestSchema.index({ customer: 1 });
+VidaReleaseRequestSchema.index({ warehouse: 1 });
 
 const VidaReleaseRequest: Model<IVidaReleaseRequest> = mongoose.models.VidaReleaseRequest || mongoose.model<IVidaReleaseRequest>('VidaReleaseRequest', VidaReleaseRequestSchema);
 
