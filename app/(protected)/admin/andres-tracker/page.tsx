@@ -7,9 +7,10 @@ import { useCustomers } from "@/hooks/queries/useCustomers";
 import { useSuppliers } from "@/hooks/queries/useSuppliers";
 import { useWarehouses } from "@/hooks/queries/useWarehouses";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Maximize2, Minimize2, ChevronRight, PackageCheck, ClipboardList, Package, Plus, Search, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useRouter } from "next/navigation";
 import { AddPurchaseOrderDialog } from "@/components/admin/add-purchase-order-dialog";
@@ -18,7 +19,6 @@ import { AddCustomerPODialog } from "@/components/admin/add-customer-po-dialog";
 import { AddTransferOrderDialog } from "@/components/admin/add-transfer-order-dialog";
 import { AddReleaseRequestDialog } from "@/components/admin/add-release-request-dialog";
 import { AttachmentsModal } from "@/components/attachments-modal";
-import { PendingReleaseRequestsDialog } from "@/components/admin/pending-release-requests-dialog";
 import { toast } from "sonner";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 
@@ -92,7 +92,6 @@ function AndresTrackerContent() {
   const [isAddCPOOpen, setIsAddCPOOpen] = useState(false);
   const [isAddTransferOpen, setIsAddTransferOpen] = useState(false);
   const [isAddReleaseOpen, setIsAddReleaseOpen] = useState(false);
-  const [rrDialogOpen, setRRDialogOpen] = useState(false);
   const queryClient = useQueryClient(); // still needed for Add dialog cache invalidation
 
   // ── Single optimised fetch: ships + cpos + pos in one round-trip ──────────
@@ -203,23 +202,136 @@ function AndresTrackerContent() {
   } | null>(null);
 
   const getColClass = (colIndex: number) => {
-    if (expandedCol === colIndex) return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm xl:col-span-4 md:col-span-2 overflow-hidden animate-in fade-in zoom-in-95 duration-300";
+    if (expandedCol === colIndex) return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm xl:col-span-5 md:col-span-2 overflow-hidden animate-in fade-in zoom-in-95 duration-300";
     if (expandedCol !== null) return "hidden";
     return "flex flex-col bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl h-full shadow-sm overflow-hidden animate-in fade-in duration-300";
   };
 
-  // Pending release requests count
-  const [pendingRRCount, setPendingRRCount] = useState<number>(0);
+  // ── Release Requests states & handlers ────────────────────────────────────
+  const [releaseRequests, setReleaseRequests] = useState<any[]>([]);
+  const [rrLoading, setRrLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [rrSort, setRrSort] = useState<{
+    key: "poNo" | "date" | "customer" | "warehouse";
+    dir: "asc" | "desc";
+  }>({ key: "date", dir: "desc" });
+
+  const fetchReleaseRequests = async () => {
+    setRrLoading(true);
+    try {
+      const res = await fetch("/api/admin/release-requests");
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setReleaseRequests(data.filter((r: any) => !r.pickedUp));
+      }
+    } catch (err) {
+      console.error("[andres-tracker] fetchReleaseRequests error:", err);
+    } finally {
+      setRrLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/admin/release-requests')
-      .then(r => r.json())
-      .then(d => {
-        if (Array.isArray(d)) {
-          setPendingRRCount(d.filter((r: any) => !r.pickedUp).length);
-        }
-      })
-      .catch(() => {});
+    fetchReleaseRequests();
   }, []);
+  const handleTogglePickedUp = async (item: any) => {
+    setTogglingId(item._id);
+    try {
+      const res = await fetch(`/api/admin/release-requests/${item._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pickedUp: true }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Marked as Picked Up ✓");
+      setReleaseRequests(prev => prev.filter(r => r._id !== item._id));
+      fetch('/api/admin/inventory-management').then(r => r.json()).then(d => { if (Array.isArray(d)) setInventoryData(d); }).catch(() => {});
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleDeleteReleaseRequest = async (item: any) => {
+    toast.warning("Delete this release request?", {
+      description: "This cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          setDeletingId(item._id);
+          try {
+            const res = await fetch(`/api/admin/release-requests/${item._id}`, { method: "DELETE" });
+            if (!res.ok) throw new Error();
+            toast.success("Deleted");
+            setReleaseRequests(prev => prev.filter(r => r._id !== item._id));
+            fetch('/api/admin/inventory-management').then(r => r.json()).then(d => { if (Array.isArray(d)) setInventoryData(d); }).catch(() => {});
+          } catch {
+            toast.error("Failed to delete");
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+      cancel: { label: "Cancel", onClick: () => {} },
+    });
+  };
+
+  const poLabel = (item: any) => {
+    if (typeof item.poNo === "object" && item.poNo)
+      return item.poNo.customerPONo || item.poNo.VBSerialNumber || "—";
+    return item.poNo || "—";
+  };
+
+  const toggleRrSort = (key: typeof rrSort.key) => {
+    setRrSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc"
+    }));
+  };
+
+  const sortedReleaseRequests = useMemo(() => {
+    let list = [...releaseRequests];
+
+    if (globalSearch) {
+      const q = globalSearch.toLowerCase();
+      list = list.filter(item => {
+        const poLabelVal = poLabel(item);
+        const whName = item.warehouse?.name || '';
+        const custName = item.customer?.name || '';
+        const contactVal = item.contact || '';
+        return poLabelVal.toLowerCase().includes(q) || whName.toLowerCase().includes(q) || custName.toLowerCase().includes(q) || contactVal.toLowerCase().includes(q);
+      });
+    }
+
+    list.sort((a, b) => {
+      let aVal: any, bVal: any;
+      switch (rrSort.key) {
+        case "poNo":
+          aVal = poLabel(a).toLowerCase();
+          bVal = poLabel(b).toLowerCase();
+          break;
+        case "date":
+          aVal = a.date ? new Date(a.date).getTime() : 0;
+          bVal = b.date ? new Date(b.date).getTime() : 0;
+          break;
+        case "customer":
+          aVal = (a.customer?.name || '').toLowerCase();
+          bVal = (b.customer?.name || '').toLowerCase();
+          break;
+        case "warehouse":
+          aVal = (a.warehouse?.name || '').toLowerCase();
+          bVal = (b.warehouse?.name || '').toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return rrSort.dir === "asc" ? -1 : 1;
+      if (aVal > bVal) return rrSort.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [releaseRequests, rrSort, globalSearch]);
 
   const sortedPOs = useMemo(() => {
     // fast O(1) map for product ID to Name
@@ -564,25 +676,6 @@ function AndresTrackerContent() {
         <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
           Andres Tracker
         </h1>
-        <button
-            onClick={() => setRRDialogOpen(true)}
-            className={[
-              'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all',
-              pendingRRCount > 0
-                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20 cursor-pointer'
-                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 cursor-pointer hover:bg-emerald-500/20',
-            ].join(' ')}
-            title={`${pendingRRCount} pending release request${pendingRRCount !== 1 ? 's' : ''} — click to view`}
-          >
-            <ClipboardList className="h-3 w-3" />
-            Pending Release Requests
-            <span className={[
-              'ml-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold',
-              pendingRRCount > 0 ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white',
-            ].join(' ')}>
-              {pendingRRCount}
-            </span>
-          </button>
       </div>
     );
      setRightContent(
@@ -600,11 +693,11 @@ function AndresTrackerContent() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [setLeftContent, setRightContent, router, inputs.search, pendingRRCount]);
+  }, [setLeftContent, setRightContent, router, inputs.search]);
 
   return (
     <div className="max-w-[2000px] mx-auto animate-in fade-in duration-500 h-[calc(100vh-64px)] flex flex-col overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 flex-1 overflow-hidden">
         
         {/* Column 1: VBPOs */}
         <div className={getColClass(1)}>
@@ -1003,6 +1096,105 @@ function AndresTrackerContent() {
           </div>
         </div>
 
+        {/* Column 5: Pending Releases */}
+        <div className={getColClass(5)}>
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-amber-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wider text-amber-500">Pending Releases</h2>
+              <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/20">{sortedReleaseRequests.length}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-sm border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 -mr-1" onClick={() => setExpandedCol(expandedCol === 5 ? null : 5)}>
+                {expandedCol === 5 ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+            {rrLoading ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60">Loading...</div>
+            ) : sortedReleaseRequests.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-10 opacity-60 italic">No release requests found</div>
+            ) : (
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/80 backdrop-blur-md shadow-sm z-10 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleRrSort("poNo")}>
+                      PO # {rrSort.key === "poNo" && (rrSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors" onClick={() => toggleRrSort("date")}>
+                      Date {rrSort.key === "date" && (rrSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleRrSort("customer")}>
+                      Customer {rrSort.key === "customer" && (rrSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold cursor-pointer hover:text-foreground transition-colors max-w-[120px]" onClick={() => toggleRrSort("warehouse")}>
+                      Warehouse {rrSort.key === "warehouse" && (rrSort.dir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="px-3 py-2 font-bold text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] sm:text-[11px] divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {sortedReleaseRequests.map((item, idx) => {
+                    const poLabelVal = poLabel(item);
+                    const whName = item.warehouse?.name || '-';
+                    const custName = item.customer?.name || '-';
+                    const dateVal = item.date ? new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "-";
+                    return (
+                      <tr key={`${item._id}-${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors group">
+                        <td className="px-3 py-2.5 font-bold font-mono text-amber-600 dark:text-amber-400">
+                          <button
+                            onClick={() => router.push(`/inventory/release-requests/${item._id}`)}
+                            className="hover:underline text-left"
+                          >
+                            {poLabelVal}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground font-medium">
+                          {dateVal}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground truncate max-w-[120px]" title={custName}>
+                          {custName}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground truncate max-w-[120px]" title={whName}>
+                          {whName}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {togglingId === item._id ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Switch
+                                checked={false}
+                                onCheckedChange={() => handleTogglePickedUp(item)}
+                                className="data-[state=checked]:bg-emerald-500 scale-75"
+                              />
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              title="Delete"
+                              onClick={() => handleDeleteReleaseRequest(item)}
+                              disabled={deletingId === item._id}
+                            >
+                              {deletingId === item._id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
       </div>
       <AddCustomerPODialog open={isAddCPOOpen} onClose={() => setIsAddCPOOpen(false)} defaultVbpoId={activePOForDrilldown?._id} />
       <AddPurchaseOrderDialog open={isAddPOOpen} onOpenChange={setIsAddPOOpen} />
@@ -1011,6 +1203,7 @@ function AndresTrackerContent() {
       }} />
       <AddReleaseRequestDialog open={isAddReleaseOpen} onOpenChange={setIsAddReleaseOpen} onSaved={() => {
         fetch('/api/admin/inventory-management').then(r => r.json()).then(d => { if (Array.isArray(d)) setInventoryData(d); }).catch(() => {});
+        fetchReleaseRequests();
       }} />
 
       {/* Drill-down PO Modal */}
@@ -1134,19 +1327,6 @@ function AndresTrackerContent() {
         spoNumber={attachmentsOpen?.spoNumber}
         shipNumber={attachmentsOpen?.shipNumber}
         childFolders={attachmentsOpen?.childFolders}
-      />
-
-      <PendingReleaseRequestsDialog
-        open={rrDialogOpen}
-        onOpenChange={setRRDialogOpen}
-        onRefresh={() => {
-          fetch('/api/admin/release-requests')
-            .then(r => r.json())
-            .then(d => {
-              if (Array.isArray(d)) setPendingRRCount(d.filter((r: any) => !r.pickedUp).length);
-            })
-            .catch(() => {});
-        }}
       />
     </div>
   );
