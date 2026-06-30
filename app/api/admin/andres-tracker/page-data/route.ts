@@ -17,10 +17,31 @@ export async function GET() {
     const db = mongoose.connection.db!;
 
     const [rawShips, rawCpos, rawPos] = await Promise.all([
-      db.collection("vbshippings").find(
-        {},
-        { projection: { shippingTrackingRecords: 0, driveDocuments: 0, raw_json: 0 } }
-      ).toArray(),
+      db.collection("vbshippings").aggregate([
+        // Compute ETA from the last shippingTrackingRecord before stripping the array
+        {
+          $addFields: {
+            _lastTrack: { $arrayElemAt: ["$shippingTrackingRecords", -1] },
+          },
+        },
+        {
+          $addFields: {
+            _trackingETA: {
+              $ifNull: ["$_lastTrack.pod_predictive_eta", { $ifNull: ["$_lastTrack.pod_date", null] }],
+            },
+            _trackingFromPort: "$_lastTrack.from_port_name",
+            _trackingToPort: "$_lastTrack.to_port_name",
+          },
+        },
+        {
+          $project: {
+            shippingTrackingRecords: 0,
+            driveDocuments: 0,
+            raw_json: 0,
+            _lastTrack: 0,
+          },
+        },
+      ]).toArray(),
       db.collection("vbcustomerpos").find(
         {},
         { projection: { VBNumber: 1, VBSerialNumber: 1, customer: 1, customerPONo: 1, customerPODate: 1, qtyOrdered: 1, qtyReceived: 1, warehouse: 1, isDirectShipment: 1, products: 1 } }

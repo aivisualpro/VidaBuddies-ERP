@@ -17,6 +17,7 @@ import {
   Eye, EyeOff, Package, Ship, ShoppingCart,
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download,
+  FolderPlus, ArrowRightLeft,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -291,6 +292,15 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   const [showEmailHistory, setShowEmailHistory] = useState(false);
   const [docTypeFilter, setDocTypeFilter] = useState<"all" | "Internal" | "External">("all");
 
+  // New folder
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // Move files
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+
   useEffect(() => { setMounted(true); }, []);
 
   // Upload progress
@@ -366,6 +376,28 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
     if (docTypeFilter !== "all" && v.doc.documentType !== docTypeFilter) return false;
     return true;
   });
+
+  // ── Email filtering by sidebar selection ──
+  const getEmailsForItem = useCallback((item: SidebarItem | null): any[] => {
+    if (!item) return emailRecords; // "All" — show everything
+    return emailRecords.filter((e: any) => {
+      const ref = (e.reference || "").trim();
+      const fp = (e.folderPath || "").trim();
+      if (item.kind === "VBShipmentNumber") {
+        // Match by reference (exact shipment ID) or folderPath containing the label
+        return ref === item.label || fp.includes(item.label);
+      }
+      if (item.kind === "VBSerialNumber") {
+        // CPO: match by folderPath containing the CPO label, but not a shipment-level match
+        return fp.includes(item.label);
+      }
+      // PO: match emails with no reference and folderPath matching PO or empty
+      return (!ref && (!fp || fp === item.label)) || fp === item.label;
+    });
+  }, [emailRecords]);
+
+  const filteredEmails = getEmailsForItem(selectedItem);
+  const totalEmails = emailRecords.length;
 
   const selCount = selectedIds.length;
   const toggleSelect = (id: string, e: React.MouseEvent) => {
@@ -606,6 +638,96 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   const cpoItems = items.filter(i => i.kind === "VBSerialNumber");
   const shipItems = items.filter(i => i.kind === "VBShipmentNumber");
 
+  /* ─── Create Folder handler ─── */
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim() || !selectedItem) return;
+    setCreatingFolder(true);
+    try {
+      // Use the drive API to create a folder — we need the parent folder ID from Drive
+      // First resolve the parent folder path for this item
+      const poLabel = poItems[0]?.label || poNumber;
+      let driveUrl = `/api/admin/drive?poNumber=${encodeURIComponent(poLabel)}`;
+      if (selectedItem.kind === "VBSerialNumber") {
+        driveUrl += `&spoNumber=${encodeURIComponent(selectedItem.label)}`;
+      } else if (selectedItem.kind === "VBShipmentNumber") {
+        // Find the parent CPO for this shipment
+        const parentCpoId = (items.find(i => i.kind === "VBShipmentNumber" && i.id === selectedItem.id) as any);
+        driveUrl += `&spoNumber=${encodeURIComponent(selectedItem.label)}`;
+      }
+      // Resolve the parent folder
+      const resolveRes = await fetch(driveUrl);
+      const resolveData = await resolveRes.json();
+      const parentFolderId = resolveData.folderId;
+
+      if (!parentFolderId) {
+        toast.error("Could not resolve parent folder");
+        return;
+      }
+
+      // Create the subfolder
+      const createRes = await fetch(driveUrl + `&ensureChildren=${encodeURIComponent(newFolderName.trim())}`);
+      const createData = await createRes.json();
+      if (createRes.ok) {
+        toast.success(`Folder "${newFolderName.trim()}" created`);
+        setNewFolderOpen(false);
+        setNewFolderName("");
+        fetchDocs();
+      } else {
+        toast.error("Failed to create folder", { description: createData.error });
+      }
+    } catch {
+      toast.error("Failed to create folder");
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  /* ─── Move files handler ─── */
+  const handleMoveFiles = async (targetItem: SidebarItem) => {
+    if (selectedIds.length === 0 || !targetItem) return;
+    setMoving(true);
+    try {
+      // Group selected files by source item
+      const bySource = new Map<string, { collection: string; recordId: string; driveFileIds: string[] }>();
+      for (const selId of [...selectedIds]) {
+        const idx = filteredDocs.findIndex((_, i) => `${filteredDocs[i].doc.driveFileId}-${i}` === selId);
+        if (idx < 0) continue;
+        const item = items.find(it => it.docs.includes(filteredDocs[idx].doc));
+        if (!item || item.id === targetItem.id) continue; // Skip if same target
+        const key = `${item.collection}:${item.id}`;
+        if (!bySource.has(key)) bySource.set(key, { collection: item.collection, recordId: item.id, driveFileIds: [] });
+        bySource.get(key)!.driveFileIds.push(filteredDocs[idx].doc.driveFileId);
+      }
+
+      let totalMoved = 0;
+      for (const [, src] of bySource) {
+        const res = await fetch("/api/admin/drive-documents", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceCollection: src.collection,
+            sourceRecordId: src.recordId,
+            targetCollection: targetItem.collection,
+            targetRecordId: targetItem.id,
+            driveFileIds: src.driveFileIds,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) totalMoved += data.moved || 0;
+      }
+
+      if (totalMoved > 0) {
+        toast.success(`${totalMoved} file(s) moved to ${targetItem.label}`);
+        setSelectedIds([]);
+        setMoveDialogOpen(false);
+        fetchDocs();
+      } else {
+        toast.error("No files were moved");
+      }
+    } catch { toast.error("Move failed"); }
+    finally { setMoving(false); }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => {
@@ -670,6 +792,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   }} disabled={uploading}>
                     <FolderOpen className="h-3.5 w-3.5" /> Folder
                   </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}>
+                    <FolderPlus className="h-3.5 w-3.5" /> New Folder
+                  </Button>
                   <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                     Upload to {selectedItem.label}
@@ -703,7 +828,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                 className={cn("w-full text-left px-4 py-3 text-xs font-semibold transition-all border-l-2 flex items-center justify-between",
                   !selected ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                 <span className="flex items-center gap-2"><Paperclip className="h-3.5 w-3.5" /> All</span>
-                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full">{totalDocs}</span>
+                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full">{showEmailHistory ? totalEmails : totalDocs}</span>
               </button>
 
               {/* PO */}
@@ -715,7 +840,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
                     </button>
                   ))}
                 </div>
@@ -730,7 +855,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
                     </button>
                   ))}
                 </div>
@@ -745,7 +870,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
                     </button>
                   ))}
                 </div>
@@ -801,12 +926,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                 <div className="flex-1 overflow-y-auto min-h-0">
                   {loadingEmails ? (
                     <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
-                  ) : emailRecords.length === 0 ? (
+                  ) : filteredEmails.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
                       <div className="h-16 w-16 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center">
                         <Mail className="h-7 w-7 text-blue-500/40" />
                       </div>
-                      <p className="text-sm font-semibold text-muted-foreground">No emails sent yet</p>
+                      <p className="text-sm font-semibold text-muted-foreground">
+                        {selectedItem ? `No emails for ${selectedItem.label}` : "No emails sent yet"}
+                      </p>
                       <p className="text-xs text-muted-foreground/60">Select files and click Email to send</p>
                     </div>
                   ) : (
@@ -821,7 +948,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                         </tr>
                       </thead>
                       <tbody>
-                        {emailRecords
+                        {filteredEmails
                           .filter(e => !searchQuery.trim() || 
                             (e.subject || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (e.to || []).join(", ").toLowerCase().includes(searchQuery.toLowerCase()))
@@ -1028,6 +1155,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                           {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({selCount})
                         </Button>
                       )}
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
+                        {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({selCount})
+                      </Button>
                       <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
                         {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete ({selCount})
                       </Button>
@@ -1191,6 +1321,74 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* New Folder Dialog */}
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderPlus className="h-5 w-5 text-amber-500" /> Create New Folder
+            </DialogTitle>
+            <DialogDescription>
+              Create a folder inside {selectedItem?.label || "the selected item"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <Input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              className="h-10"
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreateFolder(); }}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setNewFolderOpen(false)}>Cancel</Button>
+              <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5" onClick={handleCreateFolder} disabled={creatingFolder || !newFolderName.trim()}>
+                {creatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
+                Create
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move Files Dialog */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-blue-500" /> Move {selCount} File{selCount !== 1 ? "s" : ""}
+            </DialogTitle>
+            <DialogDescription>Select the target folder to move the selected files to</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1 pt-2 max-h-[320px] overflow-y-auto">
+            {items.map(item => (
+              <button
+                key={item.id}
+                onClick={() => handleMoveFiles(item)}
+                disabled={moving}
+                className={cn(
+                  "w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-between gap-2",
+                  "hover:bg-muted/60 border border-transparent hover:border-border/40",
+                  selectedItem?.id === item.id && "opacity-40 cursor-not-allowed"
+                )}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span>
+                  <span className="truncate">{item.label}</span>
+                </span>
+                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+              </button>
+            ))}
+          </div>
+          {moving && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Moving files...
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Email Compose Dialog */}
       <EmailComposeDialog

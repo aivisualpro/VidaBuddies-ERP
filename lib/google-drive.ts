@@ -396,3 +396,25 @@ export async function renameFile(fileId: string, newName: string): Promise<strin
   });
   return res.data.id!;
 }
+
+/**
+ * Move a file or folder to a different parent folder in Google Drive.
+ * Removes the file from its current parent(s) and adds it to the new parent.
+ */
+export async function moveFile(fileId: string, newParentId: string): Promise<string> {
+  const drive = getDrive();
+  // Get current parents
+  const file = await drive.files.get({
+    fileId,
+    fields: "parents",
+    supportsAllDrives: true,
+  });
+  const previousParents = (file.data.parents || []).join(",");
+  const res = await drive.files.update({
+    fileId,
+    addParents: newParentId,
+    removeParents: previousParents,
+    supportsAllDrives: true,
+  });
+  return res.data.id!;
+}

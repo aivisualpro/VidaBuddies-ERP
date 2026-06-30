@@ -200,3 +200,59 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+/**
+ * PATCH /api/admin/drive-documents
+ * Move document(s) from one record to another.
+ * Body: {
+ *   sourceCollection, sourceRecordId,
+ *   targetCollection, targetRecordId,
+ *   driveFileIds: string[]
+ * }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { sourceCollection, sourceRecordId, targetCollection, targetRecordId, driveFileIds } = await request.json();
+
+    if (!sourceCollection || !sourceRecordId || !targetCollection || !targetRecordId || !driveFileIds?.length) {
+      return NextResponse.json({ error: "sourceCollection, sourceRecordId, targetCollection, targetRecordId, and driveFileIds are required" }, { status: 400 });
+    }
+
+    const validCollections = ["vidapos", "vbcustomerpos", "vbshippings"];
+    if (!validCollections.includes(sourceCollection) || !validCollections.includes(targetCollection)) {
+      return NextResponse.json({ error: "Invalid collection" }, { status: 400 });
+    }
+
+    const srcCol = mongoose.connection.collection(sourceCollection);
+    const tgtCol = mongoose.connection.collection(targetCollection);
+
+    // 1. Get the source record's driveDocuments to find the docs being moved
+    const srcRecord = await srcCol.findOne(
+      { _id: new mongoose.Types.ObjectId(sourceRecordId) },
+      { projection: { driveDocuments: 1 } }
+    );
+    const srcDocs = (srcRecord?.driveDocuments || []).filter((d: any) => driveFileIds.includes(d.driveFileId));
+
+    if (srcDocs.length === 0) {
+      return NextResponse.json({ error: "No matching documents found in source" }, { status: 404 });
+    }
+
+    // 2. Remove from source
+    await srcCol.updateOne(
+      { _id: new mongoose.Types.ObjectId(sourceRecordId) },
+      { $pull: { driveDocuments: { driveFileId: { $in: driveFileIds } } } as any }
+    );
+
+    // 3. Add to target
+    await tgtCol.updateOne(
+      { _id: new mongoose.Types.ObjectId(targetRecordId) },
+      { $push: { driveDocuments: { $each: srcDocs } } as any }
+    );
+
+    return NextResponse.json({ success: true, moved: srcDocs.length });
+  } catch (error: any) {
+    console.error("[drive-documents] PATCH Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

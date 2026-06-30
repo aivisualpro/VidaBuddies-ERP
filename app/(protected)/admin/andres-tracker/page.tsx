@@ -482,6 +482,8 @@ function AndresTrackerContent() {
       
       flatList.push({
         ...ship,
+        // Resolve ETA: prefer updatedETA → tracking ETA (from last record) → ETA
+        updatedETA: ship.updatedETA || ship._trackingETA || ship.ETA || null,
         poId: ship.VBNumber?.toString() || "",
         cpoIdForUpdate: ship.VBSerialNumber?.toString() || "",
         shipIdForUpdate: ship._id?.toString() || ship.svbid || "",
