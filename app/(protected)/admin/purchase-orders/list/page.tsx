@@ -44,6 +44,7 @@ interface PurchaseOrder {
       [key: string]: any;
     }[];
   }[];
+  _shipStatuses?: string[];
 }
 
 function normalizeStatus(raw: string): string {
@@ -358,7 +359,7 @@ function PurchaseOrdersContent() {
       id: "shippings",
       header: "Shippings",
       cell: ({ row }) => {
-        const count = row.original.customerPO?.reduce((acc, cpo) => acc + (cpo.shipping?.length || 0), 0) || 0;
+        const count = row.original._shipStatuses?.length || 0;
         return (
           <div className="flex items-center gap-1">
             <span className="text-primary">{count}</span>
@@ -370,13 +371,7 @@ function PurchaseOrdersContent() {
       id: "planned",
       header: "Planned",
       cell: ({ row }) => {
-        let count = 0;
-        row.original.customerPO?.forEach((cpo) => {
-          cpo.shipping?.forEach((ship) => {
-            const status = normalizeStatus(ship.status || '');
-            if (status === 'planned') count++;
-          });
-        });
+        const count = (row.original._shipStatuses || []).filter((s: string) => normalizeStatus(s) === 'planned').length;
         if (count === 0) return <span className="text-muted-foreground">-</span>;
         return (
           <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
@@ -389,13 +384,7 @@ function PurchaseOrdersContent() {
       id: "inTransit",
       header: "In Transit",
       cell: ({ row }) => {
-        let count = 0;
-        row.original.customerPO?.forEach((cpo) => {
-          cpo.shipping?.forEach((ship) => {
-            const status = normalizeStatus(ship.status || '');
-            if (status === 'in transit') count++;
-          });
-        });
+        const count = (row.original._shipStatuses || []).filter((s: string) => normalizeStatus(s) === 'in transit').length;
         if (count === 0) return <span className="text-muted-foreground">-</span>;
         return (
           <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
@@ -409,13 +398,7 @@ function PurchaseOrdersContent() {
       id: "delivered",
       header: "Delivered",
       cell: ({ row }) => {
-        let count = 0;
-        row.original.customerPO?.forEach((cpo) => {
-          cpo.shipping?.forEach((ship) => {
-            const status = normalizeStatus(ship.status || '');
-            if (status === 'delivered') count++;
-          });
-        });
+        const count = (row.original._shipStatuses || []).filter((s: string) => normalizeStatus(s) === 'delivered').length;
         
         const vbNumber = row.original.VBNumber || row.original._id;
         const poId = row.original._id;
@@ -618,13 +601,22 @@ function PurchaseOrdersContent() {
     ? columns.filter(c => c.id !== 'nigalu' && c.id !== 'archive')
     : columns;
 
+  // Compute unique filter options (normalized) — must be before early return to respect Rules of Hooks
+  const orderTypes = useMemo(() => {
+    const raw = data.map(d => d.orderType?.trim()).filter(Boolean);
+    const unique = new Set(raw.map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()));
+    return [...unique].sort();
+  }, [data]);
+
+  const categories = useMemo(() => {
+    const raw = data.map(d => d.category?.trim()).filter(Boolean);
+    const unique = new Set(raw.map(c => c.toUpperCase()));
+    return [...unique].sort();
+  }, [data]);
+
   if (isLoading || userRole === null) {
     return <TablePageSkeleton />;
   }
-
-  // Compute unique filter options
-  const orderTypes = [...new Set(data.map(d => d.orderType).filter(Boolean))].sort();
-  const categories = [...new Set(data.map(d => d.category).filter(Boolean))].sort();
 
   // Filter data
   const filteredData = data.filter(po => {
@@ -633,20 +625,33 @@ function PurchaseOrdersContent() {
     // Archive filter: hide archived unless toggled on
     if (!showArchived && po.isArchived) return false;
     if (showArchived && !po.isArchived) return false;
-    if (filters.orderType && po.orderType !== filters.orderType) return false;
-    if (filters.category && po.category !== filters.category) return false;
+    if (filters.orderType && po.orderType?.toLowerCase() !== filters.orderType.toLowerCase()) return false;
+    if (filters.category && po.category?.toLowerCase() !== filters.category.toLowerCase()) return false;
     if (filters.shipStatus) {
-      const hasStatus = po.customerPO?.some((cpo: any) =>
-        cpo.shipping?.some((ship: any) => normalizeStatus(ship.status || '') === filters.shipStatus)
-      );
+      const hasStatus = po._shipStatuses?.some((s: string) => normalizeStatus(s) === filters.shipStatus);
       if (!hasStatus) return false;
     }
     if (filters.search) {
       const q = filters.search.toLowerCase();
       const createdByName = users[po.createdBy?.toLowerCase()] || po.createdBy || '';
+      
+      // Deep search in nested Customer POs and Shippings
+      const deepSearchTerms: string[] = [];
+      po.customerPO?.forEach((cpo: any) => {
+        if (cpo.customerPONo) deepSearchTerms.push(cpo.customerPONo);
+        if (cpo.customer) deepSearchTerms.push(cpo.customer);
+        cpo.shipping?.forEach((ship: any) => {
+          if (ship.containerNo) deepSearchTerms.push(ship.containerNo);
+          if (ship.BOLNumber) deepSearchTerms.push(ship.BOLNumber);
+          if (ship.VBShipmentNumber) deepSearchTerms.push(ship.VBShipmentNumber);
+          if (ship.svbid) deepSearchTerms.push(ship.svbid);
+        });
+      });
+
       const searchable = [
         po.VBNumber, po.orderType, po.category, po.date, po.createdBy, createdByName,
-        po.isNigalu ? 'NIGALU' : '', po.isArchived ? 'Archived' : ''
+        po.isNigalu ? 'NIGALU' : '', po.isArchived ? 'Archived' : '',
+        ...deepSearchTerms
       ].filter(Boolean).join(' ').toLowerCase();
       if (!searchable.includes(q)) return false;
     }

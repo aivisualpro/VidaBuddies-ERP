@@ -2,14 +2,34 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VidaPO from "@/lib/models/VidaPO";
+import VBshipping from "@/lib/models/VBshipping";
 import { getSession } from "@/lib/auth";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
 export async function GET() {
   try {
     await connectToDatabase();
-    const items = await VidaPO.find({});
-    return NextResponse.json(items);
+    const [items, shipments] = await Promise.all([
+      VidaPO.find({}).lean(),
+      VBshipping.find({}, { VBNumber: 1, status: 1 }).lean(),
+    ]);
+
+    // Build a map of PO ObjectId → array of shipping statuses
+    const shipStatusMap: Record<string, string[]> = {};
+    for (const s of shipments) {
+      if (!s.VBNumber) continue;
+      const key = s.VBNumber.toString();
+      if (!shipStatusMap[key]) shipStatusMap[key] = [];
+      if (s.status) shipStatusMap[key].push(s.status);
+    }
+
+    // Attach live shipping statuses to each PO
+    const enriched = items.map((po: any) => ({
+      ...po,
+      _shipStatuses: shipStatusMap[po._id.toString()] || [],
+    }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("Failed to fetch purchase orders:", error);
     return NextResponse.json(
