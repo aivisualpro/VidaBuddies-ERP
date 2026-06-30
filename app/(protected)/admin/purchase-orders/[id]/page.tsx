@@ -957,7 +957,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                 sortedShippings.map((ship: any, idx: number) => {
                   const poLevelPath = po.VBNumber?.trim();
                   const cpoLevelPath = `${po.VBNumber} / ${po?.customerPO?.[ship._cpoIdx]?.poNo}`;
-                  const shipSvbid = (ship.svbid || "").trim();
+                  const shipSvbid = (ship.VBShipmentNumber || ship.svbid || "").trim();
                   const hasInvoice = emailRecords.some((e: any) => {
                     const eType = (e.type || "Invoice").trim();
                     if (eType !== "Invoice") return false;
