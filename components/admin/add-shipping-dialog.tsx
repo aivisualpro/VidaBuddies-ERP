@@ -115,9 +115,23 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       setAutoShipmentNumber("");
       return;
     }
-    // Only auto-generate for new records, not editing
-    if (editingData) return;
-    fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${selectedCPO}`)
+    
+    // Only auto-generate if we are not editing, OR if we are editing but the current shipment number is empty, OR if the selected CPO is different from the original CPO
+    const getCpoIdStr = (val: any) => {
+      if (!val) return "";
+      if (typeof val === "object") return val._id?.toString() || "";
+      return val.toString();
+    };
+    const originalCPO = getCpoIdStr(editingData?.VBSerialNumber) || editingData?.customerPOId || "";
+    const originalShipmentNumber = editingData?.VBShipmentNumber || editingData?.svbid || "";
+    const selectedCpoStr = getCpoIdStr(selectedCPO);
+
+    if (editingData && selectedCpoStr === originalCPO && originalShipmentNumber) {
+      setAutoShipmentNumber(originalShipmentNumber);
+      return;
+    }
+
+    fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${selectedCpoStr}`)
       .then(r => r.json())
       .then(res => {
         if (res.nextNumber) setAutoShipmentNumber(res.nextNumber);
