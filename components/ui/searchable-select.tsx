@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,7 @@ interface SearchableSelectProps {
   className?: string;
   name?: string;
   allowClear?: boolean;
+  allowCreate?: boolean;
 }
 
 const BATCH_SIZE = 20;
@@ -39,19 +40,26 @@ export function SearchableSelect({
   className,
   name,
   allowClear = false,
+  allowCreate = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [visibleCount, setVisibleCount] = React.useState(BATCH_SIZE);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const selectedLabel = options.find((opt) => opt.value === value)?.label;
+  const selectedLabel = options.find((opt) => opt.value === value)?.label || (allowCreate ? value : undefined);
 
   // Filter options by search
   const filtered = React.useMemo(() => {
     if (!search.trim()) return options;
     const q = search.toLowerCase();
     return options.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [options, search]);
+
+  // Check if search query exactly matches an existing option
+  const hasExactMatch = React.useMemo(() => {
+    if (!search.trim()) return true;
+    return options.some(opt => opt.label.toLowerCase() === search.trim().toLowerCase());
   }, [options, search]);
 
   // Items to render (lazy batch)
@@ -132,10 +140,27 @@ export function SearchableSelect({
                 </button>
               )}
 
+              {/* Add custom option */}
+              {allowCreate && search.trim() && !hasExactMatch && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(search.trim());
+                    setOpen(false);
+                  }}
+                  className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground text-primary font-semibold border-b border-border/40"
+                >
+                  <Plus className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Add "{search.trim()}"</span>
+                </button>
+              )}
+
               {visible.length === 0 ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">
-                  {emptyMessage}
-                </div>
+                (!allowCreate || !search.trim()) && (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    {emptyMessage}
+                  </div>
+                )
               ) : (
                 visible.map((option) => (
                   <button

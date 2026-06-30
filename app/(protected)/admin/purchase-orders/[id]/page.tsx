@@ -1227,6 +1227,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                             placeholder="Select Carrier"
                             searchPlaceholder="Search carriers..."
                             allowClear
+                            allowCreate
                           />
                         </div>
                         <div className="space-y-1">

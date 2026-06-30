@@ -452,6 +452,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                       placeholder="Select Carrier"
                       searchPlaceholder="Search carriers..."
                       emptyMessage="No carriers found."
+                      allowCreate
                     />
                   </div>
                   <div className="space-y-1">
