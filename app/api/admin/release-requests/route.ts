@@ -92,14 +92,28 @@ export async function POST(request: Request) {
       .populate("warehouse")
       .populate("customer")
       .populate("requestedBy")
-      .populate("poNo", "customerPONo VBSerialNumber customer")
+      // poNo is populated manually below to handle non-ObjectId values gracefully
       .populate("transferOrder", "VBShipmentNumber svbid")
       .populate({
          path: 'releaseOrderProducts.product',
          model: 'VidaProduct'
-      });
+      })
+      .lean();
+
+    // Manually populate poNo to handle non-ObjectId values (e.g. "ZK052926-885")
+    const item = populated as any;
+    if (item?.poNo) {
+      const { Types } = await import("mongoose");
+      if (Types.ObjectId.isValid(item.poNo) && String(new Types.ObjectId(item.poNo)) === String(item.poNo)) {
+        const po = await _models.VBcustomerPO
+          .findById(item.poNo)
+          .select("customerPONo VBSerialNumber customer")
+          .lean();
+        if (po) item.poNo = po;
+      }
+    }
     
-    return NextResponse.json(populated, { status: 201 });
+    return NextResponse.json(item, { status: 201 });
   } catch (error: any) {
     console.error("Release Request Create Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
