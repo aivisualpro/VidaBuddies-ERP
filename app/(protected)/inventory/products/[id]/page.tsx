@@ -228,6 +228,22 @@ export default function ProductDetailPage() {
                    <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground leading-[1.1] break-words">
                      {product.name}
                    </h1>
+
+                   {/* Metadata: SKU & Serial Number */}
+                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground pt-1">
+                      {product.vbId && (
+                         <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-foreground">PRODUCT SKU #:</span>
+                            <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded border">{product.vbId}</span>
+                         </div>
+                      )}
+                      {product.sNo && (
+                         <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-foreground">Serial Number:</span>
+                            <span className="bg-muted px-2 py-0.5 rounded border">{product.sNo}</span>
+                         </div>
+                      )}
+                   </div>
                 </div>
 
                 {/* Description (Moved Up) */}

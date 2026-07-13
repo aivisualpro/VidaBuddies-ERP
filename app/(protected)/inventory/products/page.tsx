@@ -34,7 +34,7 @@ import {
 
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight, Warehouse, Building } from "lucide-react";
+import { Pencil, Trash, Package, Layers, ChevronDown, ChevronRight, Warehouse, Building, Check } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -59,6 +59,7 @@ interface Product {
   otherInfo?: { title: string; tags: string[] }[];
   isOnWebsite?: boolean;
   sNo?: string;
+  partOf?: boolean;
 }
 
 interface Category {
@@ -114,10 +115,12 @@ function ProductsContent() {
         if (po.isArchived || (po.orderType !== 'Inventory' && po.orderType !== 'INVENTORY')) return;
         (po.customerPO || []).forEach((cpo: any) => {
            if (cpo.product && cpo.warehouse) {
-              const pid = typeof cpo.product === 'object' ? cpo.product._id : String(cpo.product);
-              const wid = typeof cpo.warehouse === 'object' ? cpo.warehouse._id || cpo.warehouse.name : String(cpo.warehouse);
-              if (!balances[pid]) balances[pid] = {};
-              balances[pid][wid] = (balances[pid][wid] || 0) + (Number(cpo.qtyOrdered) || 0);
+              const pid = (typeof cpo.product === 'object' && cpo.product !== null) ? cpo.product._id : String(cpo.product);
+              const wid = (typeof cpo.warehouse === 'object' && cpo.warehouse !== null) ? cpo.warehouse._id || cpo.warehouse.name : String(cpo.warehouse);
+              if (pid && wid) {
+                if (!balances[pid]) balances[pid] = {};
+                balances[pid][wid] = (balances[pid][wid] || 0) + (Number(cpo.qtyOrdered) || 0);
+              }
            }
         });
       });
@@ -125,13 +128,15 @@ function ProductsContent() {
 
     if (Array.isArray(releaseRequests)) {
        releaseRequests.forEach(rr => {
-         const wid = typeof rr.warehouse === 'object' ? rr.warehouse._id || rr.warehouse.name : String(rr.warehouse);
+         const wid = (typeof rr.warehouse === 'object' && rr.warehouse !== null) ? rr.warehouse._id || rr.warehouse.name : String(rr.warehouse);
          if (wid) {
            (rr.releaseOrderProducts || []).forEach((rop: any) => {
-             const pid = typeof rop.product === 'object' ? rop.product._id : String(rop.product);
-             if (pid) {
-                if (!balances[pid]) balances[pid] = {};
-                balances[pid][wid] = (balances[pid][wid] || 0) - (Number(rop.qty) || 0);
+             if (rop.product) {
+               const pid = (typeof rop.product === 'object' && rop.product !== null) ? rop.product._id : String(rop.product);
+               if (pid) {
+                  if (!balances[pid]) balances[pid] = {};
+                  balances[pid][wid] = (balances[pid][wid] || 0) - (Number(rop.qty) || 0);
+               }
              }
            });
          }
@@ -205,7 +210,11 @@ function ProductsContent() {
     else if (selectedCategory) result = result.filter(item => item.category === selectedCategory);
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      result = result.filter(item => item.name?.toLowerCase().includes(q));
+      result = result.filter(item => 
+        item.name?.toLowerCase().includes(q) ||
+        item.vbId?.toLowerCase().includes(q) ||
+        item.sNo?.toLowerCase().includes(q)
+      );
     }
     return result;
   }, [data, selectedCategory, selectedSubcategory, filters.search]);
@@ -235,6 +244,16 @@ function ProductsContent() {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => <span>{row.original.name}</span>
+    },
+    {
+      accessorKey: "vbId",
+      header: "PRODUCT SKU #",
+      cell: ({ row }) => <span className="font-mono text-xs font-semibold">{row.original.vbId}</span>
+    },
+    {
+      accessorKey: "sNo",
+      header: "Serial Number",
+      cell: ({ row }) => <span>{row.original.sNo || "-"}</span>
     },
     {
       id: "balances",
@@ -284,6 +303,19 @@ function ProductsContent() {
       }
     },
     {
+      accessorKey: "partOf",
+      header: "Part of",
+      cell: ({ row }) => {
+        return row.original.partOf ? (
+          <div className="flex justify-start pl-2">
+            <Check className="h-5 w-5 text-emerald-600 stroke-[3]" />
+          </div>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+      }
+    },
+    {
       accessorKey: "isOnWebsite",
       header: "Status",
       cell: ({ row }) => (
@@ -302,7 +334,7 @@ function ProductsContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => openEditSheet(item)}
+              onClick={(e) => { e.stopPropagation(); openEditSheet(item); }}
               className="h-8 w-8 p-0"
               title="Edit"
             >

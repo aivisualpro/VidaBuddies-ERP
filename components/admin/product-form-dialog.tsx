@@ -176,6 +176,7 @@ export function ProductFormDialog({
   };
 
   const currentId = initialData?._id;
+  const showSimpleForm = !formData.isOnWebsite;
 
   const [activeSection, setActiveSection] = useState("identity");
 
@@ -207,34 +208,60 @@ export function ProductFormDialog({
 
         <div className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
-            <div className="w-64 border-r bg-muted/10 flex-none overflow-y-auto py-6 space-y-1">
-                {sections.map(section => (
-                    <button
-                        key={section.id}
-                        onClick={() => setActiveSection(section.id)}
-                        className={`w-full text-left px-6 py-3 text-sm font-medium transition-all flex items-center gap-3 border-l-4 ${
-                            activeSection === section.id 
-                            ? "bg-primary/10 text-primary border-primary" 
-                            : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground"
-                        }`}
-                    >
-                        <section.icon className="w-4 h-4" />
-                        {section.label}
-                    </button>
-                ))}
-            </div>
+            {!showSimpleForm && (
+              <div className="w-64 border-r bg-muted/10 flex-none overflow-y-auto py-6 space-y-1">
+                  {sections.map(section => (
+                      <button
+                          key={section.id}
+                          onClick={() => setActiveSection(section.id)}
+                          className={`w-full text-left px-6 py-3 text-sm font-medium transition-all flex items-center gap-3 border-l-4 ${
+                              activeSection === section.id 
+                              ? "bg-primary/10 text-primary border-primary" 
+                              : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground"
+                          }`}
+                      >
+                          <section.icon className="w-4 h-4" />
+                          {section.label}
+                      </button>
+                  ))}
+              </div>
+            )}
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto bg-card p-8">
                <div className="max-w-3xl mx-auto space-y-8">
-                  {activeSection === "identity" && (
+                  {showSimpleForm ? (
                      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div>
-                           <h2 className="text-lg font-semibold tracking-tight">Product Identity</h2>
+                           <h2 className="text-lg font-semibold tracking-tight">Product Details (Hidden)</h2>
                            <Separator className="mt-2" />
                         </div>
 
                         <div className="space-y-4">
+                           {/* Product Name */}
+                           <div className="space-y-2">
+                              <Label htmlFor="name">Product Name <span className="text-destructive">*</span></Label>
+                              <textarea
+                                id="name"
+                                value={formData.name || ""}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                required
+                                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-medium resize-none shadow-sm text-lg"
+                                placeholder="Enter product name..."
+                              />
+                           </div>
+
+                           {/* Product SKU # */}
+                           <div className="space-y-2">
+                              <Label htmlFor="vbId">Product SKU #</Label>
+                              <Input
+                                id="vbId"
+                                value={formData.vbId || ""}
+                                onChange={(e) => setFormData({ ...formData, vbId: e.target.value })}
+                                placeholder="Auto-generated if left blank"
+                              />
+                           </div>
+
                            {/* Serial Number */}
                            <div className="space-y-2">
                               <Label htmlFor="sNo">Serial Number</Label>
@@ -245,6 +272,49 @@ export function ProductFormDialog({
                                 placeholder="Optional"
                               />
                            </div>
+
+                           {/* Website Visibility */}
+                           <div className="flex items-center space-x-3 pt-2">
+                              <Label htmlFor="isOnWebsite" className="text-base font-medium">Website Visibility</Label>
+                              <Switch
+                                id="isOnWebsite"
+                                checked={formData.isOnWebsite}
+                                onCheckedChange={(checked) => setFormData({ ...formData, isOnWebsite: checked })}
+                              />
+                           </div>
+                        </div>
+                     </div>
+                  ) : (
+                     <>
+                        {activeSection === "identity" && (
+                           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div>
+                           <h2 className="text-lg font-semibold tracking-tight">Product Identity</h2>
+                           <Separator className="mt-2" />
+                        </div>
+
+                         <div className="space-y-4">
+                            {/* Product SKU # */}
+                            <div className="space-y-2">
+                               <Label htmlFor="vbId">Product SKU #</Label>
+                               <Input
+                                 id="vbId"
+                                 value={formData.vbId || ""}
+                                 onChange={(e) => setFormData({ ...formData, vbId: e.target.value })}
+                                 placeholder="Auto-generated if left blank"
+                               />
+                            </div>
+
+                            {/* Serial Number */}
+                            <div className="space-y-2">
+                               <Label htmlFor="sNo">Serial Number</Label>
+                               <Input
+                                 id="sNo"
+                                 value={formData.sNo || ""}
+                                 onChange={(e) => setFormData({ ...formData, sNo: e.target.value })}
+                                 placeholder="Optional"
+                               />
+                            </div>
 
                            {/* Product Name - Taller Input */}
                            <div className="space-y-2">
@@ -524,11 +594,13 @@ export function ProductFormDialog({
                                )}
                              </div>
                          </div>
-                      </div>
-                   )}
+                       </div>
+                    )}
+                  </>
+                 )}
 
-               </div>
-            </div>
+                </div>
+             </div>
         </div>
       </DialogContent>
     </Dialog>

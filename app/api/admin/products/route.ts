@@ -4,6 +4,12 @@ import VidaProduct from "@/lib/models/VidaProduct";
 import crypto from "crypto";
 import { broadcastMutation } from "@/lib/pusher/broadcast";
 
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
+import VidaSupplierSpec from "@/lib/models/VidaSupplierSpec";
+import VidaTransferOrder from "@/lib/models/VidaTransferOrder";
+import VidaReleaseRequest from "@/lib/models/VidaReleaseRequest";
+import VBshipping from "@/lib/models/VBshipping";
+
 function generateVbId(): string {
   return `VB-${crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 5)}`;
 }
@@ -11,8 +17,32 @@ function generateVbId(): string {
 export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
+    
+    // Fetch distinct referenced product IDs from other collections
+    const [cpoPids, specPids, toPids, rrPids, shipPids] = await Promise.all([
+      VBcustomerPO.distinct("products").catch(() => []),
+      VidaSupplierSpec.distinct("products").catch(() => []),
+      VidaTransferOrder.distinct("product").catch(() => []),
+      VidaReleaseRequest.distinct("releaseOrderProducts.product").catch(() => []),
+      VBshipping.distinct("products").catch(() => []),
+    ]);
+
+    const referencedIds = new Set([
+      ...cpoPids.map((id: any) => id?.toString()),
+      ...specPids.map((id: any) => id?.toString()),
+      ...toPids.map((id: any) => id?.toString()),
+      ...rrPids.map((id: any) => id?.toString()),
+      ...shipPids.map((id: any) => id?.toString()),
+    ].filter(Boolean));
+
     const items = await VidaProduct.find({}).lean();
-    return NextResponse.json(items);
+    
+    const itemsWithRef = items.map((item: any) => ({
+      ...item,
+      partOf: referencedIds.has(item._id.toString()),
+    }));
+
+    return NextResponse.json(itemsWithRef);
   } catch (error) {
     console.error("Error fetching products:", error);
     return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
