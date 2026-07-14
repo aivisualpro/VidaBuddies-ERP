@@ -387,6 +387,7 @@ export async function POST(req: Request) {
               ticoVB: item.ticoVB,
               updatedETA: item.updatedETA ? new Date(item.updatedETA) : undefined,
               arrivalNotice: item.isArrivalNotice, // Mapping as-is (String in schema)
+              isArrivalNotice: parseBool(item.isArrivalNotice),
               isGensetRequired: parseBool(item.isGensetRequired),
               gensetInv: item.gensetInv,
               gensetEmailed: parseBool(item.gensetEmailed),

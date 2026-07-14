@@ -21,6 +21,7 @@ interface ShipmentDetailPanelProps {
   onTimeline?: (ship: any) => void;
   /** When true, the Transfer Orders button is hidden (direct shipment to customer) */
   isDirectShipment?: boolean;
+  onUpdate?: (updatedShipment: any) => void;
 }
 
 function formatDate(d: any) {
@@ -32,7 +33,7 @@ function formatDate(d: any) {
   } catch { return '-'; }
 }
 
-export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: initialData, onEdit, onDelete, onTrack, onAttachments, onTimeline, isDirectShipment = false }: ShipmentDetailPanelProps) {
+export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: initialData, onEdit, onDelete, onTrack, onAttachments, onTimeline, isDirectShipment = false, onUpdate }: ShipmentDetailPanelProps) {
   const [ship, setShip] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -60,7 +61,9 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
         body: JSON.stringify({ [field]: value }),
       });
       if (res.ok) {
-        setShip((prev: any) => ({ ...prev, [field]: value }));
+        const updated = { ...ship, [field]: value };
+        setShip(updated);
+        onUpdate?.(updated);
       }
     } catch {
       toast.error('Failed to update');

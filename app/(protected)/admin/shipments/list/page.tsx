@@ -664,6 +664,10 @@ function ShipmentsListContent() {
           });
         }}
         isDirectShipment={!!(detailShipment?.VBSerialNumber && cpoDirectShipMap[detailShipment.VBSerialNumber])}
+        onUpdate={(updatedShip) => {
+          setData((prev) => prev.map((s) => (s._id === updatedShip._id ? { ...s, ...updatedShip } : s)));
+          setDetailShipment(updatedShip);
+        }}
       />
 
       {/* Drive Documents Modal (new rich file manager) */}

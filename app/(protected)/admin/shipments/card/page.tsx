@@ -470,6 +470,10 @@ function ShipmentsCardContent() {
             title: `Timeline — ${names.shipNumber || 'Shipping'}`,
           });
         }}
+        onUpdate={(updatedShip) => {
+          setData((prev) => prev.map((s) => (s._id === updatedShip._id ? { ...s, ...updatedShip } : s)));
+          setDetailShipment(updatedShip);
+        }}
       />
 
       <AttachmentsModal

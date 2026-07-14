@@ -66,6 +66,7 @@ export interface IVBshipping extends Document {
   ticoVB?: string;
   updatedETA?: Date;
   arrivalNotice?: string;
+  isArrivalNotice?: boolean;
   isGensetRequired?: boolean;
   gensetInv?: string;
   gensetEmailed?: boolean;
@@ -131,6 +132,7 @@ const VBshippingSchema: Schema = new Schema(
     ticoVB: { type: String },
     updatedETA: { type: Date },
     arrivalNotice: { type: String },
+    isArrivalNotice: { type: Boolean },
     isGensetRequired: { type: Boolean },
     gensetInv: { type: String },
     gensetEmailed: { type: Boolean },
