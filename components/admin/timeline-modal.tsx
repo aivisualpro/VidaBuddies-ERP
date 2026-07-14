@@ -26,6 +26,8 @@ import {
     Package,
     Anchor,
     Bell,
+    Download,
+    Loader2,
 } from "lucide-react";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
 
@@ -333,6 +335,7 @@ export default function TimelineModal({
     const [sidebarSelection, setSidebarSelection] = useState<string>("all");
     const [statusFilter, setStatusFilter] = useState<string>("");
     const [typeFilter, setTypeFilter] = useState<string>("");
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
 
     // ── Hierarchy data from store + standalone collections ──
     const { data: purchaseOrders = [] } = usePurchaseOrders();
@@ -676,6 +679,132 @@ export default function TimelineModal({
 
     const showSidebar = !VBShipmentNumber && sidebarTree.size > 0;
 
+    /* ── Minimalistic PDF export of the visible records ── */
+    const handleDownloadPdf = async () => {
+        if (displayEntries.length === 0) {
+            toast.error("No entries to export");
+            return;
+        }
+        setDownloadingPdf(true);
+        try {
+            const { default: jsPDF } = await import("jspdf");
+            const { default: autoTable } = await import("jspdf-autotable");
+
+            const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            const fmtD = (s?: string) =>
+                s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+            // Title
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(14);
+            doc.setTextColor(20, 20, 20);
+            doc.text(displayTitle.replace("—", "-"), 40, 44);
+
+            // Subtitle: filters context + generated date
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(120, 120, 120);
+            const filterParts: string[] = [`${displayEntries.length} entries`];
+            if (statusFilter) filterParts.push(`Status: ${statusFilter}`);
+            if (typeFilter) filterParts.push(`Type: ${typeFilter}`);
+            if (search) filterParts.push(`Search: "${search}"`);
+            if (sidebarSelection !== "all") {
+                const sel = sidebarSelection.startsWith("ship:")
+                    ? resolveShip(sidebarSelection.slice(5))
+                    : resolveSerial(sidebarSelection);
+                filterParts.push(`Filtered: ${sel}`);
+            }
+            filterParts.push(
+                `Generated ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}`
+            );
+            doc.text(filterParts.join("   ·   "), 40, 60);
+
+            // Table
+            autoTable(doc, {
+                startY: 74,
+                head: [["Date", "Ref", "Type", "Category", "Comments", "Status", "Reminder", "Created By"]],
+                body: displayEntries.map((e) => [
+                    fmtD(e.date || e.timestamp),
+                    e._VBShipmentNumberDisplay || resolveShip(e.VBShipmentNumber) ||
+                        e._VBSerialNumberDisplay || resolveSerial(e.VBSerialNumber) || "—",
+                    e.type || "—",
+                    e.category || "—",
+                    e.comments || "—",
+                    e.status || "Open",
+                    e.reminder ? fmtD(e.reminder) : "—",
+                    e.createdBy === "System" ? "System" : resolveUser(e.createdBy),
+                ]),
+                theme: "plain",
+                styles: {
+                    font: "helvetica",
+                    fontSize: 8,
+                    textColor: [40, 40, 40],
+                    cellPadding: { top: 6, bottom: 6, left: 6, right: 6 },
+                    lineColor: [225, 225, 225],
+                    lineWidth: { bottom: 0.5 },
+                    valign: "top",
+                    overflow: "linebreak",
+                },
+                headStyles: {
+                    fontStyle: "bold",
+                    fontSize: 7.5,
+                    textColor: [110, 110, 110],
+                    fillColor: [246, 246, 246],
+                    lineWidth: { bottom: 1 },
+                    lineColor: [200, 200, 200],
+                },
+                columnStyles: {
+                    0: { cellWidth: 66 },   // Date
+                    1: { cellWidth: 70 },   // Ref
+                    2: { cellWidth: 74 },   // Type
+                    3: { cellWidth: 105 },  // Category
+                    4: { cellWidth: "auto" }, // Comments
+                    5: { cellWidth: 56 },   // Status
+                    6: { cellWidth: 56 },   // Reminder
+                    7: { cellWidth: 76 },   // Created By
+                },
+                didParseCell: (data) => {
+                    // Subtle status coloring
+                    if (data.section === "body" && data.column.index === 5) {
+                        const v = String(data.cell.raw || "");
+                        if (v === "Open") data.cell.styles.textColor = [5, 150, 105];
+                        else if (v === "In Progress") data.cell.styles.textColor = [37, 99, 235];
+                        else data.cell.styles.textColor = [130, 130, 130];
+                        data.cell.styles.fontStyle = "bold";
+                    }
+                    if (data.section === "body" && data.column.index === 2) {
+                        const v = String(data.cell.raw || "");
+                        if (v === "Action Required") data.cell.styles.textColor = [220, 38, 38];
+                    }
+                },
+                didDrawPage: () => {
+                    // Footer: page number
+                    const pageNo = doc.getNumberOfPages();
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(160, 160, 160);
+                    doc.text(
+                        `VidaBuddies ERP — ${displayTitle.replace("—", "-")} — Page ${pageNo}`,
+                        pageWidth / 2,
+                        doc.internal.pageSize.getHeight() - 18,
+                        { align: "center" }
+                    );
+                },
+                margin: { left: 40, right: 40, top: 40, bottom: 34 },
+            });
+
+            const ref = (VBShipmentNumber || VBSerialNumber || VBNumber || "Timeline").replace(/[^\w-]/g, "_");
+            doc.save(`Timeline_${ref}_${new Date().toISOString().split("T")[0]}.pdf`);
+            toast.success("PDF downloaded");
+        } catch (e) {
+            console.error("[Timeline PDF] Error:", e);
+            toast.error("Failed to generate PDF");
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
     return (
         <>
             <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -710,6 +839,17 @@ export default function TimelineModal({
                                 <option value="">All Types</option>
                                 {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-3 text-xs"
+                                onClick={handleDownloadPdf}
+                                disabled={downloadingPdf || displayEntries.length === 0}
+                                title="Download visible entries as PDF"
+                            >
+                                {downloadingPdf ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Download className="h-3 w-3 mr-1" />}
+                                PDF
+                            </Button>
                             <Button size="sm" className="h-7 px-3 text-xs" onClick={() => setShowAddDialog(true)}>
                                 <Plus className="h-3 w-3 mr-1" /> Add
                             </Button>

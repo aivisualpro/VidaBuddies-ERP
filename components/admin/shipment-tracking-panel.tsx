@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { X, Ship, Anchor, MapPin, Calendar, Clock, Navigation, ChevronRight, Loader2, AlertTriangle, Container, Globe, Compass } from "lucide-react";
+import { X, Ship, Anchor, MapPin, Calendar, Clock, Navigation, ChevronRight, Loader2, AlertTriangle, Container, Globe, Compass, BellRing } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmailAutomationDialog } from "@/components/admin/email-automation-dialog";
 
 interface ShipmentTrackingPanelProps {
   open: boolean;
@@ -15,6 +16,7 @@ export function ShipmentTrackingPanel({ open, onClose, containerNo, cachedRawJso
   const [rawData, setRawData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !containerNo) return;
@@ -226,9 +228,19 @@ ${bounds}
                 </div>
               </div>
             </div>
-            <button onClick={onClose} className="h-8 w-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAutomationsOpen(true)}
+                className="h-8 px-3 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 flex items-center gap-1.5 text-xs font-semibold text-blue-300 hover:text-blue-200 transition-colors"
+                title="Schedule recurring status emails for this shipment"
+              >
+                <BellRing className="h-3.5 w-3.5" />
+                Email Automations
+              </button>
+              <button onClick={onClose} className="h-8 w-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {/* Quick stats bar */}
@@ -418,6 +430,14 @@ ${bounds}
           ) : null}
         </div>
       </div>
+
+      {/* Email Automations */}
+      <EmailAutomationDialog
+        open={automationsOpen}
+        onClose={() => setAutomationsOpen(false)}
+        containerNo={containerNo}
+        routeLabel={polLoc && podLoc ? `${polLoc.name} → ${podLoc.name}` : undefined}
+      />
     </>
   );
 }
