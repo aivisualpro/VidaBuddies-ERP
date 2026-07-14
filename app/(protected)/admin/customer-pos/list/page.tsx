@@ -71,7 +71,7 @@ function CustomerPOsListContent() {
   const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<string | null>(null);
+  const [attachmentsPoNumber, setAttachmentsPoNumber] = useState<{ poNumber: string; spoNumber?: string } | null>(null);
   const [timelineCounts, setTimelineCounts] = useState<Record<string, number>>({});
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; title?: string } | null>(null);
   const [productsModal, setProductsModal] = useState<{ cpo: CustomerPO } | null>(null);
@@ -431,7 +431,7 @@ function CustomerPOsListContent() {
             onClick={(e) => {
               e.stopPropagation();
               const poNo = row.original.VBNumber || "";
-              if (poNo) setAttachmentsPoNumber(poNo);
+              if (poNo) setAttachmentsPoNumber({ poNumber: poNo, spoNumber: row.original.VBSerialNumber || undefined });
             }}
             className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${count > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground hover:bg-muted'}`}
           >
@@ -607,7 +607,8 @@ function CustomerPOsListContent() {
       <DriveDocumentsModal
         open={!!attachmentsPoNumber}
         onClose={() => setAttachmentsPoNumber(null)}
-        poNumber={attachmentsPoNumber || ""}
+        poNumber={attachmentsPoNumber?.poNumber || ""}
+        spoNumber={attachmentsPoNumber?.spoNumber}
       />
 
       {/* Timeline Modal */}

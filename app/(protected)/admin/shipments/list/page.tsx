@@ -675,6 +675,8 @@ function ShipmentsListContent() {
         open={!!attachmentsOpen}
         onClose={() => setAttachmentsOpen(null)}
         poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
         onOpenLegacy={() => {
           const saved = attachmentsOpen;
           setAttachmentsOpen(null);

@@ -17,7 +17,7 @@ import {
   Eye, EyeOff, Package, Ship, ShoppingCart,
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download,
-  FolderPlus, ArrowRightLeft,
+  FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -44,6 +44,10 @@ interface DriveDocumentsModalProps {
   open: boolean;
   onClose: () => void;
   poNumber: string;
+  /** When provided, the modal opens focused on this Customer PO (VBSerialNumber display, e.g. "VB504-10") */
+  spoNumber?: string;
+  /** When provided, the modal opens focused on this Shipment (VBShipmentNumber display, e.g. "VB504-10-2") */
+  shipNumber?: string;
   onOpenLegacy?: () => void;
 }
 
@@ -267,10 +271,14 @@ function PreviewPanel({ previewFile, onClose }: { previewFile: DocRecord; onClos
 }
 
 /* ─── Component ─── */
-export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: DriveDocumentsModalProps) {
+export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNumber, onOpenLegacy }: DriveDocumentsModalProps) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  // Sidebar is collapsed by default — the modal opens focused on the clicked record
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Apply the initial record selection only once per open
+  const appliedInitialRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<DocRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -558,8 +566,26 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
       fetchEmailRecords();
       setSelected(null);
       setPreviewFile(null);
+      setSidebarOpen(false);
+      appliedInitialRef.current = false;
     }
   }, [open, fetchDocs, fetchEmailRecords]);
+
+  // Auto-focus the record the user clicked on (shipment first, then CPO).
+  // Runs once per open, as soon as the sidebar items are loaded.
+  useEffect(() => {
+    if (!open || appliedInitialRef.current || items.length === 0) return;
+    appliedInitialRef.current = true;
+    if (!shipNumber && !spoNumber) return; // opened from PO level → keep "All"
+    let target: SidebarItem | undefined;
+    if (shipNumber) {
+      target = items.find((i) => i.kind === "VBShipmentNumber" && i.label === shipNumber);
+    }
+    if (!target && spoNumber) {
+      target = items.find((i) => i.kind === "VBSerialNumber" && i.label === spoNumber);
+    }
+    if (target) setSelected(target.id);
+  }, [open, items, spoNumber, shipNumber]);
 
   const handleEmail = () => {
     const docs = getSelectedDocs().filter(d => d.doc.documentType === "External");
@@ -767,10 +793,31 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
           <div className="flex items-center justify-between px-6 py-3.5 border-b border-border/40 bg-gradient-to-r from-background to-muted/20 shrink-0">
             <DialogHeader className="p-0 space-y-0">
               <DialogTitle className="text-lg font-bold flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen((v) => !v)}
+                  className={cn(
+                    "h-9 w-9 rounded-xl border flex items-center justify-center transition-all shrink-0",
+                    sidebarOpen
+                      ? "bg-primary/15 border-primary/30 text-primary shadow-sm"
+                      : "bg-muted/40 border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                  )}
+                  title={sidebarOpen ? "Hide records panel" : "Browse all records"}
+                >
+                  {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+                </button>
                 <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shadow-sm">
                   <Paperclip className="h-4 w-4 text-primary" />
                 </div>
-                Attachments
+                <span className="flex items-center gap-2">
+                  Attachments
+                  {selectedItem && (
+                    <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-muted/60 border border-border/40", kindColor(selectedItem.kind))}>
+                      {kindIcon(selectedItem.kind)}
+                      {selectedItem.label}
+                    </span>
+                  )}
+                </span>
               </DialogTitle>
               <DialogDescription className="sr-only">Manage attachments</DialogDescription>
             </DialogHeader>
@@ -843,8 +890,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
             onDrop={handleDrop}
           >
 
-            {/* Sidebar */}
-            <div className="w-[200px] border-r bg-muted/10 flex flex-col shrink-0 overflow-y-auto">
+            {/* Sidebar — collapsed by default, slides open via the header toggle */}
+            <div
+              className={cn(
+                "bg-muted/10 flex flex-col shrink-0 overflow-y-auto overflow-x-hidden transition-[width] duration-300 ease-out",
+                sidebarOpen ? "w-[200px] border-r" : "w-0"
+              )}
+            >
+              <div className="w-[200px] shrink-0">
               {/* All */}
               <button onClick={() => { setSelected(null); setPreviewFile(null); }}
                 className={cn("w-full text-left px-4 py-3 text-xs font-semibold transition-all border-l-2 flex items-center justify-between",
@@ -897,6 +950,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   ))}
                 </div>
               )}
+              </div>
             </div>
 
             {/* Content */}
@@ -909,6 +963,15 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                   </span>
                   <span className="text-sm font-bold">{selectedItem.label}</span>
                   <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">{selectedItem.docs.length} files</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted px-2 py-1 rounded-full transition-colors"
+                    title="Show attachments from all records"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                    View All
+                  </button>
                 </div>
               )}
 

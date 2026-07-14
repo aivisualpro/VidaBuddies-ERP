@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Ship, DollarSign, FileCheck, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2, ArrowRightLeft, Weight } from "lucide-react";
+import { X, Ship, DollarSign, FileCheck, Loader2, MapPin, Paperclip, Clock, Pencil, Trash2, ArrowRightLeft, Weight, BellRing } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { TransferOrderDialog } from "@/components/admin/transfer-order-dialog";
+import { EmailAutomationDialog } from "@/components/admin/email-automation-dialog";
 
 interface ShipmentDetailPanelProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
   const [ship, setShip] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [emailAutomationsOpen, setEmailAutomationsOpen] = useState(false);
 
   // Display names come pre-resolved from denormalized API (_display* fields)
 
@@ -144,6 +146,15 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
                     title="Live SeaRates Tracking"
                   >
                     <MapPin className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {ship.containerNo && !ship.containerNo.toUpperCase().startsWith('TBD') && (
+                  <button
+                    onClick={() => setEmailAutomationsOpen(true)}
+                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+                    title="Email Automations — schedule or send status emails"
+                  >
+                    <BellRing className="h-3.5 w-3.5" />
                   </button>
                 )}
                 {ship && !isDirectShipment && (
@@ -401,6 +412,21 @@ export function ShipmentDetailPanel({ open, onClose, shipmentId, shipmentData: i
               : ship.product ? [ship.product] : [];
             return pIds.map((pid: string, i: number) => ({ _id: pid, name: names[i] || pid }));
           })()}
+        />
+      )}
+
+      {/* Email Automations */}
+      {ship?.containerNo && !ship.containerNo.toUpperCase().startsWith('TBD') && (
+        <EmailAutomationDialog
+          open={emailAutomationsOpen}
+          onClose={() => setEmailAutomationsOpen(false)}
+          containerNo={ship.containerNo}
+          shippingId={ship._id || null}
+          routeLabel={
+            ship.portOfLading && ship.portOfEntryShipTo
+              ? `${ship.portOfLading} → ${ship.portOfEntryShipTo}`
+              : undefined
+          }
         />
       )}
     </>

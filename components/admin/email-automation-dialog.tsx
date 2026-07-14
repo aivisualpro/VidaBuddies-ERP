@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   X, Mail, Plus, Trash2, Loader2, Clock, Globe, CalendarClock,
-  BellRing, CheckCircle2, PauseCircle, PlayCircle, Sparkles,
+  BellRing, CheckCircle2, PauseCircle, PlayCircle, Sparkles, Send,
 } from "lucide-react";
 
 interface EmailAutomationDialogProps {
@@ -44,10 +44,11 @@ export function EmailAutomationDialog({
   // Form state
   const [emails, setEmails] = useState<string[]>([]);
   const [emailInput, setEmailInput] = useState("");
-  const [frequencyDays, setFrequencyDays] = useState<1 | 2 | 3>(1);
+  const [frequencyDays, setFrequencyDays] = useState<1 | 2 | 3>(3);
   const [sendTime, setSendTime] = useState("09:00");
   const [timezone, setTimezone] = useState("America/Toronto");
   const [saving, setSaving] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Existing automations
@@ -72,7 +73,7 @@ export function EmailAutomationDialog({
       fetchAutomations();
       setEmails([]);
       setEmailInput("");
-      setFrequencyDays(1);
+      setFrequencyDays(3);
       setSendTime("09:00");
       setTimezone("America/Toronto");
     }
@@ -93,16 +94,79 @@ export function EmailAutomationDialog({
 
   const removeEmail = (email: string) => setEmails((prev) => prev.filter((e) => e !== email));
 
-  const handleCreate = async () => {
-    // Include anything still typed in the input
+  /** Collect chips + any email still typed in the input */
+  const collectEmails = (): string[] | null => {
     let finalEmails = emails;
     if (emailInput.trim()) {
       if (!EMAIL_RE.test(emailInput.trim().toLowerCase())) {
         toast.error(`Invalid email: ${emailInput.trim()}`);
-        return;
+        return null;
       }
       finalEmails = [...new Set([...emails, emailInput.trim().toLowerCase()])];
     }
+    return finalEmails;
+  };
+
+  /** Send the shipment snapshot immediately to the emails in the form */
+  const handleSendNow = async () => {
+    const finalEmails = collectEmails();
+    if (finalEmails === null) return;
+    if (finalEmails.length === 0) {
+      toast.error("Add at least one recipient email");
+      inputRef.current?.focus();
+      return;
+    }
+    setSendingNow(true);
+    try {
+      const res = await fetch("/api/admin/email-automations/send-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerNo, recipients: finalEmails }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Shipment snapshot sent", {
+          description: `Emailed to ${finalEmails.join(", ")}`,
+        });
+      } else {
+        toast.error("Failed to send", { description: data.error });
+      }
+    } catch {
+      toast.error("Failed to send");
+    } finally {
+      setSendingNow(false);
+    }
+  };
+
+  /** Send now using an existing automation's recipients */
+  const sendNowForAutomation = async (auto: any) => {
+    setBusyId(auto._id);
+    try {
+      const res = await fetch("/api/admin/email-automations/send-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerNo, automationId: auto._id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Shipment snapshot sent", {
+          description: `Emailed to ${(auto.recipients || []).join(", ")}`,
+        });
+        fetchAutomations();
+      } else {
+        toast.error("Failed to send", { description: data.error });
+      }
+    } catch {
+      toast.error("Failed to send");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCreate = async () => {
+    // Include anything still typed in the input
+    const finalEmails = collectEmails();
+    if (finalEmails === null) return;
     if (finalEmails.length === 0) {
       toast.error("Add at least one recipient email");
       inputRef.current?.focus();
@@ -305,15 +369,26 @@ export function EmailAutomationDialog({
             </p>
           </div>
 
-          {/* Create button */}
-          <button
-            onClick={handleCreate}
-            disabled={saving}
-            className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Create Automation
-          </button>
+          {/* Actions: Send Now + Create */}
+          <div className="grid grid-cols-[1fr_1.4fr] gap-2.5">
+            <button
+              onClick={handleSendNow}
+              disabled={sendingNow || saving}
+              title="Send the shipment snapshot immediately to these recipients"
+              className="h-10 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-60 text-emerald-300 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+            >
+              {sendingNow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Send Now
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={saving || sendingNow}
+              className="h-10 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create Automation
+            </button>
+          </div>
 
           {/* Existing automations */}
           <div>
@@ -361,6 +436,14 @@ export function EmailAutomationDialog({
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => sendNowForAutomation(auto)}
+                          disabled={busyId === auto._id}
+                          title="Send now to these recipients"
+                          className="h-7 w-7 rounded-lg hover:bg-emerald-500/15 flex items-center justify-center text-zinc-400 hover:text-emerald-400 transition-colors"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           onClick={() => toggleActive(auto)}
                           disabled={busyId === auto._id}

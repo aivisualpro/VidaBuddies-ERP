@@ -1434,6 +1434,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
           if (po?.VBNumber) fetchEmailRecords(po.VBNumber);
         }}
         poNumber={attachmentsOpen?.poNumber || ''}
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
         onOpenLegacy={() => {
           // Close DriveDocuments and open legacy AttachmentsModal
           const saved = attachmentsOpen;

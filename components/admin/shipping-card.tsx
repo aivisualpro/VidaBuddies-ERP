@@ -20,7 +20,9 @@ import {
   CheckCircle2,
   ArrowRightLeft,
   Weight,
+  BellRing,
 } from "lucide-react";
+import { EmailAutomationDialog } from "@/components/admin/email-automation-dialog";
 
 export interface ShippingCardShip {
   _id?: string;
@@ -130,8 +132,10 @@ export function ShippingCard({
   defaultOpen = false,
 }: ShippingCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [emailAutomationsOpen, setEmailAutomationsOpen] = useState(false);
 
   const shipId = ship._id || String(index);
+  const hasTrackableContainer = !!ship.containerNo && !ship.containerNo.toUpperCase().startsWith("TBD");
 
   // Resolve supplier name
   const supplierName =
@@ -268,6 +272,17 @@ export function ShippingCard({
                 onClick={(e) => { e.stopPropagation(); onTransfers(ship); }}
               >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {hasTrackableContainer && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg"
+                title="Email Automations — schedule or send status emails"
+                onClick={(e) => { e.stopPropagation(); setEmailAutomationsOpen(true); }}
+              >
+                <BellRing className="h-3.5 w-3.5" />
               </Button>
             )}
             {onEdit && (
@@ -467,6 +482,21 @@ export function ShippingCard({
           </div>
         </div>
       </div>
+
+      {/* Email Automations */}
+      {hasTrackableContainer && (
+        <EmailAutomationDialog
+          open={emailAutomationsOpen}
+          onClose={() => setEmailAutomationsOpen(false)}
+          containerNo={ship.containerNo!}
+          shippingId={ship._id || null}
+          routeLabel={
+            ship.portOfLading && ship.portOfEntryShipTo
+              ? `${ship.portOfLading} → ${ship.portOfEntryShipTo}`
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
