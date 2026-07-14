@@ -16,21 +16,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "VBNumber is required" }, { status: 400 });
     }
 
-    // Query by ObjectId if it looks like one, otherwise resolve display name
-    let filter: any;
+    // Email records may store VBNumber as either the PO ObjectId OR the
+    // display string (e.g. "VB504"), depending on where they were created.
+    // Build a candidate list covering every form and match with $in.
+    const candidates: any[] = [rawId];
+    const VidaPO = (await import("@/lib/models/VidaPO")).default;
     if (/^[a-f0-9]{24}$/i.test(rawId)) {
-      filter = { VBNumber: new mongoose.Types.ObjectId(rawId) };
+      const oid = new mongoose.Types.ObjectId(rawId);
+      candidates.push(oid);
+      // Also resolve the display name for legacy string records
+      const po = await VidaPO.findById(oid, { VBNumber: 1 }).lean() as any;
+      if (po?.VBNumber) candidates.push(po.VBNumber);
     } else {
-      // rawId is a display name like "VB300" — resolve to PO ObjectId
-      const VidaPO = (await import("@/lib/models/VidaPO")).default;
-      const po = await VidaPO.findOne({ VBNumber: rawId }, { _id: 1 }).lean();
-      if (po) {
-        filter = { VBNumber: po._id };
-      } else {
-        // Fallback: try matching as string (for legacy unresolved records)
-        filter = { VBNumber: rawId };
-      }
+      // rawId is a display name like "VB504" — also resolve to PO ObjectId
+      const po = await VidaPO.findOne({ VBNumber: rawId }, { _id: 1 }).lean() as any;
+      if (po?._id) candidates.push(po._id);
     }
+    const filter = { VBNumber: { $in: candidates } };
 
     // Raw query ensures ALL fields (including 'reference') are returned
     const db = mongoose.connection.db;

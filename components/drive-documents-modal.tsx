@@ -312,9 +312,23 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  // Track whether we already have data loaded — lets us revalidate in the
+  // background on reopen instead of blanking the UI with a spinner.
+  const docsLoadedRef = useRef(false);
+  const emailsLoadedRef = useRef(false);
+
+  // Reset caches when the PO changes
+  useEffect(() => {
+    docsLoadedRef.current = false;
+    emailsLoadedRef.current = false;
+    setItems([]);
+    setEmailRecords([]);
+  }, [poNumber]);
+
   const fetchDocs = useCallback(async () => {
     if (!poNumber) { setLoading(false); return; }
-    setLoading(true);
+    // Only show the blocking spinner on first load; afterwards revalidate silently
+    setLoading(!docsLoadedRef.current);
     try {
       const res = await fetch(`/api/admin/drive-documents?vbNumber=${encodeURIComponent(poNumber)}`);
       const data = await res.json();
@@ -331,17 +345,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
         result.push({ id: s._id, label: s.VBShipmentNumber, kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [] });
       }
       setItems(result);
+      docsLoadedRef.current = true;
     } catch { toast.error("Failed to load documents"); }
     finally { setLoading(false); }
   }, [poNumber]);
-
-  useEffect(() => {
-    if (open) {
-      fetchDocs();
-      setSelected(null);
-      setPreviewFile(null);
-    }
-  }, [open, fetchDocs]);
 
   // Intercept Escape: close preview first
   useEffect(() => {
@@ -530,14 +537,29 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
   /* ─── Email handler ─── */
   const fetchEmailRecords = useCallback(async () => {
     if (!poNumber) return;
-    setLoadingEmails(true);
+    // Only show the spinner on first load; afterwards revalidate silently
+    setLoadingEmails(!emailsLoadedRef.current);
     try {
       const res = await fetch(`/api/admin/emails?vbpoNo=${encodeURIComponent(poNumber)}`);
       const data = await res.json();
-      if (res.ok) setEmailRecords(data.emails || []);
+      if (res.ok) {
+        setEmailRecords(data.emails || []);
+        emailsLoadedRef.current = true;
+      }
     } catch { /* silent */ }
     finally { setLoadingEmails(false); }
   }, [poNumber]);
+
+  // Fetch docs + emails in PARALLEL when the modal opens, so sidebar
+  // counters (docs and emails) are correct immediately — no refresh needed.
+  useEffect(() => {
+    if (open) {
+      fetchDocs();
+      fetchEmailRecords();
+      setSelected(null);
+      setPreviewFile(null);
+    }
+  }, [open, fetchDocs, fetchEmailRecords]);
 
   const handleEmail = () => {
     const docs = getSelectedDocs().filter(d => d.doc.documentType === "External");
@@ -1070,6 +1092,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, onOpenLegacy }: D
                           {/* Thumbnail */}
                           <div className="relative h-[120px] bg-muted/30 overflow-hidden">
                             <img src={thumbUrl(d.driveFileId)} alt={d.documentName}
+                              loading="lazy" decoding="async"
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; const fb = (e.target as HTMLImageElement).parentElement?.querySelector('.thumb-fb') as HTMLElement; if (fb) fb.style.display = 'flex'; }} />
                             <div className="thumb-fb absolute inset-0 items-center justify-center bg-gradient-to-br from-muted/40 to-muted/20" style={{ display: 'none' }}>
