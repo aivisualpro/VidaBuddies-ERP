@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 /**
  * Polls /api/version every 60s. When the build ID changes after
@@ -9,7 +9,40 @@ import { RefreshCw } from "lucide-react";
  */
 export function VersionUpdateBanner() {
   const [showBanner, setShowBanner] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const initialBuildId = useRef<string | null>(null);
+
+  /**
+   * Hard update: activate any waiting service worker, wipe SW caches,
+   * then reload. A plain location.reload() is not enough — the old
+   * service worker keeps serving cached HTML/assets, so the user sees
+   * the old version and the banner again.
+   */
+  const handleUpdate = async () => {
+    if (updating) return;
+    setUpdating(true);
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          regs.map(async (reg) => {
+            try { await reg.update(); } catch { /* ignore */ }
+            // Tell a waiting SW to take over immediately
+            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+          })
+        );
+      }
+      // Wipe all SW caches so the reload fetches everything fresh
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch { /* proceed to reload regardless */ }
+    // Cache-busting query param defeats any remaining HTTP cache for the document
+    const url = new URL(window.location.href);
+    url.searchParams.set("_v", Date.now().toString(36));
+    window.location.replace(url.toString());
+  };
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval>;
@@ -59,11 +92,12 @@ export function VersionUpdateBanner() {
           <span className="font-medium">A new version is available</span>
         </div>
         <button
-          onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          onClick={handleUpdate}
+          disabled={updating}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-70"
         >
-          <RefreshCw className="h-3 w-3" />
-          Update
+          {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          {updating ? "Updating…" : "Update"}
         </button>
         <button
           onClick={() => setShowBanner(false)}

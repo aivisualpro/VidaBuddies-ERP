@@ -1,7 +1,12 @@
 // Vida Buddies ERP — Service Worker
 // Provides offline caching and enables PWA installability
 
-const CACHE_NAME = 'vida-buddies-v2';
+const CACHE_NAME = 'vida-buddies-v3';
+
+// Allow the app (version update banner) to force-activate a waiting SW
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
 
 // Assets to pre-cache on install
 const PRECACHE_ASSETS = [

@@ -2,134 +2,119 @@
 
 import { useMemo } from "react";
 import { usePurchaseOrders } from "@/hooks/queries/usePurchaseOrders";
+import { useLiveShipments, normalizeShipmentStatus } from "@/hooks/queries/useLiveShipments";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ShipmentMapWrapper from "@/components/dashboard/shipment-map-wrapper";
 import { Ship, Package, CheckCircle, Clock } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 
+/* Port name → [lat, lng] fallback geocoding for origin/destination arcs */
+const PORTS: Record<string, [number, number]> = {
+  chennai: [13.08, 80.27], ennore: [13.22, 80.32], mundra: [22.74, 69.72],
+  santos: [-23.96, -46.31], callao: [-12.06, -77.14], "san antonio": [-33.59, -71.62],
+  moin: [10.0, -83.08], kingston: [17.97, -76.84], freeport: [26.53, -78.7],
+  "new york": [40.68, -74.04], "new york city": [40.68, -74.04],
+  philadelphia: [39.9, -75.14], brampton: [43.73, -79.76],
+  montreal: [45.5, -73.55], seattle: [47.6, -122.34],
+  "london gateway": [51.45, 0.45], bordeaux: [44.86, -0.57],
+  colombo: [6.93, 79.85], singapore: [1.26, 103.82],
+  piraeus: [37.94, 23.64], "p&w": [39.9, -75.14],
+};
+
+function findPort(n?: string): [number, number] | undefined {
+  if (!n) return undefined;
+  const lc = n.toLowerCase().trim();
+  for (const [k, c] of Object.entries(PORTS)) {
+    if (lc.includes(k) || k.includes(lc)) return c;
+  }
+  return undefined;
+}
+
 export default function DashboardPage() {
-  const { data = [], isLoading } = usePurchaseOrders();
+  const { data: poData = [], isLoading: poLoading } = usePurchaseOrders();
+  // Same collection + cache as /admin/live-shipments — counts always match
+  const { data: shipments = [], isLoading: shipmentsLoading } = useLiveShipments();
 
   const statsData = useMemo(() => {
     let total = 0, delivered = 0, inTransit = 0, pending = 0;
-    
+
     // For Map
     const locations: any[] = [];
+    const seenContainers = new Set<string>();
     let mapInTransitCount = 0;
-    
+
     // For Chart
-    const monthlyMap: Record<string, { delivered: number, inTransit: number, other: number }> = {};
-    
-    data.forEach((po: any) => {
-      if (po.customerPO && Array.isArray(po.customerPO)) {
-        po.customerPO.forEach((cpo: any) => {
-          if (cpo.shipping && Array.isArray(cpo.shipping)) {
-            cpo.shipping.forEach((ship: any) => {
-              total++;
-              
-              const status = (ship.status || "").toLowerCase().trim();
-              let category = "pending";
-              
-              // Determine base category
-              if (status === "delivered" || status === "arrived") {
-                category = "delivered";
-              } else if (status === "in transit" || status === "in_transit" || status === "on water") {
-                category = "inTransit";
-              }
+    const monthlyMap: Record<string, { delivered: number; inTransit: number; other: number }> = {};
 
-              // Auto-flag: if ETA is past and still "in transit", treat as delivered
-              if (category === "inTransit") {
-                const eta = ship.updatedETA || ship.ETA || "";
-                if (eta) {
-                  const etaDate = new Date(eta);
-                  if (!isNaN(etaDate.getTime()) && etaDate.getTime() < Date.now()) {
-                    category = "delivered";
-                  }
-                }
-              }
+    shipments.forEach((ship: any) => {
+      total++;
 
-              if (category === "delivered") delivered++;
-              else if (category === "inTransit") inTransit++;
-              else pending++;
-              
-              // Map locations
-              if (category === "inTransit") {
-                mapInTransitCount++;
-                if (ship.containerNo && !locations.some(loc => loc.containerNo === ship.containerNo)) {
-                  const records = ship.shippingTrackingRecords;
-                  if (records && records.length > 0) {
-                    const lastRecord = records[records.length - 1];
-                    if (lastRecord.latlong) {
-                      const parts = lastRecord.latlong.split(',');
-                      if (parts.length === 2) {
-                        const lat = parseFloat(parts[0].trim());
-                        const lng = parseFloat(parts[1].trim());
-                        if (!isNaN(lat) && !isNaN(lng)) {
-                          // Port geocoding lookup
-                          const _ports: Record<string, [number, number]> = {
-                            'chennai': [13.08, 80.27], 'ennore': [13.22, 80.32], 'mundra': [22.74, 69.72],
-                            'santos': [-23.96, -46.31], 'callao': [-12.06, -77.14], 'san antonio': [-33.59, -71.62],
-                            'moin': [10.00, -83.08], 'kingston': [17.97, -76.84], 'freeport': [26.53, -78.70],
-                            'new york': [40.68, -74.04], 'new york city': [40.68, -74.04],
-                            'philadelphia': [39.90, -75.14], 'brampton': [43.73, -79.76],
-                            'montreal': [45.50, -73.55], 'seattle': [47.60, -122.34],
-                            'london gateway': [51.45, 0.45], 'bordeaux': [44.86, -0.57],
-                            'colombo': [6.93, 79.85], 'singapore': [1.26, 103.82],
-                            'piraeus': [37.94, 23.64], 'p&w': [39.90, -75.14],
-                          };
-                          const _fp = (n?: string) => {
-                            if (!n) return undefined;
-                            const lc = n.toLowerCase().trim();
-                            for (const [k, c] of Object.entries(_ports)) { if (lc.includes(k) || k.includes(lc)) return c; }
-                            return undefined;
-                          };
-                          const oC = _fp(lastRecord.pol_name) || _fp(ship.portOfLading);
-                          const dC = _fp(lastRecord.pod_name) || _fp(ship.portOfEntryShipTo);
+      const normalized = normalizeShipmentStatus(ship.status);
+      let category: "delivered" | "inTransit" | "pending" =
+        normalized === "Delivered" ? "delivered" :
+        normalized === "In Transit" ? "inTransit" : "pending";
 
-                          locations.push({
-                            lat, lng,
-                            title: (lastRecord.last_event_code === 'DEPA' || ship.status === 'IN_TRANSIT' || ship.status === 'In Transit' || ship.status === 'On Water') ? `On Water (${lastRecord.vessel_names || 'Vessel'})` : (lastRecord.last_event_location || ship.vessellTrip || "Unknown Location"),
-                            containerNo: ship.containerNo,
-                            vbid: po.VBNumber,
-                            status: ship.status,
-                            origin: lastRecord.pol_name || ship.fromPort?.name || "N/A",
-                            destination: lastRecord.pod_name || ship.toPort?.name || "N/A",
-                            eta: lastRecord.pod_predictive_eta || lastRecord.pod_date || ship.updatedETA || ship.ETA || null,
-                            departure: lastRecord.pol_date || null,
-                            updatedAt: lastRecord.updated_at || null,
-                            vessel: lastRecord.vessel_names || ship.vesselName || null,
-                            type: lastRecord.container_size_type || "",
-                            rawJson: lastRecord.raw_json || null,
-                            originLat: oC?.[0], originLng: oC?.[1],
-                            destLat: dC?.[0], destLng: dC?.[1],
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+      if (category === "delivered") delivered++;
+      else if (category === "inTransit") inTransit++;
+      else pending++;
 
-              // Chart data
-              const shipDateStr = ship.updatedETA || ship.ETA || ship.supplierPoDate;
-              if (shipDateStr) {
-                 const d = new Date(shipDateStr);
-                 if (!isNaN(d.getTime())) {
-                   const mm = String(d.getMonth() + 1).padStart(2, '0');
-                   const yyyy = d.getFullYear();
-                   const monthKey = `${yyyy}-${mm}`;
-                   if (!monthlyMap[monthKey]) {
-                     monthlyMap[monthKey] = { delivered: 0, inTransit: 0, other: 0 };
-                   }
-                   if (category === "delivered") monthlyMap[monthKey].delivered++;
-                   else if (category === "inTransit") monthlyMap[monthKey].inTransit++;
-                   else monthlyMap[monthKey].other++;
-                 }
+      // Map locations — latest tracking record with a lat/long
+      if (category === "inTransit") {
+        mapInTransitCount++;
+        const records = ship.shippingTrackingRecords;
+        if (
+          ship.containerNo && !seenContainers.has(ship.containerNo) &&
+          records && records.length > 0
+        ) {
+          const lastRecord = records[records.length - 1];
+          if (lastRecord?.latlong) {
+            const parts = String(lastRecord.latlong).split(",");
+            if (parts.length === 2) {
+              const lat = parseFloat(parts[0].trim());
+              const lng = parseFloat(parts[1].trim());
+              if (!isNaN(lat) && !isNaN(lng)) {
+                seenContainers.add(ship.containerNo);
+                const oC = findPort(lastRecord.pol_name) || findPort(ship.portOfLading);
+                const dC = findPort(lastRecord.pod_name) || findPort(ship.portOfEntryShipTo);
+
+                locations.push({
+                  lat, lng,
+                  title:
+                    lastRecord.last_event_code === "DEPA" || normalized === "In Transit"
+                      ? `On Water (${lastRecord.vessel_names || "Vessel"})`
+                      : lastRecord.last_event_location || ship.vessellTrip || "Unknown Location",
+                  containerNo: ship.containerNo,
+                  vbid: ship._displayVBNumber || "",
+                  status: ship.status,
+                  origin: lastRecord.pol_name || ship.portOfLading || "N/A",
+                  destination: lastRecord.pod_name || ship.portOfEntryShipTo || "N/A",
+                  eta: lastRecord.pod_predictive_eta || lastRecord.pod_date || ship.updatedETA || ship.ETA || null,
+                  departure: lastRecord.pol_date || null,
+                  updatedAt: lastRecord.updated_at || null,
+                  vessel: lastRecord.vessel_names || ship.vesselName || null,
+                  type: lastRecord.container_size_type || "",
+                  rawJson: lastRecord.raw_json || null,
+                  originLat: oC?.[0], originLng: oC?.[1],
+                  destLat: dC?.[0], destLng: dC?.[1],
+                });
               }
-            });
+            }
           }
-        });
+        }
+      }
+
+      // Chart data
+      const shipDateStr = ship.updatedETA || ship.ETA || ship.supplierPoDate;
+      if (shipDateStr) {
+        const d = new Date(shipDateStr);
+        if (!isNaN(d.getTime())) {
+          const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { delivered: 0, inTransit: 0, other: 0 };
+          if (category === "delivered") monthlyMap[monthKey].delivered++;
+          else if (category === "inTransit") monthlyMap[monthKey].inTransit++;
+          else monthlyMap[monthKey].other++;
+        }
       }
     });
 
@@ -138,10 +123,10 @@ export default function DashboardPage() {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     return { total, delivered, inTransit, pending, locations, mapInTransitCount, chart };
-  }, [data]);
+  }, [shipments]);
 
-  const totalPOs = data.length;
-  const { total, delivered, inTransit, pending, locations: mapLocations, mapInTransitCount: totalInTransit, chart: chartData } = statsData;
+  const totalPOs = poData.length;
+  const { total, delivered, inTransit, locations: mapLocations, mapInTransitCount: totalInTransit, chart: chartData } = statsData;
 
   const statCards = [
     { label: "Purchase Orders", value: totalPOs, icon: Package, color: "text-violet-500", bg: "bg-violet-500/10" },
@@ -150,7 +135,7 @@ export default function DashboardPage() {
     { label: "Delivered", value: delivered, icon: CheckCircle, color: "text-green-500", bg: "bg-green-500/10" },
   ];
 
-  if (isLoading) {
+  if (poLoading && shipmentsLoading) {
     return <TablePageSkeleton />;
   }
 
@@ -178,7 +163,7 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>
             Live Shipments Map ({mapLocations.length}
-            {totalInTransit !== mapLocations.length ? ` of ${totalInTransit}` : ''})
+            {totalInTransit !== mapLocations.length ? ` of ${totalInTransit}` : ""})
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">

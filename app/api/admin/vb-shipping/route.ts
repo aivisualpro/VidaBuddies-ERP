@@ -53,9 +53,17 @@ export async function GET(req: Request) {
     }
     if (containerNo) filter.containerNo = containerNo;
 
-    // Live Shipments page needs tracking records; other consumers don't
-    const includeTracking = searchParams.get("includeTracking") === "1";
-    const projection = includeTracking ? { driveDocuments: 0 } : LIST_PROJECTION;
+    // Live Shipments page needs tracking records; other consumers don't.
+    //   includeTracking=last → only the LAST tracking record ($slice) — much
+    //   smaller payload; all current consumers only read the latest record.
+    //   includeTracking=1    → full history (legacy)
+    const includeTracking = searchParams.get("includeTracking");
+    const projection: any =
+      includeTracking === "last"
+        ? { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
+        : includeTracking === "1"
+          ? { driveDocuments: 0 }
+          : LIST_PROJECTION;
 
     const items = await VBshipping.find(filter, projection)
       .sort({ createdAt: -1 })
