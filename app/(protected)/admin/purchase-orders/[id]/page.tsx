@@ -386,27 +386,73 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       .catch(() => setShipCPOs([]));
   }, [shipVBNumber]);
 
-  // Auto-generate VBShipmentNumber when VBSerialNumber is selected
+  // Normalize a possibly-populated ObjectId reference to a plain id string
+  const toIdStr = (val: any): string => {
+    if (!val) return "";
+    if (typeof val === "object") return val._id?.toString() || "";
+    return val.toString();
+  };
+
+  // Auto-generate VBShipmentNumber when VBSerialNumber is selected.
+  // Guards (fix for Shipment # silently changing on edit):
+  //  1. Only runs while the shipping dialog is actually open.
+  //  2. When editing, only regenerates if the Contract # was changed away from the
+  //     shipment's original one — otherwise the existing number is kept.
+  //  3. Late responses are discarded via the cleanup flag so a stale fetch from a
+  //     previous dialog/CPO can never overwrite the field.
   useEffect(() => {
-    if (!shipVBSerial || editingShipping) return;
+    const dialogOpen = !!addingShippingToCPO || !!editingShipping;
+    if (!shipVBSerial || !dialogOpen) return;
+
+    if (editingShipping) {
+      const ship = editingShipping.data;
+      const originalSerial = toIdStr(ship?.VBSerialNumber);
+      const originalNumber = ship?.VBShipmentNumber || ship?.svbid || "";
+      if (shipVBSerial === originalSerial && originalNumber) {
+        // Contract # unchanged (or re-selected) — restore the original number if the
+        // field was cleared, and never fetch a new one.
+        setAutoSvbid(prev => prev || originalNumber);
+        return;
+      }
+    }
+
+    let cancelled = false;
     fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${shipVBSerial}`)
       .then(r => r.json())
-      .then(res => { if (res.nextNumber) setAutoSvbid(res.nextNumber); })
+      .then(res => { if (!cancelled && res.nextNumber) setAutoSvbid(res.nextNumber); })
       .catch(() => {});
-  }, [shipVBSerial, editingShipping]);
+    return () => { cancelled = true; };
+  }, [shipVBSerial, editingShipping, addingShippingToCPO]);
 
-  // Pre-fill shipping form state when dialog opens
+  // Pre-fill shipping form state when dialog opens.
+  // Runs ONCE per dialog open (tracked via ref) — previously it re-ran on every `po`
+  // refetch (realtime updates), resetting controlled fields while the user was editing.
+  const shippingPrefillKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (addingShippingToCPO && po) {
+    const key = addingShippingToCPO
+      ? `add-${addingShippingToCPO.idx}`
+      : editingShipping
+        ? `edit-${toIdStr(editingShipping.data?._id) || `${editingShipping.cpoIdx}-${editingShipping.shipIdx}`}`
+        : null;
+    if (!key || !po) {
+      shippingPrefillKeyRef.current = null;
+      return;
+    }
+    if (shippingPrefillKeyRef.current === key) return;
+    shippingPrefillKeyRef.current = key;
+
+    if (addingShippingToCPO) {
       // "Add Ship" clicked from a CPO context — pre-fill VBNumber from current PO
       setShipVBNumber(po._id);
       const cpo = po.customerPO?.[addingShippingToCPO.idx];
       setShipVBSerial(cpo?._id || "");
       setSelectedCarrier("");
-    } else if (editingShipping && po) {
-      const ship = po.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx];
-      setShipVBNumber(ship?.VBNumber || po._id || "");
-      setShipVBSerial(ship?.VBSerialNumber || "");
+    } else if (editingShipping) {
+      // Use the snapshot taken when Edit was clicked — index lookups into `po` can
+      // point at the wrong record after a background refetch.
+      const ship = editingShipping.data;
+      setShipVBNumber(toIdStr(ship?.VBNumber) || po._id || "");
+      setShipVBSerial(toIdStr(ship?.VBSerialNumber));
       setAutoSvbid(ship?.VBShipmentNumber || ship?.svbid || "");
       setSelectedCarrier(ship?.carrier || "");
     }
@@ -616,8 +662,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
     try {
       if (editingShipping) {
-        // Update existing standalone VBshipping
-        const shipId = po?.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx]?._id;
+        // Update existing standalone VBshipping — use the snapshot _id, not an index
+        // lookup into `po` (indexes can shift after a background refetch)
+        const shipId = editingShipping.data?._id
+          || po?.customerPO?.[editingShipping.cpoIdx]?.shipping?.[editingShipping.shipIdx]?._id;
         if (!shipId) throw new Error("Missing Shipping ID");
         const response = await fetch(`/api/admin/vb-shipping/${shipId}`, {
           method: 'PUT',
@@ -639,6 +687,10 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       setAddingShippingToCPO(null);
       setEditingShipping(null);
       setSelectedLocationForShipping("");
+      setShipVBNumber("");
+      setShipVBSerial("");
+      setAutoSvbid("");
+      setSelectedCarrier("");
       invalidateDetail();
     } catch (e) {
       toast.error("Error saving shipping");
@@ -1032,7 +1084,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         const CARRIER_OPTIONS = ['MAERSK', 'MSC', 'CMA CGM', 'COSCO', 'ONE', 'Evergreen', 'Hapag-Lloyd', 'ZIM', 'Yang Ming', 'HMM'];
 
         return (
-          <Dialog open={!!addingShippingToCPO || !!editingShipping} onOpenChange={(v) => { if (!v) { setAddingShippingToCPO(null); setEditingShipping(null); setSelectedLocationForShipping(""); } }}>
+          <Dialog open={!!addingShippingToCPO || !!editingShipping} onOpenChange={(v) => { if (!v) { setAddingShippingToCPO(null); setEditingShipping(null); setSelectedLocationForShipping(""); setShipVBNumber(""); setShipVBSerial(""); setAutoSvbid(""); setSelectedCarrier(""); } }}>
             <DialogContent className="max-w-[90vw] w-[1100px] h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
               <form onSubmit={handleSaveShipping} className="flex flex-col flex-1 min-h-0">
                 {/* Header */}

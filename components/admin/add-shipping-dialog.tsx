@@ -109,19 +109,21 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
     }
   }, [mode, open]);
 
+  // Normalize a possibly-populated ObjectId reference to a plain id string
+  const getCpoIdStr = (val: any) => {
+    if (!val) return "";
+    if (typeof val === "object") return val._id?.toString() || "";
+    return val.toString();
+  };
+
   // Auto-generate VBShipmentNumber when CPO is selected
   useEffect(() => {
     if (!selectedCPO || !open) {
       setAutoShipmentNumber("");
       return;
     }
-    
+
     // Only auto-generate if we are not editing, OR if we are editing but the current shipment number is empty, OR if the selected CPO is different from the original CPO
-    const getCpoIdStr = (val: any) => {
-      if (!val) return "";
-      if (typeof val === "object") return val._id?.toString() || "";
-      return val.toString();
-    };
     const originalCPO = getCpoIdStr(editingData?.VBSerialNumber) || editingData?.customerPOId || "";
     const originalShipmentNumber = editingData?.VBShipmentNumber || editingData?.svbid || "";
     const selectedCpoStr = getCpoIdStr(selectedCPO);
@@ -131,12 +133,16 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       return;
     }
 
+    // Cleanup flag: discard late responses so a stale fetch (from a previously
+    // selected CPO or a closed dialog) can never overwrite the Shipment #.
+    let cancelled = false;
     fetch(`/api/admin/vb-shipping/next-number?vbSerialNumber=${selectedCpoStr}`)
       .then(r => r.json())
       .then(res => {
-        if (res.nextNumber) setAutoShipmentNumber(res.nextNumber);
+        if (!cancelled && res.nextNumber) setAutoShipmentNumber(res.nextNumber);
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [selectedCPO, open, editingData]);
 
   // Reset form when editing data changes
@@ -147,8 +153,8 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
       setSelectedSupplierLocation(editingData.supplierLocation || "");
       setSelectedStatus(editingData.status || "Ordered");
       setSelectedCarrier(editingData.carrier || "");
-      setSelectedVBPO(editingData.VBNumber || "");
-      setSelectedCPO(editingData.VBSerialNumber || editingData.customerPOId || "");
+      setSelectedVBPO(getCpoIdStr(editingData.VBNumber));
+      setSelectedCPO(getCpoIdStr(editingData.VBSerialNumber) || editingData.customerPOId || "");
       setAutoShipmentNumber(editingData.VBShipmentNumber || editingData.svbid || "");
     } else {
       // Pre-fill from sidebar context if available
@@ -365,7 +371,7 @@ export function AddShippingDialog({ open, onClose, onSuccess, mode = "embedded",
                       name="svbid"
                       className="text-sm"
                       placeholder="Auto-generated on CPO select"
-                      value={autoShipmentNumber || editingData?.VBShipmentNumber || editingData?.svbid || ""}
+                      value={autoShipmentNumber}
                       onChange={(e) => setAutoShipmentNumber(e.target.value)}
                     />
                   </div>
