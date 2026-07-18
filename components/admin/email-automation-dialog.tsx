@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   X, Mail, Plus, Trash2, Loader2, Clock, Globe, CalendarClock,
-  BellRing, CheckCircle2, PauseCircle, PlayCircle, Sparkles, Send,
+  BellRing, CheckCircle2, PauseCircle, PlayCircle, Sparkles, Send, Eye, Link2,
 } from "lucide-react";
 
 interface EmailAutomationDialogProps {
@@ -55,6 +55,7 @@ export function EmailAutomationDialog({
   const [automations, setAutomations] = useState<any[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [trackUrl, setTrackUrl] = useState<string | null>(null);
 
   const fetchAutomations = useCallback(async () => {
     if (!containerNo) return;
@@ -62,7 +63,10 @@ export function EmailAutomationDialog({
     try {
       const res = await fetch(`/api/admin/email-automations?containerNo=${encodeURIComponent(containerNo)}`);
       const data = await res.json();
-      if (res.ok) setAutomations(data.automations || []);
+      if (res.ok) {
+        setAutomations(data.automations || []);
+        setTrackUrl(data.trackUrl || null);
+      }
     } catch { /* silent */ } finally {
       setLoadingList(false);
     }
@@ -369,8 +373,40 @@ export function EmailAutomationDialog({
             </p>
           </div>
 
-          {/* Actions: Send Now + Create */}
-          <div className="grid grid-cols-[1fr_1.4fr] gap-2.5">
+          {/* Secure client link */}
+          {trackUrl && (
+            <div className="flex items-center gap-2 rounded-xl bg-blue-500/[0.06] border border-blue-500/15 px-3.5 py-2.5">
+              <Link2 className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+              <p className="flex-1 min-w-0 text-[10px] text-zinc-400 truncate font-mono" title={trackUrl}>{trackUrl}</p>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(trackUrl).then(
+                    () => toast.success("Secure tracking link copied", { description: "Share it with your client — no login needed." }),
+                    () => toast.error("Couldn't copy link")
+                  );
+                }}
+                className="shrink-0 text-[10px] font-bold text-blue-300 hover:text-blue-200 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 rounded-lg px-2.5 py-1 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+          )}
+
+          {/* Actions: Preview + Send Now + Create */}
+          <div className="grid grid-cols-[auto_1fr_1.4fr] gap-2.5">
+            <button
+              onClick={() =>
+                window.open(
+                  `/api/admin/email-automations/preview?containerNo=${encodeURIComponent(containerNo)}`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+              title="Preview the exact email recipients will receive"
+              className="h-10 w-10 rounded-xl border border-zinc-700 bg-zinc-800/60 hover:bg-zinc-700/60 text-zinc-300 hover:text-white flex items-center justify-center transition-colors"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
             <button
               onClick={handleSendNow}
               disabled={sendingNow || saving}

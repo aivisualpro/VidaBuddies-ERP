@@ -7,7 +7,9 @@ import { renderShipmentStatusEmail } from "@/lib/email/templates/shipment-status
 import {
   buildShipmentEmailData,
   isDeliveredStatus,
+  latestRawStatus,
 } from "@/lib/email/shipment-status-sender";
+import { publicAppUrl } from "@/lib/tracking-token";
 
 /**
  * GET /api/cron/email-automations
@@ -18,7 +20,9 @@ import {
  *    last send was >= frequencyDays ago (with 2h tolerance), sends the
  *    shipment status email to all recipients.
  *  - If the shipment is DELIVERED: sends one final delivery notice and
- *    deactivates the automation.
+ *    deactivates the automation. If that final send fails, the automation
+ *    stays active so the notice is retried on the next hourly run instead
+ *    of being lost.
  *
  * Auth: x-cron-secret header OR Vercel cron Authorization bearer.
  */
@@ -49,7 +53,7 @@ export async function GET(req: NextRequest) {
     }
 
     await connectToDatabase();
-    const appUrl = process.env.APP_URL || "http://localhost:1001";
+    const appUrl = publicAppUrl(); // emails go to externals — never localhost
 
     const automations = await EmailAutomation.find({ active: true }).lean();
     if (automations.length === 0) {
@@ -74,17 +78,20 @@ export async function GET(req: NextRequest) {
         const ship = shipMap.get(auto.containerNo);
         if (!ship) continue;
 
-        const lastRecord = ship.shippingTrackingRecords?.[ship.shippingTrackingRecords.length - 1];
-        const rawStatus = lastRecord?.raw_json?.data?.metadata?.status || ship.status || "";
-        const delivered = isDeliveredStatus(rawStatus);
+        const delivered = isDeliveredStatus(latestRawStatus(ship));
 
         // ── Delivered → one final notice, then deactivate ──
         if (delivered) {
           if (!auto.deliveredNoticeSent) {
             const data = buildShipmentEmailData(ship, appUrl, true);
-            const { subject, html } = renderShipmentStatusEmail(data);
-            const result = await sendMail({ to: auto.recipients, subject, html });
-            if (result.success) sent++;
+            const { subject, html, text } = renderShipmentStatusEmail(data);
+            const result = await sendMail({ to: auto.recipients, subject, html, text });
+            if (!result.success) {
+              // Keep the automation active so the final notice retries next hour
+              errors.push(`${auto.containerNo} (final notice): ${result.error}`);
+              continue;
+            }
+            sent++;
           }
           await EmailAutomation.updateOne(
             { _id: auto._id },
@@ -96,7 +103,7 @@ export async function GET(req: NextRequest) {
 
         // ── Send-window check (cron runs hourly) ──
         const [hh, mm] = String(auto.sendTime || "09:00").split(":").map(Number);
-        const target = hh * 60 + mm;
+        const target = (hh || 0) * 60 + (mm || 0);
         const nowLocal = localMinutes(auto.timezone || "America/Toronto");
         const inWindow = nowLocal >= target && nowLocal < target + 60;
         if (!inWindow) continue;
@@ -108,8 +115,8 @@ export async function GET(req: NextRequest) {
         }
 
         const data = buildShipmentEmailData(ship, appUrl, false);
-        const { subject, html } = renderShipmentStatusEmail(data);
-        const result = await sendMail({ to: auto.recipients, subject, html });
+        const { subject, html, text } = renderShipmentStatusEmail(data);
+        const result = await sendMail({ to: auto.recipients, subject, html, text });
 
         if (result.success) {
           sent++;

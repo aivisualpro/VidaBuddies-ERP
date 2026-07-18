@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import EmailAutomation from "@/lib/models/EmailAutomation";
 import { getSession } from "@/lib/auth";
+import { buildTrackingUrl } from "@/lib/tracking-token";
 import mongoose from "mongoose";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,7 +15,11 @@ export async function GET(req: NextRequest) {
     const filter: any = {};
     if (containerNo) filter.containerNo = containerNo;
     const automations = await EmailAutomation.find(filter).sort({ createdAt: -1 }).lean();
-    return NextResponse.json({ automations });
+    return NextResponse.json({
+      automations,
+      // Secure public tracker link for this container (shareable with clients)
+      trackUrl: containerNo ? buildTrackingUrl(containerNo) : undefined,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

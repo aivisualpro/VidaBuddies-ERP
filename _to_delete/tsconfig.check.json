@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "skipLibCheck": true, "incremental": false },
+  "files": [
+    "lib/email/templates/shipment-status.ts",
+    "lib/email/shipment-status-sender.ts",
+    "lib/email/send.ts",
+    "app/api/cron/email-automations/route.ts",
+    "app/api/admin/email-automations/preview/route.ts",
+    "components/admin/email-automation-dialog.tsx"
+  ]
+}
