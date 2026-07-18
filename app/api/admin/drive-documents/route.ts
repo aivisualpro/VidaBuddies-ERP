@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       VBNumber: { $in: vbNumberVariants.map(v => v.length === 24 ? new mongoose.Types.ObjectId(v) : v) },
     };
     const cpos = await vbcustomerpos
-      .find(cpoQuery, { projection: { VBSerialNumber: 1, driveDocuments: 1 } })
+      .find(cpoQuery, { projection: { VBSerialNumber: 1, poNo: 1, driveDocuments: 1 } })
       .toArray();
 
     // 3. Get all Shippings for this VBNumber
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       VBNumber: { $in: vbNumberVariants.map(v => /^[a-fA-F0-9]{24}$/.test(v) ? new mongoose.Types.ObjectId(v) : v) },
     };
     const ships = await vbshippings
-      .find(shipQuery, { projection: { VBShipmentNumber: 1, VBSerialNumber: 1, driveDocuments: 1 } })
+      .find(shipQuery, { projection: { VBShipmentNumber: 1, svbid: 1, VBSerialNumber: 1, driveDocuments: 1 } })
       .toArray();
 
     return NextResponse.json({
@@ -68,11 +68,13 @@ export async function GET(request: NextRequest) {
       cpos: cpos.map((c: any) => ({
         _id: c._id,
         VBSerialNumber: c.VBSerialNumber,
+        poNo: c.poNo || "",
         driveDocuments: c.driveDocuments || [],
       })),
       ships: ships.map((s: any) => ({
         _id: s._id,
         VBShipmentNumber: s.VBShipmentNumber || s.svbid,
+        svbid: s.svbid || "",
         VBSerialNumber: s.VBSerialNumber,
         driveDocuments: s.driveDocuments || [],
       })),

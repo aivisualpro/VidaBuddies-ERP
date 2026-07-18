@@ -35,6 +35,8 @@ interface DocRecord {
 interface SidebarItem {
   id: string;          // _id of the record
   label: string;       // VBNumber / VBSerialNumber / VBShipmentNumber
+  /** Alternate identifiers (poNo, svbid, …) used to match the record the user clicked on */
+  altLabels?: string[];
   kind: "VBNumber" | "VBSerialNumber" | "VBShipmentNumber";
   collection: "vidapos" | "vbcustomerpos" | "vbshippings";
   docs: DocRecord[];
@@ -347,10 +349,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         result.push({ id: data.po._id, label: data.po.VBNumber, kind: "VBNumber", collection: "vidapos", docs: data.po.driveDocuments || [] });
       }
       for (const c of (data.cpos || [])) {
-        result.push({ id: c._id, label: c.VBSerialNumber, kind: "VBSerialNumber", collection: "vbcustomerpos", docs: c.driveDocuments || [] });
+        result.push({ id: c._id, label: c.VBSerialNumber, altLabels: [c.poNo].filter(Boolean), kind: "VBSerialNumber", collection: "vbcustomerpos", docs: c.driveDocuments || [] });
       }
       for (const s of (data.ships || [])) {
-        result.push({ id: s._id, label: s.VBShipmentNumber, kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [] });
+        result.push({ id: s._id, label: s.VBShipmentNumber, altLabels: [s.svbid].filter(Boolean), kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [] });
       }
       setItems(result);
       docsLoadedRef.current = true;
@@ -577,14 +579,29 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     if (!open || appliedInitialRef.current || items.length === 0) return;
     appliedInitialRef.current = true;
     if (!shipNumber && !spoNumber) return; // opened from PO level → keep "All"
+
+    const norm = (s?: string) => (s || "").trim().toUpperCase();
+    const matches = (item: SidebarItem, value: string) =>
+      norm(item.label) === norm(value) ||
+      (item.altLabels || []).some((a) => norm(a) === norm(value));
+
     let target: SidebarItem | undefined;
     if (shipNumber) {
-      target = items.find((i) => i.kind === "VBShipmentNumber" && i.label === shipNumber);
+      target = items.find((i) => i.kind === "VBShipmentNumber" && matches(i, shipNumber));
     }
     if (!target && spoNumber) {
-      target = items.find((i) => i.kind === "VBSerialNumber" && i.label === spoNumber);
+      target = items.find((i) => i.kind === "VBSerialNumber" && matches(i, spoNumber));
+    }
+    // Fallback: derive the CPO from the shipment number prefix (VB504-10-2 → VB504-10)
+    if (!target && shipNumber) {
+      const parts = norm(shipNumber).split("-");
+      if (parts.length > 2) {
+        const cpoGuess = parts.slice(0, -1).join("-");
+        target = items.find((i) => i.kind === "VBSerialNumber" && norm(i.label) === cpoGuess);
+      }
     }
     if (target) setSelected(target.id);
+    else setSidebarOpen(true); // couldn't resolve → show the panel so the user can pick
   }, [open, items, spoNumber, shipNumber]);
 
   const handleEmail = () => {
