@@ -105,7 +105,7 @@ export async function getSeaRatesTracking(containerNumber: string) {
   return mapSeaRatesToRow(payload);
 }
 
-function mapSeaRatesToRow(json: SeaRatesResponse) {
+export function mapSeaRatesToRow(json: SeaRatesResponse) {
   const d = (json && json.data) ? json.data : {};
   const md = d.metadata || {};
   const locs = Array.isArray(d.locations) ? d.locations : [];

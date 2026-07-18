@@ -10,6 +10,7 @@ import {
   latestRawStatus,
 } from "@/lib/email/shipment-status-sender";
 import { publicAppUrl } from "@/lib/tracking-token";
+import { ensureFreshTracking } from "@/lib/tracking-refresh";
 
 /**
  * GET /api/cron/email-automations
@@ -114,7 +115,17 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        const data = buildShipmentEmailData(ship, appUrl, false);
+        // About to send → make sure the snapshot is rich & current.
+        // (Only here, so hourly runs that send nothing never spend SeaRates quota.)
+        const { refreshed } = await ensureFreshTracking(auto.containerNo);
+        const freshShip = refreshed
+          ? (await VBshipping.findOne(
+              { containerNo: auto.containerNo },
+              { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
+            ).lean()) || ship
+          : ship;
+
+        const data = buildShipmentEmailData(freshShip, appUrl, false);
         const { subject, html, text } = renderShipmentStatusEmail(data);
         const result = await sendMail({ to: auto.recipients, subject, html, text });
 

@@ -1,6 +1,7 @@
 import VBshipping from "@/lib/models/VBshipping";
 import { sendMail } from "@/lib/email/send";
 import { buildTrackingUrl, publicAppUrl } from "@/lib/tracking-token";
+import { ensureFreshTracking } from "@/lib/tracking-refresh";
 import {
   renderShipmentStatusEmail,
   type ShipmentStatusEmailData,
@@ -178,6 +179,9 @@ export async function sendShipmentStatusNow(
   containerNo: string,
   recipients: string[]
 ): Promise<{ success: boolean; error?: string; delivered?: boolean }> {
+  // Make sure we email a rich, current snapshot (refreshes SeaRates cache if stale)
+  await ensureFreshTracking(containerNo);
+
   const ship = await VBshipping.findOne(
     { containerNo },
     { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }

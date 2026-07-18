@@ -8,6 +8,7 @@ import {
   latestRawStatus,
 } from "@/lib/email/shipment-status-sender";
 import { publicAppUrl } from "@/lib/tracking-token";
+import { ensureFreshTracking } from "@/lib/tracking-refresh";
 
 /**
  * GET /api/admin/email-automations/preview?containerNo=XYZ
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
     if (!containerNo) {
       return NextResponse.json({ error: "containerNo is required" }, { status: 400 });
     }
+
+    // Preview should show what a recipient would actually get — fresh data
+    await ensureFreshTracking(containerNo);
 
     const ship = await VBshipping.findOne(
       { containerNo },

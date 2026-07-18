@@ -9,6 +9,7 @@ import {
   parseRawJson,
 } from "@/lib/email/shipment-status-sender";
 import { publicAppUrl } from "@/lib/tracking-token";
+import { ensureFreshTracking } from "@/lib/tracking-refresh";
 import { PublicTrackingView, type PublicTrackingData } from "@/components/track/public-tracking-view";
 
 /**
@@ -58,6 +59,10 @@ export default async function PublicTrackingPage({
   if (!containerNo || !verifyTrackingToken(containerNo, t || "")) {
     return <InvalidLink reason="The secure token in this link is missing or incorrect. Tracking links are unique per shipment and can't be modified." />;
   }
+
+  // Self-healing: if the cached tracking data is missing or stale, fetch it
+  // live from SeaRates and persist — so clients always see the full picture.
+  await ensureFreshTracking(containerNo);
 
   await connectToDatabase();
   const ship = await VBshipping.findOne(
