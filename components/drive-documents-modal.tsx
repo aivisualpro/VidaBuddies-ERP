@@ -18,7 +18,7 @@ import {
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download, ChevronLeft, ChevronRight,
   FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose, FolderTree,
-  Plus, ChevronDown, FileUp, FolderUp,
+  Plus, ChevronDown, FileUp, FolderUp, Wrench,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -42,6 +42,12 @@ interface DocRecord {
   createdAt: string;
 }
 
+interface DrivePath {
+  poNumber: string;
+  spoNumber?: string;
+  shipNumber?: string;
+}
+
 interface SidebarItem {
   id: string;          // _id of the record
   label: string;       // VBNumber / VBSerialNumber / VBShipmentNumber
@@ -50,6 +56,8 @@ interface SidebarItem {
   kind: "VBNumber" | "VBSerialNumber" | "VBShipmentNumber";
   collection: "vidapos" | "vbcustomerpos" | "vbshippings";
   docs: DocRecord[];
+  /** Canonical Drive path for this record — the single source of truth for uploads/folders */
+  drivePath?: DrivePath;
 }
 
 interface DriveDocumentsModalProps {
@@ -306,6 +314,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const [dragOver, setDragOver] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [creatingStructure, setCreatingStructure] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   // ── In-modal folder navigation ──
   // When non-empty, we're browsing INSIDE a folder (Drive contents), not the
@@ -314,7 +323,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const [folderContents, setFolderContents] = useState<DocRecord[]>([]);
   const [loadingFolder, setLoadingFolder] = useState(false);
   const insideFolder = folderStack.length > 0;
-  const currentFolderId = insideFolder ? folderStack[folderStack.length - 1].id : null;
+
+  // The resolved Drive folder ID for the currently selected record — the ONE
+  // canonical folder all uploads/new-folders/directory-structure target.
+  // Guarantees the app's file manager and Google Drive stay identical.
+  const [recordFolderId, setRecordFolderId] = useState<string | null>(null);
+
+  // Current upload/create target: the folder we're inside, else the record root
+  const currentFolderId = insideFolder ? folderStack[folderStack.length - 1].id : recordFolderId;
 
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
@@ -369,13 +385,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
       const result: SidebarItem[] = [];
       if (data.po) {
-        result.push({ id: data.po._id, label: data.po.VBNumber, kind: "VBNumber", collection: "vidapos", docs: data.po.driveDocuments || [] });
+        result.push({ id: data.po._id, label: data.po.VBNumber, kind: "VBNumber", collection: "vidapos", docs: data.po.driveDocuments || [], drivePath: data.po.drivePath });
       }
       for (const c of (data.cpos || [])) {
-        result.push({ id: c._id, label: c.VBSerialNumber, altLabels: [c.poNo].filter(Boolean), kind: "VBSerialNumber", collection: "vbcustomerpos", docs: c.driveDocuments || [] });
+        result.push({ id: c._id, label: c.VBSerialNumber, altLabels: [c.poNo].filter(Boolean), kind: "VBSerialNumber", collection: "vbcustomerpos", docs: c.driveDocuments || [], drivePath: c.drivePath });
       }
       for (const s of (data.ships || [])) {
-        result.push({ id: s._id, label: s.VBShipmentNumber, altLabels: [s.svbid].filter(Boolean), kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [] });
+        result.push({ id: s._id, label: s.VBShipmentNumber, altLabels: [s.svbid].filter(Boolean), kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [], drivePath: s.drivePath });
       }
       setItems(result);
       docsLoadedRef.current = true;
@@ -443,6 +459,36 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     setFolderStack([]);
     setFolderContents([]);
   }, [selected, open]);
+
+  // Resolve (creating if needed) the canonical Drive folder ID for the selected
+  // record, so uploads / new folders / directory structure all land in the SAME
+  // folder the file manager reads from — keeping app + Drive identical.
+  useEffect(() => {
+    const item = items.find((i) => i.id === selected);
+    const path = item?.drivePath;
+    if (!open || !path?.poNumber) {
+      setRecordFolderId(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setRecordFolderId(null);
+      // Resolve (creating if needed) the canonical FLAT folder for this record:
+      //   VBPO / {po} / {record's own folder name}
+      // The app is authoritative here so the file manager and Drive stay in sync.
+      try {
+        const qs = new URLSearchParams({ poNumber: path.poNumber });
+        if (path.spoNumber) qs.set("spoNumber", path.spoNumber);
+        if (path.shipNumber) qs.set("shipNumber", path.shipNumber);
+        const res = await fetch(`/api/admin/drive?${qs.toString()}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && data.folderId) setRecordFolderId(data.folderId);
+      } catch {
+        if (!cancelled) setRecordFolderId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, selected, items]);
 
   // Intercept Escape: close preview first
   useEffect(() => {
@@ -737,6 +783,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const handleUpload = async (fileList: FileList | null, targetItem?: SidebarItem | null) => {
     const uploadTarget = targetItem || selectedItem;
     if (!fileList || fileList.length === 0 || !uploadTarget) return;
+    // Guard: never upload before we know the destination folder, otherwise
+    // files would leak into the PO root.
+    if (!currentFolderId) {
+      toast.error("Preparing folder — please try again in a moment");
+      return;
+    }
     const files = Array.from(fileList);
     const total = files.length;
     setUploading(true);
@@ -753,8 +805,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         const formData = new FormData();
         formData.append("poNumber", poNumber);
         formData.append("file", file);
-        // Inside a folder → upload straight into that Drive folder
-        if (insideFolder && currentFolderId) formData.append("folderId", currentFolderId);
+        // Always target the resolved folder (record root or the subfolder we're
+        // inside) so files never leak into the PO root.
+        if (currentFolderId) formData.append("folderId", currentFolderId);
         const res = await fetch("/api/admin/drive", { method: "POST", body: formData });
         const data = await res.json();
         if (!res.ok) {
@@ -836,25 +889,22 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   /* ─── Directory Structure: create standard subfolders for the selected record ─── */
   const handleDirectoryStructure = async () => {
     if (!selectedItem) return;
-    const poLabel = poItems[0]?.label || poNumber;
-    // Resolve the path segments from the selected record
-    let spo: string | undefined;
-    let ship: string | undefined;
-    if (selectedItem.kind === "VBShipmentNumber") {
-      ship = selectedItem.label;
-      // Parent CPO from prefix (VB504-7-1 → VB504-7)
-      const parts = selectedItem.label.split("-");
-      if (parts.length > 2) spo = parts.slice(0, -1).join("-");
-    } else if (selectedItem.kind === "VBSerialNumber") {
-      spo = selectedItem.label;
-    }
+    // Use the record's already-resolved Drive folder — the exact folder the
+    // file manager reads from. Falls back to the canonical drivePath.
+    const body: any = recordFolderId
+      ? { folderId: recordFolderId }
+      : {
+          poNumber: selectedItem.drivePath?.poNumber || poItems[0]?.label || poNumber,
+          spoNumber: selectedItem.drivePath?.spoNumber,
+          shipNumber: selectedItem.drivePath?.shipNumber,
+        };
 
     setCreatingStructure(true);
     try {
       const res = await fetch("/api/admin/drive/directory-structure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ poNumber: poLabel, spoNumber: spo, shipNumber: ship }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -907,59 +957,86 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     }
   };
 
+  /* ─── Repair: move misplaced Drive files into their correct flat folders ─── */
+  const handleRepairFolders = async () => {
+    const poLabel = poItems[0]?.label || poNumber;
+    if (!poLabel) return;
+    setRepairing(true);
+    try {
+      const res = await fetch("/api/admin/drive/repair-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vbNumber: poLabel }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Drive folders repaired", {
+          description: `${data.moved} file(s) moved into place${data.skipped ? `, ${data.skipped} already correct` : ""}.`,
+        });
+        if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
+        else fetchDocs();
+      } else {
+        toast.error("Repair failed", { description: data.error });
+      }
+    } catch {
+      toast.error("Repair failed");
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   /* ─── Create Folder handler ─── */
   const handleCreateFolder = async () => {
     if (!newFolderName.trim() || !selectedItem) return;
+    // Target = the folder we're inside, or the record's resolved root folder
+    const parentFolderId = currentFolderId;
+    if (!parentFolderId) {
+      toast.error("Folder location not ready yet — try again in a moment");
+      return;
+    }
     setCreatingFolder(true);
     try {
-      // Inside a folder → create the subfolder directly under it (live Drive)
-      if (insideFolder && currentFolderId) {
-        const createRes = await fetch(
-          `/api/admin/drive?folderId=${encodeURIComponent(currentFolderId)}&ensureChildren=${encodeURIComponent(newFolderName.trim())}`
-        );
-        const createData = await createRes.json();
-        if (createRes.ok) {
-          toast.success(`Folder "${newFolderName.trim()}" created`);
-          setNewFolderOpen(false);
-          setNewFolderName("");
-          fetchFolderContents(currentFolderId);
-        } else {
-          toast.error("Failed to create folder", { description: createData.error });
-        }
-        return;
-      }
-
-      // Use the drive API to create a folder — we need the parent folder ID from Drive
-      // First resolve the parent folder path for this item
-      const poLabel = poItems[0]?.label || poNumber;
-      let driveUrl = `/api/admin/drive?poNumber=${encodeURIComponent(poLabel)}`;
-      if (selectedItem.kind === "VBSerialNumber") {
-        driveUrl += `&spoNumber=${encodeURIComponent(selectedItem.label)}`;
-      } else if (selectedItem.kind === "VBShipmentNumber") {
-        // Find the parent CPO for this shipment
-        const parentCpoId = (items.find(i => i.kind === "VBShipmentNumber" && i.id === selectedItem.id) as any);
-        driveUrl += `&spoNumber=${encodeURIComponent(selectedItem.label)}`;
-      }
-      // Resolve the parent folder
-      const resolveRes = await fetch(driveUrl);
-      const resolveData = await resolveRes.json();
-      const parentFolderId = resolveData.folderId;
-
-      if (!parentFolderId) {
-        toast.error("Could not resolve parent folder");
-        return;
-      }
-
-      // Create the subfolder
-      const createRes = await fetch(driveUrl + `&ensureChildren=${encodeURIComponent(newFolderName.trim())}`);
+      const createRes = await fetch(
+        `/api/admin/drive?folderId=${encodeURIComponent(parentFolderId)}&ensureChildren=${encodeURIComponent(newFolderName.trim())}`
+      );
       const createData = await createRes.json();
-      if (createRes.ok) {
-        toast.success(`Folder "${newFolderName.trim()}" created`);
-        setNewFolderOpen(false);
-        setNewFolderName("");
+      if (!createRes.ok) {
+        toast.error("Failed to create folder", { description: createData.error });
+        return;
+      }
+      toast.success(`Folder "${newFolderName.trim()}" created`);
+      setNewFolderOpen(false);
+      setNewFolderName("");
+
+      // At the record root, also persist the folder as a driveDocument so it
+      // shows as a card. Inside a subfolder, contents are read live from Drive.
+      if (!insideFolder) {
+        const created = (createData.files || []).find(
+          (f: any) => f.mimeType === "application/vnd.google-apps.folder" &&
+            (f.name || "").trim().toLowerCase() === newFolderName.trim().toLowerCase()
+        );
+        if (created) {
+          await fetch("/api/admin/drive-documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              collection: selectedItem.collection,
+              recordId: selectedItem.id,
+              document: {
+                documentName: created.name,
+                documentLink: created.webViewLink || "",
+                documentType: "Internal",
+                driveFileId: created.id,
+                mimeType: "application/vnd.google-apps.folder",
+                size: "0",
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          }).catch(() => {});
+        }
         fetchDocs();
       } else {
-        toast.error("Failed to create folder", { description: createData.error });
+        fetchFolderContents(parentFolderId);
       }
     } catch {
       toast.error("Failed to create folder");
@@ -1094,8 +1171,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
               {!showEmailHistory && selectedItem && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" disabled={uploading || creatingStructure}>
-                      {uploading || creatingStructure ? (
+                    <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" disabled={uploading || creatingStructure || repairing}>
+                      {uploading || creatingStructure || repairing ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
@@ -1137,6 +1214,19 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                         >
                           <FolderTree className="h-4 w-4 text-emerald-500" />
                           Create Directory Structure
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {!insideFolder && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={handleRepairFolders}
+                          disabled={repairing}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Wrench className="h-4 w-4 text-sky-500" />
+                          Repair Drive Folders
                         </DropdownMenuItem>
                       </>
                     )}

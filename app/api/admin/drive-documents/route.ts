@@ -59,17 +59,28 @@ export async function GET(request: NextRequest) {
       .find(shipQuery, { projection: { VBShipmentNumber: 1, svbid: 1, VBSerialNumber: 1, driveDocuments: 1 } })
       .toArray();
 
+    const poDisplay = po?.VBNumber || vbNumber;
+
+    // FLAT Drive structure — every record's folder sits DIRECTLY under the PO,
+    // named by its own display id:
+    //   VBPO / {poDisplay}                 (PO root)
+    //   VBPO / {poDisplay} / {VBSerialNumber}  (Customer PO)
+    //   VBPO / {poDisplay} / {svbid}           (Shipment)
+    // We encode this by putting the record's own folder name in `spoNumber`
+    // (a single sub-level under the PO), leaving shipNumber unused.
     return NextResponse.json({
       po: po ? {
         _id: po._id,
         VBNumber: po.VBNumber,
         driveDocuments: po.driveDocuments || [],
+        drivePath: { poNumber: poDisplay },
       } : null,
       cpos: cpos.map((c: any) => ({
         _id: c._id,
         VBSerialNumber: c.VBSerialNumber,
         poNo: c.poNo || "",
         driveDocuments: c.driveDocuments || [],
+        drivePath: { poNumber: poDisplay, spoNumber: c.VBSerialNumber || c.poNo || "" },
       })),
       ships: ships.map((s: any) => ({
         _id: s._id,
@@ -77,6 +88,8 @@ export async function GET(request: NextRequest) {
         svbid: s.svbid || "",
         VBSerialNumber: s.VBSerialNumber,
         driveDocuments: s.driveDocuments || [],
+        // Folder name = the shipment's own svbid/VBShipmentNumber, directly under the PO
+        drivePath: { poNumber: poDisplay, spoNumber: s.svbid || s.VBShipmentNumber || "" },
       })),
     });
   } catch (error: any) {

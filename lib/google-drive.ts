@@ -44,6 +44,24 @@ export function getDrive() {
 }
 
 /**
+ * Return the parent folder ID of a Drive file/folder (first parent).
+ * Used to anchor a record to the exact folder its documents already live in.
+ */
+export async function getParentFolderId(fileId: string): Promise<string | null> {
+  const drive = getDrive();
+  try {
+    const res = await drive.files.get({
+      fileId,
+      fields: "id, parents",
+      supportsAllDrives: true,
+    });
+    return res.data.parents?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Find a folder inside a parent folder by name (search only, no create).
  * Returns the folder ID or null if not found.
  */

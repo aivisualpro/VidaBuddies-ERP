@@ -28,7 +28,15 @@ export async function GET(request: NextRequest) {
 
     let folderId: string;
 
-    if (type === "find") {
+    if (type === "parentOf") {
+      // Resolve the parent folder of an existing file — anchors a record to the
+      // exact folder its documents already live in (source of truth).
+      const fileId = searchParams.get("fileId");
+      if (!fileId) return NextResponse.json({ folderId: null });
+      const { getParentFolderId } = await import("@/lib/google-drive");
+      const folderId = await getParentFolderId(fileId);
+      return NextResponse.json({ folderId });
+    } else if (type === "find") {
       // Find folder by path without creating (for delete operations)
       if (!poNumber) return NextResponse.json({ folderId: null });
       const folderId = await findFolderPath(ROOT_FOLDER_ID, poNumber, spoNumber, shipNumber);

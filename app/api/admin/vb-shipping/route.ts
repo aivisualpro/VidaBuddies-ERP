@@ -307,21 +307,13 @@ async function ensureStandardShipmentFolders(ship: any): Promise<void> {
   const poDisplay = po?.VBNumber;
   if (!poDisplay) return;
 
-  // Resolve CPO display name (VBSerialNumber ObjectId → "VB504-7")
-  let spoDisplay: string | undefined;
-  if (ship.VBSerialNumber) {
-    const cpo = await db.collection("vbcustomerpos").findOne(
-      { _id: new mongoose.Types.ObjectId(ship.VBSerialNumber.toString()) },
-      { projection: { VBSerialNumber: 1, poNo: 1 } }
-    );
-    spoDisplay = cpo?.VBSerialNumber || cpo?.poNo;
-  }
-
   const { ensureFolderPath, findOrCreateFolder } = await import("@/lib/google-drive");
   const { SHIPMENT_STANDARD_FOLDERS } = await import("@/lib/shipment-folders");
   const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
 
-  const shipFolderId = await ensureFolderPath(ROOT_FOLDER_ID, poDisplay, spoDisplay, shipNumber);
+  // FLAT structure: shipment folder sits DIRECTLY under the PO, named by its
+  // own display id → VBPO / {poDisplay} / {shipNumber}. No customer-PO level.
+  const shipFolderId = await ensureFolderPath(ROOT_FOLDER_ID, poDisplay, shipNumber);
   // Create standard subfolders sequentially to stay gentle on the Drive API
   for (const name of SHIPMENT_STANDARD_FOLDERS) {
     await findOrCreateFolder(shipFolderId, name);
