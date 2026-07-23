@@ -1038,7 +1038,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       hasInvoice={hasInvoice}
                       showInvoiceAlert={showInvoiceAlert}
                       onUpdateField={(shipId, field, value) => updateShippingField(ship._cpoIdx, ship._shipIdx, field, value)}
-                      onAttachments={(s) => { const cpo = po?.customerPO?.[s._cpoIdx]; setAttachmentsOpen({ poNumber: po?.VBNumber || '', spoNumber: cpo?.poNo || '', shipNumber: s.svbid || undefined }); }}
+                      onAttachments={(s) => { const cpo = po?.customerPO?.[s._cpoIdx]; setAttachmentsOpen({ poNumber: po?.VBNumber || '', spoNumber: cpo?.VBSerialNumber || cpo?.poNo || '', shipNumber: s.VBShipmentNumber || s.svbid || undefined }); }}
                       onTimeline={(s) => setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: po?.customerPO?.[s._cpoIdx]?._id, VBShipmentNumber: s._id, title: `Timeline — ${s.svbid || 'Shipping'}` })}
                       onLiveTracking={(s) => setLiveTrackingOpen({ containerNo: s.containerNo, title: `Live Tracking — ${s.containerNo}` })}
                       onEdit={(s) => { const resolvedSup = suppliers.find((sup: any) => sup._id === rawSup) ? rawSup : (supplierIdByLocationId[rawSup] || rawSup); setSelectedSupplierForShipping(resolvedSup); setSelectedLocationForShipping(s.supplierLocation || (suppliers.find((sup: any) => sup._id === rawSup) ? '' : rawSup) || ''); setEditingShipping({ cpoIdx: s._cpoIdx, shipIdx: s._shipIdx, data: s }); }}

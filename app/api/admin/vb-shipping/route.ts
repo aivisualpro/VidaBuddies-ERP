@@ -72,6 +72,17 @@ export async function GET(req: Request) {
     // ─── Denormalize: resolve ObjectIds → display names ───
     const db = mongoose.connection.db;
 
+    // Lightweight attachment counts per shipment (never ships the heavy array).
+    // Used for the paperclip badge on shipment cards.
+    const driveCountMap = new Map<string, number>();
+    try {
+      const countDocs = await db!.collection("vbshippings").aggregate([
+        { $match: filter },
+        { $project: { driveDocumentsCount: { $size: { $ifNull: ["$driveDocuments", []] } } } },
+      ]).toArray();
+      for (const c of countDocs) driveCountMap.set(c._id.toString(), c.driveDocumentsCount || 0);
+    } catch { /* non-fatal — badge just won't show */ }
+
     // Collect unique ObjectIds per field
     const poIds = new Set<string>();
     const cpoIds = new Set<string>();
@@ -228,6 +239,7 @@ export async function GET(req: Request) {
         _customerId: cpoDetail?.customer || null,
         _displayCustomerPONo: cpoDetail?.customerPONo || '',
         _displayWarehouse: cpoDetail?.warehouse ? warehouseMap.get(cpoDetail.warehouse) || cpoDetail.warehouse : '',
+        driveDocumentsCount: driveCountMap.get(item._id.toString()) ?? 0,
       };
     });
 

@@ -50,6 +50,8 @@ interface DriveDocumentsModalProps {
   spoNumber?: string;
   /** When provided, the modal opens focused on this Shipment (VBShipmentNumber display, e.g. "VB504-10-2") */
   shipNumber?: string;
+  /** Open directly on the Emails tab instead of Documents */
+  defaultTab?: "documents" | "emails";
   onOpenLegacy?: () => void;
 }
 
@@ -273,14 +275,15 @@ function PreviewPanel({ previewFile, onClose }: { previewFile: DocRecord; onClos
 }
 
 /* ─── Component ─── */
-export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNumber, onOpenLegacy }: DriveDocumentsModalProps) {
+export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNumber, defaultTab, onOpenLegacy }: DriveDocumentsModalProps) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   // Sidebar is collapsed by default — the modal opens focused on the clicked record
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Apply the initial record selection only once per open
-  const appliedInitialRef = useRef(false);
+  // Signature of the last auto-selection we resolved, so we apply it exactly
+  // once per (open + target) — but re-evaluate whenever items finish loading.
+  const appliedSelectionRef = useRef<string>("");
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<DocRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -569,16 +572,23 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       setSelected(null);
       setPreviewFile(null);
       setSidebarOpen(false);
-      appliedInitialRef.current = false;
+      setShowEmailHistory(defaultTab === "emails");
+      appliedSelectionRef.current = "";
     }
-  }, [open, fetchDocs, fetchEmailRecords]);
+  }, [open, fetchDocs, fetchEmailRecords, defaultTab]);
 
   // Auto-focus the record the user clicked on (shipment first, then CPO).
-  // Runs once per open, as soon as the sidebar items are loaded.
+  // Re-runs as items load; keyed by the target so it applies exactly once
+  // per (open + shipNumber/spoNumber), regardless of load ordering.
   useEffect(() => {
-    if (!open || appliedInitialRef.current || items.length === 0) return;
-    appliedInitialRef.current = true;
+    if (!open) return;
     if (!shipNumber && !spoNumber) return; // opened from PO level → keep "All"
+    if (items.length === 0) return;        // wait for the sidebar to load
+
+    // Signature encodes what we're trying to select; if we've already applied
+    // this exact target during this open, don't fight the user's later clicks.
+    const signature = `${shipNumber || ""}|${spoNumber || ""}`;
+    if (appliedSelectionRef.current === signature) return;
 
     const norm = (s?: string) => (s || "").trim().toUpperCase();
     const matches = (item: SidebarItem, value: string) =>
@@ -597,11 +607,17 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       const parts = norm(shipNumber).split("-");
       if (parts.length > 2) {
         const cpoGuess = parts.slice(0, -1).join("-");
-        target = items.find((i) => i.kind === "VBSerialNumber" && norm(i.label) === cpoGuess);
+        target = items.find(
+          (i) => i.kind === "VBSerialNumber" && (norm(i.label) === cpoGuess || (i.altLabels || []).some((a) => norm(a) === cpoGuess))
+        );
       }
     }
-    if (target) setSelected(target.id);
-    else setSidebarOpen(true); // couldn't resolve → show the panel so the user can pick
+
+    if (target) {
+      appliedSelectionRef.current = signature; // done — lock it in
+      setSelected(target.id);
+    }
+    // If not found yet, leave the ref unset so a later `items` update retries.
   }, [open, items, spoNumber, shipNumber]);
 
   const handleEmail = () => {

@@ -22,10 +22,11 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck, MessageCircle } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck, MessageCircle, Paperclip } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
+import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import { RecordChatDrawer } from "@/components/chat/record-chat-drawer";
 import { ViewToggle } from "@/components/admin/view-toggle";
 
@@ -45,6 +46,7 @@ interface PurchaseOrder {
     }[];
   }[];
   _shipStatuses?: string[];
+  driveDocuments?: any[];
 }
 
 function normalizeStatus(raw: string): string {
@@ -118,7 +120,8 @@ function PurchaseOrdersContent() {
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; title?: string } | null>(null);
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
-  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string } | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; defaultTab?: "documents" | "emails" } | null>(null);
+  const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [chatOpen, setChatOpen] = useState<{ refKind: "VBNumber"; refId: string; display: string } | null>(null);
   const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
   const [currentUserId, setCurrentUserId] = useState("");
@@ -461,6 +464,30 @@ function PurchaseOrdersContent() {
       },
     },
     {
+      id: "attachments",
+      header: "Attachments",
+      cell: ({ row }) => {
+        const vbNumber = row.original.VBNumber || row.original._id;
+        const count = row.original.driveDocuments?.length || 0;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAttachmentsOpen({ poNumber: vbNumber });
+            }}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
+              ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer'
+              : 'text-muted-foreground hover:bg-muted cursor-pointer'
+              }`}
+            title="View Attachments"
+          >
+            <Paperclip className="h-3 w-3" />
+            {count > 0 ? count : '—'}
+          </button>
+        );
+      },
+    },
+    {
       id: "timeline",
       header: "Timeline",
       cell: ({ row }) => {
@@ -524,7 +551,7 @@ function PurchaseOrdersContent() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setAttachmentsOpen({ poNumber: vbNumber });
+              setAttachmentsOpen({ poNumber: vbNumber, defaultTab: "emails" });
             }}
             className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full transition-colors ${count > 0
               ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 cursor-pointer'
@@ -867,12 +894,28 @@ function PurchaseOrdersContent() {
         users={users}
       />
 
-      {/* Attachments Modal (Emails tab) */}
-      <AttachmentsModal
+      {/* Drive Documents Modal (reads from MongoDB) */}
+      <DriveDocumentsModal
         open={!!attachmentsOpen}
         onClose={() => setAttachmentsOpen(null)}
         poNumber={attachmentsOpen?.poNumber || ''}
-        defaultTab="emails"
+        spoNumber={attachmentsOpen?.spoNumber}
+        shipNumber={attachmentsOpen?.shipNumber}
+        defaultTab={attachmentsOpen?.defaultTab}
+        onOpenLegacy={() => {
+          const saved = attachmentsOpen;
+          setAttachmentsOpen(null);
+          setTimeout(() => setLegacyAttachmentsOpen(saved), 100);
+        }}
+      />
+
+      {/* Legacy Attachments Modal (Google Drive upload/folder) */}
+      <AttachmentsModal
+        open={!!legacyAttachmentsOpen}
+        onClose={() => setLegacyAttachmentsOpen(null)}
+        poNumber={legacyAttachmentsOpen?.poNumber || ''}
+        spoNumber={legacyAttachmentsOpen?.spoNumber}
+        shipNumber={legacyAttachmentsOpen?.shipNumber}
       />
 
       {/* Record Chat Drawer */}

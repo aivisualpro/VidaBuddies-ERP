@@ -75,6 +75,10 @@ export interface ShippingCardShip {
   isTruckerReceivedDeliveryOrder?: boolean;
   createdBy?: string;
   updateShipmentTracking?: string;
+  /** Attached drive documents — used for the paperclip count badge */
+  driveDocuments?: any[];
+  /** Lightweight attachment count from the API (avoids shipping the full array) */
+  driveDocumentsCount?: number;
   [key: string]: any;
 }
 
@@ -136,6 +140,14 @@ export function ShippingCard({
 
   const shipId = ship._id || String(index);
   const hasTrackableContainer = !!ship.containerNo && !ship.containerNo.toUpperCase().startsWith("TBD");
+  // Number of files/folders attached to this shipment (for the paperclip badge).
+  // Prefer the lightweight count from the API; fall back to the array length.
+  const attachmentCount =
+    typeof ship.driveDocumentsCount === "number"
+      ? ship.driveDocumentsCount
+      : Array.isArray(ship.driveDocuments)
+        ? ship.driveDocuments.length
+        : 0;
 
   // Resolve supplier name
   const supplierName =
@@ -236,10 +248,16 @@ export function ShippingCard({
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                className="relative h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                title={attachmentCount > 0 ? `${attachmentCount} file${attachmentCount === 1 ? "" : "s"} attached` : "Attachments"}
                 onClick={(e) => { e.stopPropagation(); onAttachments(ship); }}
               >
                 <Paperclip className="h-3.5 w-3.5" />
+                {attachmentCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-[15px] text-center shadow-sm ring-1 ring-background">
+                    {attachmentCount > 99 ? "99+" : attachmentCount}
+                  </span>
+                )}
               </Button>
             )}
             {onTimeline && (
