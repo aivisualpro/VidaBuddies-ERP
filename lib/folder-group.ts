@@ -11,7 +11,7 @@ import mongoose from "mongoose";
 export async function resolveGroupPoIds(vbNumber: string): Promise<string[]> {
   const vidapos = mongoose.connection.collection("vidapos");
 
-  const orFilter: any[] = [{ VBNumber: vbNumber }];
+  const orFilter: any[] = [{ VBNumber: vbNumber }, { folderGroupKey: vbNumber }];
   if (/^[a-fA-F0-9]{24}$/.test(vbNumber)) {
     orFilter.push({ _id: new mongoose.Types.ObjectId(vbNumber) });
   }

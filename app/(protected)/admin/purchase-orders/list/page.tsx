@@ -287,15 +287,17 @@ function PurchaseOrdersContent() {
       header: "VB #",
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1.5">
-          {row.original.VBNumber || "—"}
-          {row.original.folderGroupKey && (
+          {row.original.folderGroupKey ? (
+            // Collapsed sibling group → single purple pill with the group name
             <span
-              title={`Shares an attachments folder with: ${(row.original.folderGroupMembers || []).join(", ")}`}
-              className="inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border border-indigo-500/25 px-1.5 py-0.5 rounded-full"
+              title={`Linked records (share one attachments folder): ${(row.original.folderGroupMembers || []).join(", ")}`}
+              className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-full"
             >
-              <Link2 className="h-2.5 w-2.5" />
+              <Link2 className="h-3 w-3" />
               {row.original.folderGroupKey}
             </span>
+          ) : (
+            row.original.VBNumber || "—"
           )}
         </span>
       ),
@@ -724,6 +726,49 @@ function PurchaseOrdersContent() {
     return true;
   });
 
+  // Collapse linked sibling groups into ONE representative row labelled by the
+  // shared key (e.g. "VB523-VB524"). The detail page + attachments already
+  // merge the group, so one row is enough. Plain computation (not a hook) so it
+  // stays below the loading early-return without breaking the Rules of Hooks.
+  const groupedData = (() => {
+    // Pre-aggregate every group's members (across the FULL dataset, so counts
+    // are complete even if a member is filtered out of the visible list).
+    const membersByKey = new Map<string, PurchaseOrder[]>();
+    for (const po of data) {
+      if (po.folderGroupKey) {
+        const arr = membersByKey.get(po.folderGroupKey) || [];
+        arr.push(po);
+        membersByKey.set(po.folderGroupKey, arr);
+      }
+    }
+
+    const seenGroups = new Set<string>();
+    const out: PurchaseOrder[] = [];
+    for (const po of filteredData) {
+      if (po.folderGroupKey) {
+        if (seenGroups.has(po.folderGroupKey)) continue; // skip other members
+        seenGroups.add(po.folderGroupKey);
+        const members = membersByKey.get(po.folderGroupKey) || [po];
+        // Sum group-wide counts so the single row reflects everything.
+        const customerPO = members.flatMap((m) => m.customerPO || []);
+        const _shipStatuses = members.flatMap((m) => m._shipStatuses || []);
+        const driveDocuments = members.flatMap((m) => m.driveDocuments || []);
+        out.push({
+          ...po,
+          VBNumber: po.folderGroupKey,
+          customerPO,
+          _shipStatuses,
+          driveDocuments,
+          _isGroupRow: true,
+          _anchorVBNumber: po.VBNumber, // the real member this row represents
+        } as any);
+      } else {
+        out.push(po);
+      }
+    }
+    return out;
+  })();
+
 
   const archivedCount = data.filter(po => po.isArchived).length;
 
@@ -738,9 +783,12 @@ function PurchaseOrdersContent() {
 
   /* ─── Sibling folder linking ─── */
   const openLinkDialog = (po: PurchaseOrder) => {
-    setLinkDialogFor(po);
-    // Pre-select existing siblings (other than this PO)
-    setLinkPicks((po.folderGroupMembers || []).filter((m) => m !== po.VBNumber));
+    // For a collapsed group row, anchor on a REAL member VBNumber (not the key)
+    const anchorVB = (po as any)._anchorVBNumber || po.VBNumber;
+    const anchor: PurchaseOrder = { ...po, VBNumber: anchorVB };
+    setLinkDialogFor(anchor);
+    // Pre-select existing siblings (other than the anchor)
+    setLinkPicks((po.folderGroupMembers || []).filter((m) => m !== anchorVB));
     setLinkSearch("");
   };
 
@@ -890,7 +938,7 @@ function PurchaseOrdersContent() {
     <div className="w-full h-full">
       <SimpleDataTable
         columns={visibleColumns}
-        data={filteredData}
+        data={groupedData}
         onAdd={userRole === 'NIGALU' ? undefined : openAddSheet}
         onRowClick={(row) => router.push(`/admin/purchase-orders/${row._id}`)}
         onRowHover={handleRowHover}

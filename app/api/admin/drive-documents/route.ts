@@ -34,10 +34,18 @@ export async function GET(request: NextRequest) {
     if (/^[a-fA-F0-9]{24}$/.test(vbNumber)) {
       poFilter.push({ _id: new mongoose.Types.ObjectId(vbNumber) });
     }
-    const po = await vidapos.findOne(
+    let po = await vidapos.findOne(
       { $or: poFilter },
       { projection: { VBNumber: 1, driveDocuments: 1, folderGroupKey: 1, folderGroupMembers: 1 } }
     );
+    // The caller may pass the shared group KEY (e.g. "VB523-VB524") instead of a
+    // member VBNumber — resolve to any member so the group loads.
+    if (!po) {
+      po = await vidapos.findOne(
+        { folderGroupKey: vbNumber },
+        { projection: { VBNumber: 1, driveDocuments: 1, folderGroupKey: 1, folderGroupMembers: 1 } }
+      );
+    }
 
     // ── Sibling group support ──
     // If this PO is linked to siblings, gather ALL member POs so opening any of
