@@ -13,12 +13,21 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose-dialog";
 import {
-  Paperclip, Upload, FolderOpen, Loader2, FileText, Image, File,
+  Paperclip, Upload, FolderOpen, Folder, Loader2, FileText, Image, File,
   Eye, EyeOff, Package, Ship, ShoppingCart,
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download,
-  FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose,
+  FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose, FolderTree,
+  Plus, ChevronDown, FileUp, FolderUp,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 /* ─── Types ─── */
 interface DocRecord {
@@ -295,6 +304,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const [mounted, setMounted] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [creatingStructure, setCreatingStructure] = useState(false);
 
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
@@ -391,11 +401,19 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const totalDocs = items.reduce((sum, i) => sum + i.docs.length, 0);
 
   // Search + type filter
-  const filteredDocs = visibleDocs.filter(v => {
-    if (searchQuery.trim() && !v.doc.documentName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (docTypeFilter !== "all" && v.doc.documentType !== docTypeFilter) return false;
-    return true;
-  });
+  const FOLDER_MIME = "application/vnd.google-apps.folder";
+  const filteredDocs = visibleDocs
+    .filter(v => {
+      if (searchQuery.trim() && !v.doc.documentName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (docTypeFilter !== "all" && v.doc.documentType !== docTypeFilter) return false;
+      return true;
+    })
+    // Folders first, then files (both keep their incoming order otherwise)
+    .sort((a, b) => {
+      const af = a.doc.mimeType === FOLDER_MIME ? 0 : 1;
+      const bf = b.doc.mimeType === FOLDER_MIME ? 0 : 1;
+      return af - bf;
+    });
 
   // ── Email filtering by sidebar selection ──
   const getEmailsForItem = useCallback((item: SidebarItem | null): any[] => {
@@ -719,6 +737,80 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const cpoItems = items.filter(i => i.kind === "VBSerialNumber");
   const shipItems = items.filter(i => i.kind === "VBShipmentNumber");
 
+  /* ─── Directory Structure: create standard subfolders for the selected record ─── */
+  const handleDirectoryStructure = async () => {
+    if (!selectedItem) return;
+    const poLabel = poItems[0]?.label || poNumber;
+    // Resolve the path segments from the selected record
+    let spo: string | undefined;
+    let ship: string | undefined;
+    if (selectedItem.kind === "VBShipmentNumber") {
+      ship = selectedItem.label;
+      // Parent CPO from prefix (VB504-7-1 → VB504-7)
+      const parts = selectedItem.label.split("-");
+      if (parts.length > 2) spo = parts.slice(0, -1).join("-");
+    } else if (selectedItem.kind === "VBSerialNumber") {
+      spo = selectedItem.label;
+    }
+
+    setCreatingStructure(true);
+    try {
+      const res = await fetch("/api/admin/drive/directory-structure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poNumber: poLabel, spoNumber: spo, shipNumber: ship }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error("Failed to create folders", { description: data.error });
+        return;
+      }
+
+      // Persist any NEW folders as driveDocuments so they show as cards here.
+      // (This modal lists DB records, not raw Drive contents.)
+      const existingIds = new Set(
+        items.find((i) => i.id === selectedItem.id)?.docs.map((d) => d.driveFileId) || []
+      );
+      const newFolders = (data.folders || []).filter((f: any) => f.id && !existingIds.has(f.id));
+
+      let savedCount = 0;
+      for (const f of newFolders) {
+        try {
+          const saveRes = await fetch("/api/admin/drive-documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              collection: selectedItem.collection,
+              recordId: selectedItem.id,
+              document: {
+                documentName: f.name,
+                documentLink: f.webViewLink || "",
+                documentType: "Internal",
+                driveFileId: f.id,
+                mimeType: f.mimeType || "application/vnd.google-apps.folder",
+                size: "0",
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          });
+          if (saveRes.ok) savedCount++;
+        } catch { /* skip individual failures */ }
+      }
+
+      toast.success("Directory structure ready", {
+        description:
+          savedCount > 0
+            ? `${savedCount} new folder(s) added to ${selectedItem.label}`
+            : `All standard folders already exist in ${selectedItem.label}`,
+      });
+      fetchDocs();
+    } catch {
+      toast.error("Failed to create folders");
+    } finally {
+      setCreatingStructure(false);
+    }
+  };
+
   /* ─── Create Folder handler ─── */
   const handleCreateFolder = async () => {
     if (!newFolderName.trim() || !selectedItem) return;
@@ -887,21 +979,56 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                 />
               </div>
               {!showEmailHistory && selectedItem && (
-                <>
-                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => {
-                    toast.info("Please allow the browser prompt to upload folder structure");
-                    folderInputRef.current?.click();
-                  }} disabled={uploading}>
-                    <FolderOpen className="h-3.5 w-3.5" /> Folder
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }}>
-                    <FolderPlus className="h-3.5 w-3.5" /> New Folder
-                  </Button>
-                  <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    Upload to {selectedItem.label}
-                  </Button>
-                </>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" className="h-8 text-xs gap-1.5 shadow-sm" disabled={uploading || creatingStructure}>
+                      {uploading || creatingStructure ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="h-3.5 w-3.5" />
+                      )}
+                      Smart Create
+                      <ChevronDown className="h-3 w-3 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Add to {selectedItem.label}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="gap-2 cursor-pointer">
+                      <FileUp className="h-4 w-4 text-primary" />
+                      Upload file(s)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        toast.info("Please allow the browser prompt to upload folder structure");
+                        folderInputRef.current?.click();
+                      }}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <FolderUp className="h-4 w-4 text-primary" />
+                      Upload folder(s)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }} className="gap-2 cursor-pointer">
+                      <FolderPlus className="h-4 w-4 text-amber-500" />
+                      New Folder
+                    </DropdownMenuItem>
+                    {selectedItem.kind !== "VBNumber" && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={handleDirectoryStructure}
+                          disabled={creatingStructure}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <FolderTree className="h-4 w-4 text-emerald-500" />
+                          Create Directory Structure
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <button onClick={onClose} className="h-8 w-8 rounded-lg bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-1">
                 <X className="h-4 w-4" />
@@ -1163,6 +1290,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     {filteredDocs.map((item, idx) => {
                       const d = item.doc;
                       const cardId = `${d.driveFileId}-${idx}`;
+                      const isFolder = d.mimeType === "application/vnd.google-apps.folder";
                       const isPreviewing = previewFile?.driveFileId === d.driveFileId;
                       const selIndex = selectedIds.indexOf(cardId);
                       const isSelected = selIndex >= 0;
@@ -1171,32 +1299,48 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                           className={cn(
                             "group relative rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer",
                             isSelected ? "border-primary ring-2 ring-primary/20 shadow-lg" :
-                            isPreviewing ? "border-primary/60 ring-1 ring-primary/10 shadow-md" : "border-border/40 hover:border-border/80 hover:shadow-md"
+                            isPreviewing ? "border-primary/60 ring-1 ring-primary/10 shadow-md" :
+                            isFolder ? "border-amber-500/30 hover:border-amber-500/60 hover:shadow-md" : "border-border/40 hover:border-border/80 hover:shadow-md"
                           )}
-                          onClick={() => setPreviewFile(d)}>
+                          onClick={() => {
+                            if (isFolder) {
+                              if (d.documentLink) window.open(d.documentLink, "_blank", "noopener,noreferrer");
+                            } else {
+                              setPreviewFile(d);
+                            }
+                          }}>
                           {/* Name header - dark bg on top */}
-                          <div className="bg-zinc-900 dark:bg-zinc-800 px-3 py-2 flex items-center gap-2">
+                          <div className={cn("px-3 py-2 flex items-center gap-2", isFolder ? "bg-amber-950/80 dark:bg-amber-950/60" : "bg-zinc-900 dark:bg-zinc-800")}>
                             <button
                               onClick={(e) => toggleSelect(cardId, e)}
                               className={cn("h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 text-[10px] font-black",
                                 isSelected ? "bg-primary border-primary text-primary-foreground" : "border-white/40 text-transparent hover:border-white hover:text-white/60")}
                             >
-                              {isSelected ? selIndex + 1 : ""}                            
+                              {isSelected ? selIndex + 1 : ""}
                             </button>
                             <p className="text-xs font-semibold text-white truncate flex-1" title={d.documentName}>{d.documentName}</p>
                           </div>
-                          {/* Thumbnail */}
+                          {/* Thumbnail / folder tile */}
                           <div className="relative h-[120px] bg-muted/30 overflow-hidden">
-                            <img src={thumbUrl(d.driveFileId)} alt={d.documentName}
-                              loading="lazy" decoding="async"
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; const fb = (e.target as HTMLImageElement).parentElement?.querySelector('.thumb-fb') as HTMLElement; if (fb) fb.style.display = 'flex'; }} />
-                            <div className="thumb-fb absolute inset-0 items-center justify-center bg-gradient-to-br from-muted/40 to-muted/20" style={{ display: 'none' }}>
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="h-14 w-14 rounded-2xl bg-background/80 border border-border/40 flex items-center justify-center shadow-sm">{getIcon(d.mimeType)}</div>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{d.documentName?.split('.').pop()?.toUpperCase() || 'FILE'}</span>
+                            {isFolder ? (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03]">
+                                <Folder className="h-14 w-14 text-amber-500 fill-amber-500/20" />
+                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-600/70">Folder</span>
                               </div>
-                            </div>
+                            ) : (
+                              <>
+                                <img src={thumbUrl(d.driveFileId)} alt={d.documentName}
+                                  loading="lazy" decoding="async"
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; const fb = (e.target as HTMLImageElement).parentElement?.querySelector('.thumb-fb') as HTMLElement; if (fb) fb.style.display = 'flex'; }} />
+                                <div className="thumb-fb absolute inset-0 items-center justify-center bg-gradient-to-br from-muted/40 to-muted/20" style={{ display: 'none' }}>
+                                  <div className="flex flex-col items-center gap-2">
+                                    <div className="h-14 w-14 rounded-2xl bg-background/80 border border-border/40 flex items-center justify-center shadow-sm">{getIcon(d.mimeType)}</div>
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{d.documentName?.split('.').pop()?.toUpperCase() || 'FILE'}</span>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
                           {/* Footer */}
                           <div className="px-3 py-2 flex items-center justify-between gap-1.5">
@@ -1206,40 +1350,58 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                                   {item.source}
                                 </span>
                               )}
-                              <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtSize(d.size)}</span>
+                              {!isFolder && (
+                                <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtSize(d.size)}</span>
+                              )}
                               <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtDate(d.createdAt)}</span>
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const newType = d.documentType === 'Internal' ? 'External' : 'Internal';
-                                // Find the source item for this doc
-                                const srcItem = selectedItem || items.find(it => it.docs.includes(d));
-                                if (!srcItem) { toast.error("Cannot find source"); return; }
-                                // Optimistic update
-                                d.documentType = newType;
-                                setItems([...items]);
-                                // API call
-                                fetch("/api/admin/drive-documents", {
-                                  method: "PUT",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ collection: srcItem.collection, recordId: srcItem.id, driveFileId: d.driveFileId, updates: { documentType: newType } }),
-                                }).then(res => {
-                                  if (res.ok) toast.success(`Set to ${newType}`);
-                                  else toast.error("Failed to update");
-                                }).catch(() => toast.error("Failed to update"));
-                              }}
-                              className={cn(
-                                "inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full transition-all shrink-0 relative",
-                                d.documentType === "Internal"
-                                  ? "bg-primary/10 text-primary hover:bg-amber-500/15 hover:text-amber-600"
-                                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-primary/15 hover:text-primary"
-                              )}
-                              title={`Click to switch to ${d.documentType === 'Internal' ? 'External' : 'Internal'}`}
-                            >
-                              {d.documentType === "Internal" ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
-                              {d.documentType}
-                            </button>
+                            {isFolder ? (
+                              d.documentLink ? (
+                                <a
+                                  href={d.documentLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all shrink-0"
+                                  title="Open folder in Google Drive"
+                                >
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                  Open
+                                </a>
+                              ) : null
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newType = d.documentType === 'Internal' ? 'External' : 'Internal';
+                                  // Find the source item for this doc
+                                  const srcItem = selectedItem || items.find(it => it.docs.includes(d));
+                                  if (!srcItem) { toast.error("Cannot find source"); return; }
+                                  // Optimistic update
+                                  d.documentType = newType;
+                                  setItems([...items]);
+                                  // API call
+                                  fetch("/api/admin/drive-documents", {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ collection: srcItem.collection, recordId: srcItem.id, driveFileId: d.driveFileId, updates: { documentType: newType } }),
+                                  }).then(res => {
+                                    if (res.ok) toast.success(`Set to ${newType}`);
+                                    else toast.error("Failed to update");
+                                  }).catch(() => toast.error("Failed to update"));
+                                }}
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full transition-all shrink-0 relative",
+                                  d.documentType === "Internal"
+                                    ? "bg-primary/10 text-primary hover:bg-amber-500/15 hover:text-amber-600"
+                                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-primary/15 hover:text-primary"
+                                )}
+                                title={`Click to switch to ${d.documentType === 'Internal' ? 'External' : 'Internal'}`}
+                              >
+                                {d.documentType === "Internal" ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+                                {d.documentType}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

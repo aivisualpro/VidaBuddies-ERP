@@ -274,9 +274,56 @@ export async function POST(req: Request) {
 
     const newItem = await VBshipping.create(data);
     broadcastMutation("vb-shipping", "create", newItem._id?.toString());
+
+    // Fire-and-forget: create the standard Drive directory structure for this
+    // shipment. Never blocks or fails the creation response.
+    ensureStandardShipmentFolders(newItem).catch((e) =>
+      console.error("[vb-shipping] folder scaffold failed:", e?.message)
+    );
+
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     console.error("Failed to create VBshipping:", error);
     return NextResponse.json({ error: "Failed to create" }, { status: 500 });
+  }
+}
+
+/**
+ * Resolve a new shipment's display path (VB504 / VB504-7 / VB504-7-1) and
+ * ensure its Drive folder + the standard subfolders exist.
+ */
+async function ensureStandardShipmentFolders(ship: any): Promise<void> {
+  const shipNumber = ship.VBShipmentNumber || ship.svbid;
+  if (!shipNumber || !ship.VBNumber) return;
+
+  const db = mongoose.connection.db;
+  if (!db) return;
+
+  // Resolve PO display name (VBNumber ObjectId → "VB504")
+  const po = await db.collection("vidapos").findOne(
+    { _id: new mongoose.Types.ObjectId(ship.VBNumber.toString()) },
+    { projection: { VBNumber: 1 } }
+  );
+  const poDisplay = po?.VBNumber;
+  if (!poDisplay) return;
+
+  // Resolve CPO display name (VBSerialNumber ObjectId → "VB504-7")
+  let spoDisplay: string | undefined;
+  if (ship.VBSerialNumber) {
+    const cpo = await db.collection("vbcustomerpos").findOne(
+      { _id: new mongoose.Types.ObjectId(ship.VBSerialNumber.toString()) },
+      { projection: { VBSerialNumber: 1, poNo: 1 } }
+    );
+    spoDisplay = cpo?.VBSerialNumber || cpo?.poNo;
+  }
+
+  const { ensureFolderPath, findOrCreateFolder } = await import("@/lib/google-drive");
+  const { SHIPMENT_STANDARD_FOLDERS } = await import("@/lib/shipment-folders");
+  const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
+
+  const shipFolderId = await ensureFolderPath(ROOT_FOLDER_ID, poDisplay, spoDisplay, shipNumber);
+  // Create standard subfolders sequentially to stay gentle on the Drive API
+  for (const name of SHIPMENT_STANDARD_FOLDERS) {
+    await findOrCreateFolder(shipFolderId, name);
   }
 }

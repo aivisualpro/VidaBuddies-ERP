@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureFolderPath, findOrCreateFolder } from "@/lib/google-drive";
+import { ensureFolderPath, findOrCreateFolder, getDrive } from "@/lib/google-drive";
 import { SHIPMENT_STANDARD_FOLDERS } from "@/lib/shipment-folders";
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
+const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 /**
  * POST /api/admin/drive/directory-structure
@@ -12,6 +13,9 @@ const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
  * Body (one of):
  *   { poNumber, spoNumber, shipNumber }  → resolves/creates the folder path
  *   { folderId }                          → uses an existing folder directly
+ *
+ * Returns each folder with { name, id, webViewLink } so the caller can
+ * persist them as driveDocuments records (they then appear in the modal).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -32,18 +36,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Could not resolve target folder" }, { status: 404 });
     }
 
-    // Create each standard folder (idempotent — reuses existing ones)
-    const created = await Promise.all(
+    const drive = getDrive();
+
+    // Create each standard folder (idempotent — reuses existing ones) and
+    // fetch its webViewLink so the client can save a folder card.
+    const folders = await Promise.all(
       SHIPMENT_STANDARD_FOLDERS.map(async (name) => {
         const id = await findOrCreateFolder(targetFolderId!, name);
-        return { name, id };
+        let webViewLink = "";
+        try {
+          const meta = await drive.files.get({
+            fileId: id,
+            fields: "id, webViewLink",
+            supportsAllDrives: true,
+          });
+          webViewLink = meta.data.webViewLink || "";
+        } catch { /* link is best-effort */ }
+        return { name, id, webViewLink, mimeType: FOLDER_MIME };
       })
     );
 
     return NextResponse.json({
       success: true,
       folderId: targetFolderId,
-      folders: created,
+      folders,
     });
   } catch (error: any) {
     console.error("[directory-structure] Error:", error);
