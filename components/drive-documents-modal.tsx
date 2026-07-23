@@ -449,11 +449,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     setFolderStack((prev) => [...prev, folder]);
     setSelectedIds([]);
     setPreviewFile(null);
+    setDocTypeFilter("all"); // each folder context starts on "All"
     fetchFolderContents(folder.id);
   }, [fetchFolderContents]);
 
   // Jump to a breadcrumb level: -1 = back to the record (exit folders)
   const navigateToFolderLevel = useCallback((index: number) => {
+    setDocTypeFilter("all"); // reset the type filter for the new context
     if (index < 0) {
       setFolderStack([]);
       setFolderContents([]);
@@ -522,11 +524,26 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
   const selectedItem = items.find(i => i.id === selected) || null;
 
+  // driveFileId → documentType, from all records' DB docs. Lets folder contents
+  // and the All Files view (both live Drive lists) show Internal/External.
+  const driveTypeMap = new Map<string, "Internal" | "External">();
+  for (const it of items) {
+    for (const d of it.docs) {
+      if (d.driveFileId && (d.documentType === "Internal" || d.documentType === "External")) {
+        driveTypeMap.set(d.driveFileId, d.documentType);
+      }
+    }
+  }
+
   // All docs or selected docs — OR the contents of the folder we're inside.
   const visibleDocs: { doc: DocRecord; source: string; kind: string }[] = [];
   if (insideFolder) {
     const src = folderStack[folderStack.length - 1].name;
-    for (const d of folderContents) visibleDocs.push({ doc: d, source: src, kind: "folder" });
+    // Enrich folder items with their real Internal/External type when known
+    for (const d of folderContents) {
+      const t = driveTypeMap.get(d.driveFileId);
+      visibleDocs.push({ doc: t ? { ...d, documentType: t } : d, source: src, kind: "folder" });
+    }
   } else if (selectedItem) {
     for (const d of selectedItem.docs) visibleDocs.push({ doc: d, source: selectedItem.label, kind: selectedItem.kind });
   } else {
@@ -551,17 +568,6 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       const bf = b.doc.mimeType === FOLDER_MIME ? 0 : 1;
       return af - bf;
     });
-
-  // driveFileId → documentType, built from all records' DB docs. Lets the
-  // "All Files" view (live Drive list) show the Internal/External tag.
-  const driveTypeMap = new Map<string, "Internal" | "External">();
-  for (const it of items) {
-    for (const d of it.docs) {
-      if (d.driveFileId && (d.documentType === "Internal" || d.documentType === "External")) {
-        driveTypeMap.set(d.driveFileId, d.documentType);
-      }
-    }
-  }
 
   // Select-all: card IDs for all FILE cards (folders excluded) in current view
   const selectableCardIds = filteredDocs
@@ -1158,13 +1164,15 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     }
   }, []);
 
-  // Load All Files whenever the tab opens or the record's root folder resolves
+  // Load All Files whenever the tab opens or the scope folder changes.
+  // Scope = current folder when inside one, else the record's root folder.
   useEffect(() => {
-    if (allFilesView && recordFolderId) fetchAllFiles(recordFolderId);
+    const scopeId = currentFolderId; // insideFolder ? folder : recordFolderId
+    if (allFilesView && scopeId) fetchAllFiles(scopeId);
     if (!allFilesView) setAllFilesSel([]);
-  }, [allFilesView, recordFolderId, fetchAllFiles]);
+  }, [allFilesView, currentFolderId, fetchAllFiles]);
 
-  /* ─── Merge selected files from All Files → save into the record ROOT folder ─── */
+  /* ─── Merge selected files from All Files → save into the CURRENT scope folder ─── */
   const handleMergeAllFiles = async () => {
     const chosen = allFiles.filter((f) => allFilesSel.includes(f.id));
     // Only PDFs/images can merge
@@ -1175,12 +1183,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       toast.error("Select at least 2 PDF or image files to merge");
       return;
     }
-    if (!recordFolderId) {
+    if (!currentFolderId) {
       toast.error("Folder not ready — try again in a moment");
       return;
     }
     const timestamp = new Date().toISOString().split("T")[0];
-    setMergeFileName(`Merged_${selectedItem?.label || poNumber}_${timestamp}`);
+    const scopeName = insideFolder ? folderStack[folderStack.length - 1].name : (selectedItem?.label || poNumber);
+    setMergeFileName(`Merged_${scopeName}_${timestamp}`);
     // Stash the mergeable ids for the dialog's confirm to use
     setAllFilesMergeIds(mergeable.map((f) => f.id));
     setMergeDialogOpen(true);
@@ -1190,7 +1199,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
   const confirmMergeAllFiles = async () => {
     if (!mergeFileName.trim()) { toast.error("Filename is required"); return; }
-    if (!recordFolderId || allFilesMergeIds.length < 2) return;
+    const targetFolder = currentFolderId;
+    if (!targetFolder || allFilesMergeIds.length < 2) return;
     setMerging(true);
     try {
       const res = await fetch("/api/admin/drive/merge", {
@@ -1199,15 +1209,16 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         body: JSON.stringify({
           fileIds: allFilesMergeIds,
           poNumber,
-          folderId: recordFolderId, // ← merged file lands in the record's ROOT folder
+          folderId: targetFolder, // ← merged file lands in the CURRENT scope folder
           fileName: mergeFileName.trim(),
         }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error("Merge failed", { description: data.error }); return; }
 
-      // Save the merged doc onto the record so it shows as a card at the root
-      if (selectedItem && data.uploaded) {
+      // At the record root, save the merged doc onto the record so it shows as a
+      // card. Inside a subfolder, contents are read live so no DB record needed.
+      if (!insideFolder && selectedItem && data.uploaded) {
         await fetch("/api/admin/drive-documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1227,12 +1238,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         }).catch(() => {});
       }
 
-      toast.success(`Merged ${allFilesMergeIds.length} files into ${selectedItem?.label || "root"}`);
+      const scopeName = insideFolder ? folderStack[folderStack.length - 1].name : (selectedItem?.label || "root");
+      toast.success(`Merged ${allFilesMergeIds.length} files into ${scopeName}`);
       setMergeDialogOpen(false);
       setAllFilesSel([]);
       setAllFilesMergeIds([]);
-      fetchDocs();
-      if (recordFolderId) fetchAllFiles(recordFolderId);
+      if (!insideFolder) fetchDocs();
+      if (targetFolder) fetchAllFiles(targetFolder);
     } catch {
       toast.error("Merge failed");
     } finally {
@@ -1677,20 +1689,32 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                 </div>
               )}
 
-              {/* All / Internal / External / All Files tabs — hidden while browsing inside a folder */}
-              {!showEmailHistory && !insideFolder && (
+              {/* All / Internal / External / All Files tabs.
+                  Inside a folder, the tabs filter THAT folder's contents.
+                  At the record root they filter the record's files. */}
+              {!showEmailHistory && (() => {
+                // Scope tabs to the current context: folder contents when inside
+                // a folder, else the selected record's files.
+                const scopeDocs = insideFolder
+                  ? folderContents
+                  : (selectedItem?.docs || []);
+                const scopeFiles = scopeDocs.filter((d) => d.mimeType !== FOLDER_MIME);
+                const typeOf = (d: DocRecord) => driveTypeMap.get(d.driveFileId) || d.documentType;
+                return (
                 <div className="px-4 py-2 border-b border-border/30 bg-muted/10 shrink-0 flex items-center gap-1.5">
                   {([
-                    { key: "all" as const, label: "All", count: visibleDocs.length },
-                    { key: "Internal" as const, label: "Internal", count: visibleDocs.filter(v => v.doc.documentType === "Internal").length },
-                    { key: "External" as const, label: "External", count: visibleDocs.filter(v => v.doc.documentType === "External").length },
-                  ]).map(tab => (
+                    { key: "all" as const, label: "All", count: scopeDocs.length },
+                    { key: "Internal" as const, label: "Internal", count: scopeFiles.filter(d => typeOf(d) === "Internal").length },
+                    { key: "External" as const, label: "External", count: scopeFiles.filter(d => typeOf(d) === "External").length },
+                  ]).map(tab => {
+                    const active = !allFilesView && docTypeFilter === tab.key;
+                    return (
                     <button
                       key={tab.key}
                       onClick={() => { setAllFilesView(false); setDocTypeFilter(tab.key); }}
                       className={cn(
                         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all",
-                        !allFilesView && docTypeFilter === tab.key
+                        active
                           ? tab.key === "External"
                             ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-sm"
                             : "bg-primary/10 text-primary shadow-sm"
@@ -1699,20 +1723,22 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     >
                       {tab.label}
                       <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                        !allFilesView && docTypeFilter === tab.key
+                        active
                           ? tab.key === "External" ? "bg-amber-500/10 text-amber-600" : "bg-primary/10 text-primary"
                           : "bg-muted text-muted-foreground"
                       )}>{tab.count}</span>
                     </button>
-                  ))}
-                  {/* All Files — flat recursive view across all folders */}
+                    );
+                  })}
+                  {/* All Files — flat recursive view of the CURRENT scope
+                      (whole record at root, or the current folder when inside one) */}
                   <button
                     onClick={() => setAllFilesView(true)}
                     className={cn(
                       "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ml-1",
                       allFilesView ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     )}
-                    title="Every file across all folders — for cross-folder merging"
+                    title={insideFolder ? "Every file inside this folder (recursive)" : "Every file across all folders — for cross-folder merging"}
                   >
                     <ListTree className="h-3 w-3" />
                     All Files
@@ -1722,7 +1748,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     )}
                   </button>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Email History */}
               {showEmailHistory ? (
@@ -1801,9 +1828,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     </table>
                   )}
                 </div>
-              ) : allFilesView && !insideFolder ? (
+              ) : allFilesView ? (
 
-              /* ═══ All Files — flat recursive table across all folders ═══ */
+              /* ═══ All Files — flat recursive table for the current scope ═══ */
               <div className="flex-1 overflow-y-auto min-h-0">
                 {loadingAllFiles ? (
                   <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-indigo-500/40" /></div>
@@ -1861,7 +1888,11 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                               <td className="px-3 py-2.5">
                                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
                                   <MapPin className="h-2.5 w-2.5" />
-                                  {selectedItem?.label ? `${selectedItem.label} / ` : ""}{f.folderPath}
+                                  {/* Prefix = current scope path (record label + any folder crumbs) */}
+                                  {insideFolder
+                                    ? `${selectedItem?.label ? selectedItem.label + " / " : ""}${folderStack.map((s) => s.name).join(" / ")} / `
+                                    : `${selectedItem?.label ? selectedItem.label + " / " : ""}`}
+                                  {f.folderPath}
                                 </span>
                               </td>
                               <td className="px-3 py-2.5 text-center">
@@ -2115,8 +2146,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
               {/* Footer */}
               <div className="px-4 py-2 border-t border-border/30 bg-muted/20 shrink-0 flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {allFilesView && !insideFolder ? (
-                    <>{allFiles.length} file{allFiles.length !== 1 ? "s" : ""} across all folders{allFilesSel.length > 0 && ` · ${allFilesSel.length} selected`}</>
+                  {allFilesView ? (
+                    <>{allFiles.length} file{allFiles.length !== 1 ? "s" : ""} {insideFolder ? `in ${folderStack[folderStack.length - 1].name}` : "across all folders"}{allFilesSel.length > 0 && ` · ${allFilesSel.length} selected`}</>
                   ) : (
                     <>
                       {filteredDocs.length} {insideFolder ? "item" : "file"}{filteredDocs.length !== 1 ? "s" : ""}
@@ -2128,14 +2159,15 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   )}
                 </p>
                 <div className="flex items-center gap-1.5">
-                  {/* All Files actions: Merge to record root + Download */}
-                  {allFilesView && !insideFolder && allFilesSel.length > 0 && (
+                  {/* All Files actions: Merge to current scope + Download */}
+                  {allFilesView && allFilesSel.length > 0 && (
                     <>
                       {(() => {
                         const mergeableCount = allFiles.filter((f) => allFilesSel.includes(f.id) && (f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/"))).length;
+                        const scopeName = insideFolder ? folderStack[folderStack.length - 1].name : (selectedItem?.label || "root");
                         return (
                           <Button size="sm" className="h-7 text-[10px] gap-1 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleMergeAllFiles} disabled={merging || mergeableCount < 2}
-                            title={mergeableCount < 2 ? "Select at least 2 PDF/image files" : `Merge ${mergeableCount} files into ${selectedItem?.label || "root"}`}>
+                            title={mergeableCount < 2 ? "Select at least 2 PDF/image files" : `Merge ${mergeableCount} files into ${scopeName}`}>
                             {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({mergeableCount})
                           </Button>
                         );
@@ -2326,7 +2358,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
             </DialogTitle>
             <DialogDescription>
               {allFilesMergeIds.length > 0
-                ? `Merging ${allFilesMergeIds.length} files → saved to ${selectedItem?.label || "the record"} root folder.`
+                ? `Merging ${allFilesMergeIds.length} files → saved to ${insideFolder ? folderStack[folderStack.length - 1].name : (selectedItem?.label || "the record")} folder.`
                 : "Enter a filename for the merged PDF"}
             </DialogDescription>
           </DialogHeader>
