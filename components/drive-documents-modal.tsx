@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EmailComposeDialog, EmailInitialData } from "@/components/email-compose-dialog";
@@ -18,7 +19,7 @@ import {
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download, ChevronLeft, ChevronRight,
   FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose, FolderTree,
-  Plus, ChevronDown, FileUp, FolderUp, Wrench,
+  Plus, ChevronDown, FileUp, FolderUp, Wrench, CheckSquare, Square, ListTree, MapPin,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -315,6 +316,19 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [creatingStructure, setCreatingStructure] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  // POs whose folder structure is confirmed aligned this session (hide Repair)
+  const [repairedPOs, setRepairedPOs] = useState<Set<string>>(new Set());
+
+  // Drag & drop move: which card is being dragged, and which folder is hovered
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [movingCard, setMovingCard] = useState(false);
+
+  // "All Files" tab: flat recursive list of every file under the record root
+  const [allFilesView, setAllFilesView] = useState(false);
+  const [allFiles, setAllFiles] = useState<any[]>([]);
+  const [loadingAllFiles, setLoadingAllFiles] = useState(false);
+  const [allFilesSel, setAllFilesSel] = useState<string[]>([]);
 
   // ── In-modal folder navigation ──
   // When non-empty, we're browsing INSIDE a folder (Drive contents), not the
@@ -458,6 +472,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   useEffect(() => {
     setFolderStack([]);
     setFolderContents([]);
+    setAllFilesView(false);
+    setAllFiles([]);
+    setAllFilesSel([]);
   }, [selected, open]);
 
   // Resolve (creating if needed) the canonical Drive folder ID for the selected
@@ -535,6 +552,28 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       return af - bf;
     });
 
+  // driveFileId → documentType, built from all records' DB docs. Lets the
+  // "All Files" view (live Drive list) show the Internal/External tag.
+  const driveTypeMap = new Map<string, "Internal" | "External">();
+  for (const it of items) {
+    for (const d of it.docs) {
+      if (d.driveFileId && (d.documentType === "Internal" || d.documentType === "External")) {
+        driveTypeMap.set(d.driveFileId, d.documentType);
+      }
+    }
+  }
+
+  // Select-all: card IDs for all FILE cards (folders excluded) in current view
+  const selectableCardIds = filteredDocs
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => item.doc.mimeType !== FOLDER_MIME)
+    .map(({ item, idx }) => `${item.doc.driveFileId}-${idx}`);
+  const allSelected = selectableCardIds.length > 0 && selectableCardIds.every((id) => selectedIds.includes(id));
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds([]);
+    else setSelectedIds(selectableCardIds);
+  };
+
   // ── Email filtering by sidebar selection ──
   const getEmailsForItem = useCallback((item: SidebarItem | null): any[] => {
     if (!item) return emailRecords; // "All" — show everything
@@ -580,6 +619,26 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     setDeleteConfirmOpen(false);
     setDeleting(true);
     try {
+      // Inside a folder → selected items are live Drive files. Delete them
+      // directly from Drive (no DB records to touch).
+      if (insideFolder) {
+        const ids = getSelectedDocs().map((d) => d.doc.driveFileId).filter(Boolean);
+        const res = await fetch("/api/admin/drive", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileIds: ids }),
+        });
+        if (res.ok) {
+          toast.success(`${ids.length} item(s) deleted`);
+          setSelectedIds([]);
+          if (currentFolderId) fetchFolderContents(currentFolderId);
+        } else {
+          const data = await res.json();
+          toast.error("Delete failed", { description: data.error });
+        }
+        return;
+      }
+
       // Group by source item (collection + recordId)
       const bySource = new Map<string, { collection: string; recordId: string; driveFileIds: string[] }>();
       for (const selId of [...selectedIds]) {
@@ -778,6 +837,48 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   };
 
   const [emailAttachments, setEmailAttachments] = useState<{ id: string; name: string; mimeType: string; size: string }[]>([]);
+  const [downloadingSel, setDownloadingSel] = useState(false);
+
+  /* ─── Download selected (single file direct, multiple → ZIP) ─── */
+  const handleDownloadSelected = async () => {
+    const docs = getSelectedDocs().map((d) => d.doc);
+    if (docs.length === 0) return;
+    setDownloadingSel(true);
+    try {
+      const res = await fetch("/api/admin/drive/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileIds: docs.map((d) => d.driveFileId).filter(Boolean),
+          zipName: `${selectedItem?.label || (insideFolder ? folderStack[folderStack.length - 1].name : "attachments")}`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error("Download failed", { description: data.error });
+        return;
+      }
+      const blob = await res.blob();
+      // Filename from Content-Disposition, else derive
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="?([^"]+)"?/.exec(cd);
+      const fallback = docs.length === 1 ? docs[0].documentName : `${selectedItem?.label || "attachments"}.zip`;
+      const filename = match ? decodeURIComponent(match[1]) : fallback;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      toast.error("Download failed");
+    } finally {
+      setDownloadingSel(false);
+    }
+  };
 
   /* ─── Upload handler ─── */
   const handleUpload = async (fileList: FileList | null, targetItem?: SidebarItem | null) => {
@@ -970,9 +1071,16 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success("Drive folders repaired", {
-          description: `${data.moved} file(s) moved into place${data.skipped ? `, ${data.skipped} already correct` : ""}.`,
-        });
+        toast.success(
+          data.moved > 0 ? "Drive folders repaired" : "Folders already aligned",
+          {
+            description: data.moved > 0
+              ? `${data.moved} file(s) moved into place${data.skipped ? `, ${data.skipped} already correct` : ""}.`
+              : "Everything is already in its correct folder.",
+          }
+        );
+        // Structure is now aligned for this whole PO → hide Repair for it
+        setRepairedPOs((prev) => new Set(prev).add(poLabel));
         if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
         else fetchDocs();
       } else {
@@ -982,6 +1090,153 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       toast.error("Repair failed");
     } finally {
       setRepairing(false);
+    }
+  };
+
+  /* ─── Drag & drop: move a file/folder INTO a target folder ─── */
+  const handleMoveIntoFolder = async (
+    dragged: DocRecord,
+    targetFolder: DocRecord
+  ) => {
+    if (!dragged?.driveFileId || !targetFolder?.driveFileId) return;
+    if (dragged.driveFileId === targetFolder.driveFileId) return; // no self-drop
+    setMovingCard(true);
+    try {
+      // 1) Physically move in Google Drive
+      const res = await fetch("/api/admin/drive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds: [dragged.driveFileId], targetFolderId: targetFolder.driveFileId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.moved === 0) {
+        toast.error("Move failed", { description: data.error });
+        return;
+      }
+
+      // 2) If we're at the record root, the dragged item is a DB doc — detach it
+      //    (it now lives inside the folder, read live from Drive).
+      if (!insideFolder && selectedItem) {
+        await fetch("/api/admin/drive-documents/detach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            collection: selectedItem.collection,
+            recordId: selectedItem.id,
+            driveFileIds: [dragged.driveFileId],
+          }),
+        }).catch(() => {});
+      }
+
+      toast.success(`Moved "${dragged.documentName}" → ${targetFolder.documentName}`);
+
+      // 3) Refresh the current view
+      if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
+      else fetchDocs();
+    } catch {
+      toast.error("Move failed");
+    } finally {
+      setMovingCard(false);
+      setDraggingId(null);
+      setDropTargetId(null);
+    }
+  };
+
+  /* ─── All Files: recursive flat list under the record root ─── */
+  const fetchAllFiles = useCallback(async (rootId: string) => {
+    setLoadingAllFiles(true);
+    try {
+      const res = await fetch(`/api/admin/drive/all-files?folderId=${encodeURIComponent(rootId)}`);
+      const data = await res.json();
+      if (res.ok) setAllFiles(data.files || []);
+      else { setAllFiles([]); toast.error(data.error || "Failed to load files"); }
+    } catch {
+      setAllFiles([]);
+      toast.error("Failed to load files");
+    } finally {
+      setLoadingAllFiles(false);
+    }
+  }, []);
+
+  // Load All Files whenever the tab opens or the record's root folder resolves
+  useEffect(() => {
+    if (allFilesView && recordFolderId) fetchAllFiles(recordFolderId);
+    if (!allFilesView) setAllFilesSel([]);
+  }, [allFilesView, recordFolderId, fetchAllFiles]);
+
+  /* ─── Merge selected files from All Files → save into the record ROOT folder ─── */
+  const handleMergeAllFiles = async () => {
+    const chosen = allFiles.filter((f) => allFilesSel.includes(f.id));
+    // Only PDFs/images can merge
+    const mergeable = chosen.filter((f) =>
+      f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/")
+    );
+    if (mergeable.length < 2) {
+      toast.error("Select at least 2 PDF or image files to merge");
+      return;
+    }
+    if (!recordFolderId) {
+      toast.error("Folder not ready — try again in a moment");
+      return;
+    }
+    const timestamp = new Date().toISOString().split("T")[0];
+    setMergeFileName(`Merged_${selectedItem?.label || poNumber}_${timestamp}`);
+    // Stash the mergeable ids for the dialog's confirm to use
+    setAllFilesMergeIds(mergeable.map((f) => f.id));
+    setMergeDialogOpen(true);
+  };
+
+  const [allFilesMergeIds, setAllFilesMergeIds] = useState<string[]>([]);
+
+  const confirmMergeAllFiles = async () => {
+    if (!mergeFileName.trim()) { toast.error("Filename is required"); return; }
+    if (!recordFolderId || allFilesMergeIds.length < 2) return;
+    setMerging(true);
+    try {
+      const res = await fetch("/api/admin/drive/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileIds: allFilesMergeIds,
+          poNumber,
+          folderId: recordFolderId, // ← merged file lands in the record's ROOT folder
+          fileName: mergeFileName.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error("Merge failed", { description: data.error }); return; }
+
+      // Save the merged doc onto the record so it shows as a card at the root
+      if (selectedItem && data.uploaded) {
+        await fetch("/api/admin/drive-documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            collection: selectedItem.collection,
+            recordId: selectedItem.id,
+            document: {
+              documentName: mergeFileName.trim().endsWith(".pdf") ? mergeFileName.trim() : `${mergeFileName.trim()}.pdf`,
+              documentLink: data.uploaded.webViewLink || "",
+              documentType: "Internal",
+              driveFileId: data.uploaded.id || "",
+              mimeType: "application/pdf",
+              size: data.uploaded.size || "0",
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        }).catch(() => {});
+      }
+
+      toast.success(`Merged ${allFilesMergeIds.length} files into ${selectedItem?.label || "root"}`);
+      setMergeDialogOpen(false);
+      setAllFilesSel([]);
+      setAllFilesMergeIds([]);
+      fetchDocs();
+      if (recordFolderId) fetchAllFiles(recordFolderId);
+    } catch {
+      toast.error("Merge failed");
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -1217,7 +1472,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                         </DropdownMenuItem>
                       </>
                     )}
-                    {!insideFolder && (
+                    {!insideFolder && !repairedPOs.has(poItems[0]?.label || poNumber) && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1247,11 +1502,25 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
           {/* BODY */}
           <div
-            className={cn("flex flex-1 min-h-0 overflow-hidden relative", dragOver && "bg-primary/5")}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            className={cn("flex flex-1 min-h-0 overflow-hidden relative", dragOver && !draggingId && "bg-primary/5")}
+            onDragOver={(e) => {
+              // Only react to OS file drags, not internal card-to-folder moves
+              if (draggingId) return;
+              e.preventDefault();
+              setDragOver(true);
+            }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
+            onDrop={(e) => { if (draggingId) return; handleDrop(e); }}
           >
+            {/* Global move indicator */}
+            {movingCard && (
+              <div className="absolute inset-0 z-[60] flex items-center justify-center bg-background/40 backdrop-blur-[1px] pointer-events-none">
+                <div className="flex items-center gap-2 bg-background border border-border rounded-xl px-4 py-2.5 shadow-lg">
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                  <span className="text-xs font-semibold">Moving…</span>
+                </div>
+              </div>
+            )}
 
             {/* Sidebar — collapsed by default, slides open via the header toggle */}
             <div
@@ -1368,6 +1637,32 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">
                     {insideFolder ? `${folderContents.length} item(s)` : `${selectedItem.docs.length} files`}
                   </span>
+                  {selectableCardIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors",
+                        allSelected
+                          ? "bg-primary/15 text-primary border-primary/30 hover:bg-primary/20"
+                          : "bg-muted/60 text-muted-foreground border-border/40 hover:text-foreground hover:bg-muted"
+                      )}
+                      title={allSelected ? "Deselect all" : "Select all files"}
+                    >
+                      {allSelected ? <CheckSquare className="h-2.5 w-2.5" /> : <Square className="h-2.5 w-2.5" />}
+                      {allSelected ? "Deselect All" : "Select All"}
+                    </button>
+                  )}
+                  {draggingId ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full animate-pulse">
+                      <FolderOpen className="h-2.5 w-2.5" />
+                      Drop onto a folder to move
+                    </span>
+                  ) : (
+                    <span className="hidden lg:inline-flex items-center gap-1 text-[9px] font-medium text-muted-foreground/60">
+                      Tip: drag any card onto a folder to move it
+                    </span>
+                  )}
                   {!insideFolder && (
                     <button
                       type="button"
@@ -1382,7 +1677,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                 </div>
               )}
 
-              {/* All / Internal / External tabs — hidden while browsing inside a folder */}
+              {/* All / Internal / External / All Files tabs — hidden while browsing inside a folder */}
               {!showEmailHistory && !insideFolder && (
                 <div className="px-4 py-2 border-b border-border/30 bg-muted/10 shrink-0 flex items-center gap-1.5">
                   {([
@@ -1392,10 +1687,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   ]).map(tab => (
                     <button
                       key={tab.key}
-                      onClick={() => setDocTypeFilter(tab.key)}
+                      onClick={() => { setAllFilesView(false); setDocTypeFilter(tab.key); }}
                       className={cn(
                         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all",
-                        docTypeFilter === tab.key
+                        !allFilesView && docTypeFilter === tab.key
                           ? tab.key === "External"
                             ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-sm"
                             : "bg-primary/10 text-primary shadow-sm"
@@ -1404,12 +1699,28 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     >
                       {tab.label}
                       <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                        docTypeFilter === tab.key
+                        !allFilesView && docTypeFilter === tab.key
                           ? tab.key === "External" ? "bg-amber-500/10 text-amber-600" : "bg-primary/10 text-primary"
                           : "bg-muted text-muted-foreground"
                       )}>{tab.count}</span>
                     </button>
                   ))}
+                  {/* All Files — flat recursive view across all folders */}
+                  <button
+                    onClick={() => setAllFilesView(true)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ml-1",
+                      allFilesView ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                    title="Every file across all folders — for cross-folder merging"
+                  >
+                    <ListTree className="h-3 w-3" />
+                    All Files
+                    {allFiles.length > 0 && (
+                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full",
+                        allFilesView ? "bg-indigo-500/10 text-indigo-600" : "bg-muted text-muted-foreground")}>{allFiles.length}</span>
+                    )}
+                  </button>
                 </div>
               )}
 
@@ -1490,6 +1801,106 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     </table>
                   )}
                 </div>
+              ) : allFilesView && !insideFolder ? (
+
+              /* ═══ All Files — flat recursive table across all folders ═══ */
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {loadingAllFiles ? (
+                  <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-indigo-500/40" /></div>
+                ) : allFiles.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 gap-3">
+                    <ListTree className="h-10 w-10 text-muted-foreground/30" />
+                    <p className="text-sm font-semibold text-muted-foreground">No files found</p>
+                    <p className="text-xs text-muted-foreground/60">Files uploaded anywhere under this record will appear here.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
+                      <tr className="border-b border-border/40">
+                        <th className="w-10 px-3 py-2.5">
+                          <Checkbox
+                            checked={allFilesSel.length > 0 && allFilesSel.length === allFiles.length}
+                            onCheckedChange={(v: boolean | "indeterminate") => setAllFilesSel(v ? allFiles.map((f) => f.id) : [])}
+                            className="h-3.5 w-3.5"
+                          />
+                        </th>
+                        <th className="px-3 py-2 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Name</th>
+                        <th className="px-3 py-2 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Location / Route</th>
+                        <th className="px-3 py-2 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[90px]">Type</th>
+                        <th className="px-3 py-2 text-right font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[80px]">Size</th>
+                        <th className="px-3 py-2 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[110px]">Date</th>
+                        <th className="px-3 py-2 text-center font-black uppercase tracking-widest text-[9px] text-muted-foreground/60 w-[44px]">Open</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allFiles
+                        .filter((f) => !searchQuery.trim() || f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map((f) => {
+                          const isSel = allFilesSel.includes(f.id);
+                          const canMerge = f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/");
+                          return (
+                            <tr
+                              key={f.id}
+                              onClick={() => setAllFilesSel((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id])}
+                              className={cn("border-b border-border/20 cursor-pointer transition-colors", isSel ? "bg-indigo-500/[0.06]" : "hover:bg-muted/30")}
+                            >
+                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={isSel}
+                                  onCheckedChange={() => setAllFilesSel((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id])}
+                                  className="h-3.5 w-3.5"
+                                />
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="shrink-0">{getIcon(f.mimeType)}</span>
+                                  <span className="font-medium truncate max-w-[280px]" title={f.name}>{f.name}</span>
+                                  {!canMerge && <span className="text-[8px] font-bold uppercase text-muted-foreground/40 shrink-0">non-mergeable</span>}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                                  <MapPin className="h-2.5 w-2.5" />
+                                  {selectedItem?.label ? `${selectedItem.label} / ` : ""}{f.folderPath}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {(() => {
+                                  const t = driveTypeMap.get(f.id);
+                                  if (t === "External") {
+                                    return (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                        <EyeOff className="h-2.5 w-2.5" /> External
+                                      </span>
+                                    );
+                                  }
+                                  if (t === "Internal") {
+                                    return (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                        <Eye className="h-2.5 w-2.5" /> Internal
+                                      </span>
+                                    );
+                                  }
+                                  // File lives in a subfolder and isn't tracked as a record doc
+                                  return <span className="text-[9px] text-muted-foreground/40">—</span>;
+                                })()}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-muted-foreground tabular-nums">{fmtSize(f.size)}</td>
+                              <td className="px-3 py-2.5 text-muted-foreground/70">{fmtDate(f.createdTime)}</td>
+                              <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                {f.webViewLink && (
+                                  <a href={f.webViewLink} target="_blank" rel="noopener noreferrer" className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10">
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
               ) : (
 
               /* Grid */
@@ -1551,10 +1962,41 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       const isPreviewing = previewFile?.driveFileId === d.driveFileId;
                       const selIndex = selectedIds.indexOf(cardId);
                       const isSelected = selIndex >= 0;
+                      const isDropTarget = dropTargetId === d.driveFileId;
+                      const isBeingDragged = draggingId === d.driveFileId;
                       return (
                         <div key={cardId}
+                          draggable={!movingCard}
+                          onDragStart={(e) => {
+                            setDraggingId(d.driveFileId);
+                            e.dataTransfer.effectAllowed = "move";
+                            try { e.dataTransfer.setData("text/plain", d.driveFileId); } catch { /* noop */ }
+                          }}
+                          onDragEnd={() => { setDraggingId(null); setDropTargetId(null); }}
+                          onDragOver={(e) => {
+                            // Only folders (that aren't the dragged item) accept drops
+                            if (isFolder && draggingId && draggingId !== d.driveFileId) {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (dropTargetId !== d.driveFileId) setDropTargetId(d.driveFileId);
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            // Ignore leave events bubbling from children
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                              if (dropTargetId === d.driveFileId) setDropTargetId(null);
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (!isFolder || !draggingId || draggingId === d.driveFileId) return;
+                            const dragged = filteredDocs.find((x) => x.doc.driveFileId === draggingId)?.doc;
+                            if (dragged) handleMoveIntoFolder(dragged, d);
+                          }}
                           className={cn(
                             "group relative rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer",
+                            isBeingDragged && "opacity-40 scale-[0.98]",
+                            isDropTarget ? "border-amber-500 ring-2 ring-amber-400/50 shadow-xl scale-[1.02] bg-amber-500/5" :
                             isSelected ? "border-primary ring-2 ring-primary/20 shadow-lg" :
                             isPreviewing ? "border-primary/60 ring-1 ring-primary/10 shadow-md" :
                             isFolder ? "border-amber-500/30 hover:border-amber-500/60 hover:shadow-md" : "border-border/40 hover:border-border/80 hover:shadow-md"
@@ -1579,6 +2021,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                           </div>
                           {/* Thumbnail / folder tile */}
                           <div className="relative h-[120px] bg-muted/30 overflow-hidden">
+                            {/* Drop-target overlay */}
+                            {isDropTarget && (
+                              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-amber-500/25 backdrop-blur-[1px] border-2 border-dashed border-amber-400 rounded-lg pointer-events-none">
+                                <FolderOpen className="h-8 w-8 text-amber-500 animate-bounce" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Drop to move here</span>
+                              </div>
+                            )}
                             {isFolder ? (
                               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03]">
                                 <Folder className="h-14 w-14 text-amber-500 fill-amber-500/20" />
@@ -1666,12 +2115,55 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
               {/* Footer */}
               <div className="px-4 py-2 border-t border-border/30 bg-muted/20 shrink-0 flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {filteredDocs.length} file{filteredDocs.length !== 1 ? "s" : ""}
-                  {selectedItem && ` in ${selectedItem.label}`}
-                  {selCount > 0 && ` · ${selCount} selected`}
+                  {allFilesView && !insideFolder ? (
+                    <>{allFiles.length} file{allFiles.length !== 1 ? "s" : ""} across all folders{allFilesSel.length > 0 && ` · ${allFilesSel.length} selected`}</>
+                  ) : (
+                    <>
+                      {filteredDocs.length} {insideFolder ? "item" : "file"}{filteredDocs.length !== 1 ? "s" : ""}
+                      {insideFolder
+                        ? ` in ${folderStack[folderStack.length - 1].name}`
+                        : selectedItem && ` in ${selectedItem.label}`}
+                      {selCount > 0 && ` · ${selCount} selected`}
+                    </>
+                  )}
                 </p>
                 <div className="flex items-center gap-1.5">
-                  {selCount > 0 && !insideFolder && (
+                  {/* All Files actions: Merge to record root + Download */}
+                  {allFilesView && !insideFolder && allFilesSel.length > 0 && (
+                    <>
+                      {(() => {
+                        const mergeableCount = allFiles.filter((f) => allFilesSel.includes(f.id) && (f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/"))).length;
+                        return (
+                          <Button size="sm" className="h-7 text-[10px] gap-1 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleMergeAllFiles} disabled={merging || mergeableCount < 2}
+                            title={mergeableCount < 2 ? "Select at least 2 PDF/image files" : `Merge ${mergeableCount} files into ${selectedItem?.label || "root"}`}>
+                            {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({mergeableCount})
+                          </Button>
+                        );
+                      })()}
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" disabled={downloadingSel}
+                        onClick={async () => {
+                          setDownloadingSel(true);
+                          try {
+                            const res = await fetch("/api/admin/drive/download", {
+                              method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ fileIds: allFilesSel, zipName: selectedItem?.label || "files" }),
+                            });
+                            if (!res.ok) { toast.error("Download failed"); return; }
+                            const blob = await res.blob();
+                            const cd = res.headers.get("Content-Disposition") || "";
+                            const m = /filename="?([^"]+)"?/.exec(cd);
+                            const name = m ? decodeURIComponent(m[1]) : (allFilesSel.length === 1 ? "file" : `${selectedItem?.label || "files"}.zip`);
+                            const url = URL.createObjectURL(blob); const a = document.createElement("a");
+                            a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+                            setTimeout(() => URL.revokeObjectURL(url), 2000);
+                          } catch { toast.error("Download failed"); } finally { setDownloadingSel(false); }
+                        }}>
+                        {downloadingSel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Download ({allFilesSel.length})
+                      </Button>
+                      <button onClick={() => setAllFilesSel([])} className="text-[10px] font-bold text-muted-foreground hover:text-foreground ml-1">Clear</button>
+                    </>
+                  )}
+                  {selCount > 0 && !insideFolder && !allFilesView && (
                     <>
                       {(() => {
                         const extCount = getSelectedDocs().filter(d => d.doc.documentType === "External").length;
@@ -1683,6 +2175,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                           </Button>
                         );
                       })()}
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDownloadSelected} disabled={downloadingSel}
+                        title={selCount === 1 ? "Download file" : `Download ${selCount} files as ZIP`}>
+                        {downloadingSel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Download ({selCount})
+                      </Button>
                       {selCount > 1 && (
                         <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleMergeClick} disabled={merging}>
                           {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <Combine className="h-3 w-3" />} Merge ({selCount})
@@ -1690,6 +2186,20 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       )}
                       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
                         {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({selCount})
+                      </Button>
+                      <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
+                        {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete ({selCount})
+                      </Button>
+                      <button onClick={() => setSelectedIds([])} className="text-[10px] font-bold text-muted-foreground hover:text-foreground ml-1">Clear</button>
+                    </>
+                  )}
+                  {/* Inside a folder: live Drive items → Download + Delete (Move is via drag & drop) */}
+                  {selCount > 0 && insideFolder && (
+                    <>
+                      <span className="text-[9px] font-medium text-muted-foreground/60 mr-1 hidden md:inline">Drag onto a folder to move</span>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDownloadSelected} disabled={downloadingSel}
+                        title={selCount === 1 ? "Download" : `Download ${selCount} as ZIP`}>
+                        {downloadingSel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Download ({selCount})
                       </Button>
                       <Button size="sm" variant="destructive" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
                         {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete ({selCount})
@@ -1808,13 +2318,17 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       </Dialog>
 
       {/* Merge Filename Dialog */}
-      <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+      <Dialog open={mergeDialogOpen} onOpenChange={(v) => { if (!v) setAllFilesMergeIds([]); setMergeDialogOpen(v); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Combine className="h-5 w-5 text-indigo-500" /> Merge Documents
             </DialogTitle>
-            <DialogDescription>Enter a filename for the merged PDF</DialogDescription>
+            <DialogDescription>
+              {allFilesMergeIds.length > 0
+                ? `Merging ${allFilesMergeIds.length} files → saved to ${selectedItem?.label || "the record"} root folder.`
+                : "Enter a filename for the merged PDF"}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <Input
@@ -1824,10 +2338,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
               className="h-10"
             />
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>Cancel</Button>
-              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5" onClick={handleMerge} disabled={merging || !mergeFileName.trim()}>
+              <Button variant="outline" onClick={() => { setAllFilesMergeIds([]); setMergeDialogOpen(false); }}>Cancel</Button>
+              <Button
+                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
+                onClick={allFilesMergeIds.length > 0 ? confirmMergeAllFiles : handleMerge}
+                disabled={merging || !mergeFileName.trim()}
+              >
                 {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Combine className="h-4 w-4" />}
-                Merge {selCount} Files
+                Merge {allFilesMergeIds.length > 0 ? allFilesMergeIds.length : selCount} Files
               </Button>
             </div>
           </div>
@@ -1841,8 +2359,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete{" "}
-              <span className="font-semibold text-foreground">{selCount} file{selCount !== 1 ? "s" : ""}</span>{" "}
-              from Google Drive and remove them from the system.
+              <span className="font-semibold text-foreground">{selCount} item{selCount !== 1 ? "s" : ""}</span>{" "}
+              from Google Drive{insideFolder ? " (deleting a folder also removes everything inside it)" : " and remove them from the system"}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

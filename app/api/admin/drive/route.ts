@@ -7,6 +7,7 @@ import {
   listFiles,
   deleteFiles,
   renameFile,
+  moveFile,
 } from "@/lib/google-drive";
 
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDERID!;
@@ -190,6 +191,36 @@ export async function PUT(request: NextRequest) {
     console.error("[Drive API] Rename error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to rename file" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH — Move one or more files/folders into a target folder (drag & drop).
+ * Body: { fileIds: string[], targetFolderId: string }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { fileIds, targetFolderId } = await request.json();
+    if (!Array.isArray(fileIds) || fileIds.length === 0 || !targetFolderId) {
+      return NextResponse.json(
+        { error: "fileIds[] and targetFolderId are required" },
+        { status: 400 }
+      );
+    }
+
+    const results = await Promise.allSettled(
+      fileIds.map((id: string) => moveFile(id, targetFolderId))
+    );
+    const moved = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.length - moved;
+
+    return NextResponse.json({ success: true, moved, failed });
+  } catch (error: any) {
+    console.error("[Drive API] Move error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to move file(s)" },
       { status: 500 }
     );
   }
