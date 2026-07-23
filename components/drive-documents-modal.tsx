@@ -16,7 +16,7 @@ import {
   Paperclip, Upload, FolderOpen, Folder, Loader2, FileText, Image, File,
   Eye, EyeOff, Package, Ship, ShoppingCart,
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
-  X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download,
+  X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download, ChevronLeft, ChevronRight,
   FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose, FolderTree,
   Plus, ChevronDown, FileUp, FolderUp,
 } from "lucide-react";
@@ -28,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SHIPMENT_STANDARD_FOLDERS } from "@/lib/shipment-folders";
 
 /* ─── Types ─── */
 interface DocRecord {
@@ -306,6 +307,15 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [creatingStructure, setCreatingStructure] = useState(false);
 
+  // ── In-modal folder navigation ──
+  // When non-empty, we're browsing INSIDE a folder (Drive contents), not the
+  // flat record document list. Each entry is a folder we've descended into.
+  const [folderStack, setFolderStack] = useState<{ id: string; name: string }[]>([]);
+  const [folderContents, setFolderContents] = useState<DocRecord[]>([]);
+  const [loadingFolder, setLoadingFolder] = useState(false);
+  const insideFolder = folderStack.length > 0;
+  const currentFolderId = insideFolder ? folderStack[folderStack.length - 1].id : null;
+
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
   const [emailComposeMode, setEmailComposeMode] = useState<"compose" | "view">("compose");
@@ -373,6 +383,67 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     finally { setLoading(false); }
   }, [poNumber]);
 
+  // Fetch the contents of a Drive folder (files + subfolders) and map them
+  // to DocRecord shape so the existing grid can render them.
+  const fetchFolderContents = useCallback(async (folderId: string) => {
+    setLoadingFolder(true);
+    try {
+      const res = await fetch(`/api/admin/drive?folderId=${encodeURIComponent(folderId)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.files)) {
+        const mapped: DocRecord[] = data.files.map((f: any) => ({
+          documentName: f.name,
+          documentLink: f.webViewLink || "",
+          documentType: "Internal",
+          driveFileId: f.id,
+          mimeType: f.mimeType || "",
+          size: f.size || "0",
+          createdBy: "",
+          createdAt: f.createdTime || "",
+        }));
+        setFolderContents(mapped);
+      } else {
+        setFolderContents([]);
+        if (!res.ok) toast.error(data.error || "Failed to open folder");
+      }
+    } catch {
+      setFolderContents([]);
+      toast.error("Failed to open folder");
+    } finally {
+      setLoadingFolder(false);
+    }
+  }, []);
+
+  // Navigate INTO a folder card
+  const openFolder = useCallback((folder: { id: string; name: string }) => {
+    setFolderStack((prev) => [...prev, folder]);
+    setSelectedIds([]);
+    setPreviewFile(null);
+    fetchFolderContents(folder.id);
+  }, [fetchFolderContents]);
+
+  // Jump to a breadcrumb level: -1 = back to the record (exit folders)
+  const navigateToFolderLevel = useCallback((index: number) => {
+    if (index < 0) {
+      setFolderStack([]);
+      setFolderContents([]);
+      return;
+    }
+    setFolderStack((prev) => {
+      const next = prev.slice(0, index + 1);
+      fetchFolderContents(next[next.length - 1].id);
+      return next;
+    });
+    setSelectedIds([]);
+    setPreviewFile(null);
+  }, [fetchFolderContents]);
+
+  // Reset folder navigation whenever the selected record changes or modal reopens
+  useEffect(() => {
+    setFolderStack([]);
+    setFolderContents([]);
+  }, [selected, open]);
+
   // Intercept Escape: close preview first
   useEffect(() => {
     if (!open) return;
@@ -388,9 +459,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
   const selectedItem = items.find(i => i.id === selected) || null;
 
-  // All docs or selected docs
+  // All docs or selected docs — OR the contents of the folder we're inside.
   const visibleDocs: { doc: DocRecord; source: string; kind: string }[] = [];
-  if (selectedItem) {
+  if (insideFolder) {
+    const src = folderStack[folderStack.length - 1].name;
+    for (const d of folderContents) visibleDocs.push({ doc: d, source: src, kind: "folder" });
+  } else if (selectedItem) {
     for (const d of selectedItem.docs) visibleDocs.push({ doc: d, source: selectedItem.label, kind: selectedItem.kind });
   } else {
     for (const item of items) {
@@ -679,26 +753,32 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         const formData = new FormData();
         formData.append("poNumber", poNumber);
         formData.append("file", file);
+        // Inside a folder → upload straight into that Drive folder
+        if (insideFolder && currentFolderId) formData.append("folderId", currentFolderId);
         const res = await fetch("/api/admin/drive", { method: "POST", body: formData });
         const data = await res.json();
         if (!res.ok) {
           setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "error" } : f));
           continue;
         }
-        const docRecord = {
-          documentName: file.name,
-          documentLink: data.uploaded?.webViewLink || "",
-          documentType: "Internal",
-          driveFileId: data.uploaded?.id || "",
-          mimeType: data.uploaded?.mimeType || file.type || "application/octet-stream",
-          size: data.uploaded?.size || String(file.size),
-          createdAt: new Date().toISOString(),
-        };
-        await fetch("/api/admin/drive-documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ collection: uploadTarget.collection, recordId: uploadTarget.id, document: docRecord }),
-        });
+        // At the record root we track files in the DB; inside a subfolder the
+        // contents are read live from Drive, so no DB record is needed.
+        if (!insideFolder) {
+          const docRecord = {
+            documentName: file.name,
+            documentLink: data.uploaded?.webViewLink || "",
+            documentType: "Internal",
+            driveFileId: data.uploaded?.id || "",
+            mimeType: data.uploaded?.mimeType || file.type || "application/octet-stream",
+            size: data.uploaded?.size || String(file.size),
+            createdAt: new Date().toISOString(),
+          };
+          await fetch("/api/admin/drive-documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collection: uploadTarget.collection, recordId: uploadTarget.id, document: docRecord }),
+          });
+        }
         successCount++;
         setUploadCompleted(prev => prev + 1);
         setUploadFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done" } : f));
@@ -709,7 +789,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
     setUploading(false);
     if (successCount > 0) toast.success(`${successCount} file(s) uploaded`);
-    fetchDocs();
+    if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
+    else fetchDocs();
     setTimeout(() => { setUploadFiles([]); setUploadCompleted(0); setUploadTotal(0); }, 4000);
   };
 
@@ -736,6 +817,21 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   const poItems = items.filter(i => i.kind === "VBNumber");
   const cpoItems = items.filter(i => i.kind === "VBSerialNumber");
   const shipItems = items.filter(i => i.kind === "VBShipmentNumber");
+
+  // Whether every standard folder already exists as a folder card in the
+  // selected record — if so, hide the "Create Directory Structure" action.
+  const FOLDER_MIME_DIR = "application/vnd.google-apps.folder";
+  const allStandardFoldersPresent = (() => {
+    if (!selectedItem) return false;
+    const existingFolderNames = new Set(
+      selectedItem.docs
+        .filter((d) => d.mimeType === FOLDER_MIME_DIR)
+        .map((d) => (d.documentName || "").trim().toUpperCase())
+    );
+    return SHIPMENT_STANDARD_FOLDERS.every((name) =>
+      existingFolderNames.has(name.trim().toUpperCase())
+    );
+  })();
 
   /* ─── Directory Structure: create standard subfolders for the selected record ─── */
   const handleDirectoryStructure = async () => {
@@ -816,6 +912,23 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     if (!newFolderName.trim() || !selectedItem) return;
     setCreatingFolder(true);
     try {
+      // Inside a folder → create the subfolder directly under it (live Drive)
+      if (insideFolder && currentFolderId) {
+        const createRes = await fetch(
+          `/api/admin/drive?folderId=${encodeURIComponent(currentFolderId)}&ensureChildren=${encodeURIComponent(newFolderName.trim())}`
+        );
+        const createData = await createRes.json();
+        if (createRes.ok) {
+          toast.success(`Folder "${newFolderName.trim()}" created`);
+          setNewFolderOpen(false);
+          setNewFolderName("");
+          fetchFolderContents(currentFolderId);
+        } else {
+          toast.error("Failed to create folder", { description: createData.error });
+        }
+        return;
+      }
+
       // Use the drive API to create a folder — we need the parent folder ID from Drive
       // First resolve the parent folder path for this item
       const poLabel = poItems[0]?.label || poNumber;
@@ -993,7 +1106,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Add to {selectedItem.label}
+                      Add to {insideFolder ? folderStack[folderStack.length - 1].name : selectedItem.label}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="gap-2 cursor-pointer">
@@ -1014,7 +1127,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       <FolderPlus className="h-4 w-4 text-amber-500" />
                       New Folder
                     </DropdownMenuItem>
-                    {selectedItem.kind !== "VBNumber" && (
+                    {!insideFolder && selectedItem.kind !== "VBNumber" && !allStandardFoldersPresent && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1115,28 +1228,72 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
             {/* Content */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* Selected header */}
+              {/* Selected header / folder breadcrumb */}
               {selectedItem && (
-                <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 shrink-0 flex items-center gap-2">
+                <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 shrink-0 flex items-center gap-1.5 flex-wrap">
+                  {insideFolder && (
+                    <button
+                      type="button"
+                      onClick={() => navigateToFolderLevel(folderStack.length - 2)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 px-2 py-1 rounded-lg transition-colors mr-1"
+                      title="Back"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Back
+                    </button>
+                  )}
                   <span className={cn("h-6 w-6 rounded-lg flex items-center justify-center", kindColor(selectedItem.kind), "bg-current/10")}>
                     {kindIcon(selectedItem.kind)}
                   </span>
-                  <span className="text-sm font-bold">{selectedItem.label}</span>
-                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">{selectedItem.docs.length} files</span>
+                  {/* Record (root of the breadcrumb) */}
                   <button
                     type="button"
-                    onClick={() => setSelected(null)}
-                    className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted px-2 py-1 rounded-full transition-colors"
-                    title="Show attachments from all records"
+                    onClick={() => navigateToFolderLevel(-1)}
+                    disabled={!insideFolder}
+                    className={cn(
+                      "text-sm font-bold rounded px-1 transition-colors",
+                      insideFolder ? "text-muted-foreground hover:text-foreground cursor-pointer" : "text-foreground cursor-default"
+                    )}
                   >
-                    <X className="h-2.5 w-2.5" />
-                    View All
+                    {selectedItem.label}
                   </button>
+                  {/* Folder path segments */}
+                  {folderStack.map((seg, i) => (
+                    <span key={seg.id} className="flex items-center gap-1.5">
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40" />
+                      <button
+                        type="button"
+                        onClick={() => navigateToFolderLevel(i)}
+                        disabled={i === folderStack.length - 1}
+                        className={cn(
+                          "text-sm font-semibold rounded px-1 transition-colors inline-flex items-center gap-1",
+                          i === folderStack.length - 1 ? "text-foreground cursor-default" : "text-muted-foreground hover:text-foreground cursor-pointer"
+                        )}
+                      >
+                        <Folder className="h-3.5 w-3.5 text-amber-500" />
+                        {seg.name}
+                      </button>
+                    </span>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">
+                    {insideFolder ? `${folderContents.length} item(s)` : `${selectedItem.docs.length} files`}
+                  </span>
+                  {!insideFolder && (
+                    <button
+                      type="button"
+                      onClick={() => setSelected(null)}
+                      className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted px-2 py-1 rounded-full transition-colors"
+                      title="Show attachments from all records"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                      View All
+                    </button>
+                  )}
                 </div>
               )}
 
-              {/* All / Internal / External tabs */}
-              {!showEmailHistory && (
+              {/* All / Internal / External tabs — hidden while browsing inside a folder */}
+              {!showEmailHistory && !insideFolder && (
                 <div className="px-4 py-2 border-b border-border/30 bg-muted/10 shrink-0 flex items-center gap-1.5">
                   {([
                     { key: "all" as const, label: "All", count: visibleDocs.length },
@@ -1247,8 +1404,18 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
               /* Grid */
               <div className="flex-1 overflow-y-auto min-h-0 p-3">
-                {loading ? (
+                {loading || loadingFolder ? (
                   <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary/30" /></div>
+                ) : insideFolder && visibleDocs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="h-20 w-20 rounded-2xl bg-amber-500/10 border-2 border-dashed border-amber-500/25 flex items-center justify-center">
+                      <FolderOpen className="h-9 w-9 text-amber-500/50" />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-semibold">This folder is empty</p>
+                      <p className="text-xs text-muted-foreground">Use Smart Create to upload files or add a subfolder here.</p>
+                    </div>
+                  </div>
                 ) : visibleDocs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-5">
                     <div className="relative">
@@ -1304,7 +1471,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                           )}
                           onClick={() => {
                             if (isFolder) {
-                              if (d.documentLink) window.open(d.documentLink, "_blank", "noopener,noreferrer");
+                              openFolder({ id: d.driveFileId, name: d.documentName });
                             } else {
                               setPreviewFile(d);
                             }
@@ -1356,19 +1523,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                               <span className="text-[9px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fmtDate(d.createdAt)}</span>
                             </div>
                             {isFolder ? (
-                              d.documentLink ? (
-                                <a
-                                  href={d.documentLink}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all shrink-0"
-                                  title="Open folder in Google Drive"
-                                >
-                                  <ExternalLink className="h-2.5 w-2.5" />
-                                  Open
-                                </a>
-                              ) : null
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openFolder({ id: d.driveFileId, name: d.documentName }); }}
+                                className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all shrink-0"
+                                title="Open folder"
+                              >
+                                <FolderOpen className="h-2.5 w-2.5" />
+                                Open
+                              </button>
                             ) : (
                               <button
                                 onClick={(e) => {
@@ -1419,7 +1581,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   {selCount > 0 && ` · ${selCount} selected`}
                 </p>
                 <div className="flex items-center gap-1.5">
-                  {selCount > 0 && (
+                  {selCount > 0 && !insideFolder && (
                     <>
                       {(() => {
                         const extCount = getSelectedDocs().filter(d => d.doc.documentType === "External").length;
