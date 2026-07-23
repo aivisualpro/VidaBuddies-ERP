@@ -37,12 +37,16 @@ export async function GET(req: Request) {
 
     const filter: any = {};
     if (VBNumber) {
-      // Support both ObjectId and string matching
-      if (/^[a-fA-F0-9]{24}$/.test(VBNumber)) {
-        filter.VBNumber = new mongoose.Types.ObjectId(VBNumber);
-      } else {
-        filter.VBNumber = VBNumber;
+      // Expand to all sibling-group members so linked records show combined
+      // shipments. Match both ObjectId and string storage.
+      const { resolveGroupPoIds } = await import("@/lib/folder-group");
+      const groupIds = await resolveGroupPoIds(VBNumber);
+      const variants: any[] = [];
+      for (const id of groupIds) {
+        variants.push(id);
+        if (/^[a-fA-F0-9]{24}$/.test(id)) variants.push(new mongoose.Types.ObjectId(id));
       }
+      filter.VBNumber = { $in: variants };
     }
     if (VBSerialNumber) {
       if (/^[a-fA-F0-9]{24}$/.test(VBSerialNumber)) {
@@ -73,12 +77,25 @@ export async function GET(req: Request) {
     const db = mongoose.connection.db;
 
     // Lightweight attachment counts per shipment (never ships the heavy array).
-    // Used for the paperclip badge on shipment cards.
+    // Used for the paperclip badge on shipment cards. Counts FILES only —
+    // folder entries (mimeType = google-apps.folder) are excluded.
     const driveCountMap = new Map<string, number>();
     try {
       const countDocs = await db!.collection("vbshippings").aggregate([
         { $match: filter },
-        { $project: { driveDocumentsCount: { $size: { $ifNull: ["$driveDocuments", []] } } } },
+        {
+          $project: {
+            driveDocumentsCount: {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ["$driveDocuments", []] },
+                  as: "d",
+                  cond: { $ne: ["$$d.mimeType", "application/vnd.google-apps.folder"] },
+                },
+              },
+            },
+          },
+        },
       ]).toArray();
       for (const c of countDocs) driveCountMap.set(c._id.toString(), c.driveDocumentsCount || 0);
     } catch { /* non-fatal — badge just won't show */ }
@@ -299,12 +316,12 @@ async function ensureStandardShipmentFolders(ship: any): Promise<void> {
   const db = mongoose.connection.db;
   if (!db) return;
 
-  // Resolve PO display name (VBNumber ObjectId → "VB504")
+  // Resolve PO folder name — the shared group key if linked, else its VBNumber.
   const po = await db.collection("vidapos").findOne(
     { _id: new mongoose.Types.ObjectId(ship.VBNumber.toString()) },
-    { projection: { VBNumber: 1 } }
+    { projection: { VBNumber: 1, folderGroupKey: 1 } }
   );
-  const poDisplay = po?.VBNumber;
+  const poDisplay = po?.folderGroupKey || po?.VBNumber;
   if (!poDisplay) return;
 
   const { ensureFolderPath, findOrCreateFolder } = await import("@/lib/google-drive");

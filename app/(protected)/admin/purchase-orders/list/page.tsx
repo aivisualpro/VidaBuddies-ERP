@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck, MessageCircle, Paperclip } from "lucide-react";
+import { Pencil, Trash, ShoppingCart, Calendar, Ship, CheckCircle2, Clock, Mail, Archive, ArchiveRestore, FileCheck, MessageCircle, Paperclip, Link2, Link2Off, Loader2, X, Search as SearchIcon } from "lucide-react";
 import { TablePageSkeleton } from "@/components/skeletons";
 import TimelineModal from "@/components/admin/timeline-modal";
 import { AttachmentsModal } from "@/components/attachments-modal";
@@ -47,6 +47,8 @@ interface PurchaseOrder {
   }[];
   _shipStatuses?: string[];
   driveDocuments?: any[];
+  folderGroupKey?: string;
+  folderGroupMembers?: string[];
 }
 
 function normalizeStatus(raw: string): string {
@@ -121,6 +123,11 @@ function PurchaseOrdersContent() {
   const [emailCounts, setEmailCounts] = useState<Record<string, number>>({});
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; defaultTab?: "documents" | "emails" } | null>(null);
+  // Sibling linking dialog
+  const [linkDialogFor, setLinkDialogFor] = useState<PurchaseOrder | null>(null);
+  const [linkPicks, setLinkPicks] = useState<string[]>([]);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linking, setLinking] = useState(false);
   const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string } | null>(null);
   const [chatOpen, setChatOpen] = useState<{ refKind: "VBNumber"; refId: string; display: string } | null>(null);
   const [chatInfo, setChatInfo] = useState<Record<string, { unread: number; hasConversation: boolean }>>({});
@@ -278,7 +285,20 @@ function PurchaseOrdersContent() {
     {
       id: "VBNumber",
       header: "VB #",
-      cell: ({ row }) => row.original.VBNumber || "—",
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1.5">
+          {row.original.VBNumber || "—"}
+          {row.original.folderGroupKey && (
+            <span
+              title={`Shares an attachments folder with: ${(row.original.folderGroupMembers || []).join(", ")}`}
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border border-indigo-500/25 px-1.5 py-0.5 rounded-full"
+            >
+              <Link2 className="h-2.5 w-2.5" />
+              {row.original.folderGroupKey}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       accessorKey: "date",
@@ -468,7 +488,7 @@ function PurchaseOrdersContent() {
       header: "Attachments",
       cell: ({ row }) => {
         const vbNumber = row.original.VBNumber || row.original._id;
-        const count = row.original.driveDocuments?.length || 0;
+        const count = (row.original.driveDocuments || []).filter((d: any) => d?.mimeType !== "application/vnd.google-apps.folder").length;
         return (
           <button
             onClick={(e) => {
@@ -598,6 +618,25 @@ function PurchaseOrdersContent() {
       size: 60,
     },
     {
+      id: "link",
+      header: "",
+      cell: ({ row }) => {
+        const linked = !!row.original.folderGroupKey;
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); openLinkDialog(row.original); }}
+            title={linked ? `Linked (${row.original.folderGroupKey}) — manage siblings` : "Link a shared attachments folder with another record"}
+            className={`p-1 rounded-md transition-colors ${
+              linked ? 'text-indigo-500 hover:bg-indigo-500/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            <Link2 className="h-4 w-4" />
+          </button>
+        );
+      },
+      size: 40,
+    },
+    {
       id: "archive",
       header: "",
       cell: ({ row }) => {
@@ -694,6 +733,66 @@ function PurchaseOrdersContent() {
       toast.success(archive ? 'Purchase Order archived' : 'Purchase Order restored');
     } catch {
       // error toast handled by mutation hook
+    }
+  };
+
+  /* ─── Sibling folder linking ─── */
+  const openLinkDialog = (po: PurchaseOrder) => {
+    setLinkDialogFor(po);
+    // Pre-select existing siblings (other than this PO)
+    setLinkPicks((po.folderGroupMembers || []).filter((m) => m !== po.VBNumber));
+    setLinkSearch("");
+  };
+
+  const submitLink = async () => {
+    if (!linkDialogFor) return;
+    const vbNumbers = [linkDialogFor.VBNumber, ...linkPicks];
+    if (vbNumbers.length < 2) { toast.error("Pick at least one record to link with"); return; }
+    setLinking(true);
+    try {
+      const res = await fetch("/api/admin/purchase-orders/link-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vbNumbers }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        toast.success(`Linked as ${d.groupKey}`, {
+          description: d.movedItems > 0 ? `${d.movedItems} file(s) merged into the shared folder.` : "Records now share one attachments folder.",
+        });
+        setLinkDialogFor(null);
+        setLinkPicks([]);
+        queryClient.invalidateQueries({ queryKey: purchaseOrderKeys.all });
+      } else {
+        toast.error("Link failed", { description: d.error });
+      }
+    } catch {
+      toast.error("Link failed");
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const unlinkPO = async (vbNumber: string) => {
+    setLinking(true);
+    try {
+      const res = await fetch("/api/admin/purchase-orders/link-folders", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vbNumber }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        toast.success("Unlinked from siblings");
+        setLinkDialogFor(null);
+        queryClient.invalidateQueries({ queryKey: purchaseOrderKeys.all });
+      } else {
+        toast.error("Unlink failed", { description: d.error });
+      }
+    } catch {
+      toast.error("Unlink failed");
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -882,6 +981,105 @@ function PurchaseOrdersContent() {
               <Button type="submit">{editingItem ? "Save Changes" : "Create PO"}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ Sibling Link Dialog ═══ */}
+      <Dialog open={!!linkDialogFor} onOpenChange={(v) => { if (!v) setLinkDialogFor(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-indigo-500" />
+              Link Shared Attachments Folder
+            </DialogTitle>
+            <DialogDescription>
+              Sibling records share ONE attachments folder tree. Opening any of them shows the same files.
+              {linkDialogFor?.folderGroupKey && (
+                <> Current group: <span className="font-semibold text-foreground">{linkDialogFor.folderGroupKey}</span>.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {linkDialogFor && (() => {
+            const others = data.filter((p) => p.VBNumber !== linkDialogFor.VBNumber);
+            const q = linkSearch.trim().toLowerCase();
+            const filtered = q ? others.filter((p) => p.VBNumber.toLowerCase().includes(q)) : others;
+            // Preview the resulting folder name
+            const preview = [linkDialogFor.VBNumber, ...linkPicks]
+              .filter((v, i, a) => v && a.indexOf(v) === i)
+              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+              .join("-");
+            return (
+              <div className="space-y-3 pt-1">
+                {/* Anchor record */}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Linking:</span>
+                  <span className="font-bold bg-muted px-2 py-0.5 rounded-md">{linkDialogFor.VBNumber}</span>
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                  <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    value={linkSearch}
+                    onChange={(e) => setLinkSearch(e.target.value)}
+                    placeholder="Search records to link (e.g. VB524)…"
+                    className="w-full h-9 rounded-lg border border-input bg-background pl-8 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </div>
+
+                {/* Pickable list */}
+                <div className="max-h-[260px] overflow-y-auto rounded-lg border border-border/40 divide-y divide-border/30">
+                  {filtered.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-6">No records found</p>
+                  ) : filtered.slice(0, 100).map((p) => {
+                    const picked = linkPicks.includes(p.VBNumber);
+                    return (
+                      <button
+                        key={p._id}
+                        onClick={() => setLinkPicks((prev) => picked ? prev.filter((x) => x !== p.VBNumber) : [...prev, p.VBNumber])}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors ${picked ? "bg-indigo-500/10" : "hover:bg-muted/50"}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={`h-4 w-4 rounded border flex items-center justify-center ${picked ? "bg-indigo-500 border-indigo-500" : "border-muted-foreground/40"}`}>
+                            {picked && <CheckCircle2 className="h-3 w-3 text-white" />}
+                          </span>
+                          <span className="font-medium">{p.VBNumber}</span>
+                          {p.folderGroupKey && p.folderGroupKey !== linkDialogFor.folderGroupKey && (
+                            <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">already in {p.folderGroupKey}</span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{p.category}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Preview */}
+                {linkPicks.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs bg-indigo-500/[0.06] border border-indigo-500/15 rounded-lg px-3 py-2">
+                    <span className="text-muted-foreground">Shared folder will be:</span>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{preview}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  {linkDialogFor.folderGroupKey ? (
+                    <Button variant="ghost" size="sm" className="text-destructive gap-1.5" onClick={() => unlinkPO(linkDialogFor.VBNumber)} disabled={linking}>
+                      <Link2Off className="h-3.5 w-3.5" /> Unlink this record
+                    </Button>
+                  ) : <span />}
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setLinkDialogFor(null)}>Cancel</Button>
+                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5" onClick={submitLink} disabled={linking || linkPicks.length === 0}>
+                      {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                      Link ({linkPicks.length + 1})
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

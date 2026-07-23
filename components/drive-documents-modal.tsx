@@ -297,6 +297,8 @@ function PreviewPanel({ previewFile, onClose }: { previewFile: DocRecord; onClos
 export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNumber, defaultTab, onOpenLegacy }: DriveDocumentsModalProps) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<SidebarItem[]>([]);
+  // Sibling group (shared attachments folder) — null when the record isn't linked
+  const [group, setGroup] = useState<{ key: string; members: string[] } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   // Sidebar is collapsed by default — the modal opens focused on the clicked record
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -386,6 +388,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     emailsLoadedRef.current = false;
     setItems([]);
     setEmailRecords([]);
+    setGroup(null);
   }, [poNumber]);
 
   const fetchDocs = useCallback(async () => {
@@ -408,6 +411,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         result.push({ id: s._id, label: s.VBShipmentNumber, altLabels: [s.svbid].filter(Boolean), kind: "VBShipmentNumber", collection: "vbshippings", docs: s.driveDocuments || [], drivePath: s.drivePath });
       }
       setItems(result);
+      setGroup(data.group || null);
       docsLoadedRef.current = true;
     } catch { toast.error("Failed to load documents"); }
     finally { setLoading(false); }
@@ -552,10 +556,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     }
   }
 
-  const totalDocs = items.reduce((sum, i) => sum + i.docs.length, 0);
+  // Count only FILES (exclude folder cards) for all count displays
+  const FOLDER_MIME = "application/vnd.google-apps.folder";
+  const fileCountOf = (docs: DocRecord[]) => docs.filter((d) => d.mimeType !== FOLDER_MIME).length;
+  const totalDocs = items.reduce((sum, i) => sum + fileCountOf(i.docs), 0);
 
   // Search + type filter
-  const FOLDER_MIME = "application/vnd.google-apps.folder";
   const filteredDocs = visibleDocs
     .filter(v => {
       if (searchQuery.trim() && !v.doc.documentName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -785,7 +791,6 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   // per (open + shipNumber/spoNumber), regardless of load ordering.
   useEffect(() => {
     if (!open) return;
-    if (!shipNumber && !spoNumber) return; // opened from PO level → keep "All"
     if (items.length === 0) return;        // wait for the sidebar to load
 
     // Signature encodes what we're trying to select; if we've already applied
@@ -814,6 +819,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
           (i) => i.kind === "VBSerialNumber" && (norm(i.label) === cpoGuess || (i.altLabels || []).some((a) => norm(a) === cpoGuess))
         );
       }
+    }
+    // Opened at PO level (no spo/ship) → focus the PO record itself so the
+    // full toolset (Select All, tabs, folders, drag) is available — same
+    // experience as opening from the shipments module.
+    if (!target && !shipNumber && !spoNumber) {
+      target = items.find((i) => i.kind === "VBNumber");
     }
 
     if (target) {
@@ -1393,6 +1404,14 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                 </div>
                 <span className="flex items-center gap-2">
                   Attachments
+                  {group && (
+                    <span
+                      title={`Shared folder for: ${group.members.join(", ")}`}
+                      className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25"
+                    >
+                      🔗 {group.key}
+                    </span>
+                  )}
                   {selectedItem && (
                     <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-muted/60 border border-border/40", kindColor(selectedItem.kind))}>
                       {kindIcon(selectedItem.kind)}
@@ -1559,7 +1578,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : fileCountOf(item.docs)}</span>
                     </button>
                   ))}
                 </div>
@@ -1574,7 +1593,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : fileCountOf(item.docs)}</span>
                     </button>
                   ))}
                 </div>
@@ -1589,7 +1608,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                       className={cn("w-full text-left px-4 py-2.5 text-xs font-medium transition-all border-l-2 flex items-center justify-between gap-2",
                         selected === item.id ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent")}>
                       <span className="flex items-center gap-2 truncate"><span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span><span className="truncate">{item.label}</span></span>
-                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : item.docs.length}</span>
+                      <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{showEmailHistory ? getEmailsForItem(item).length : fileCountOf(item.docs)}</span>
                     </button>
                   ))}
                 </div>
@@ -1647,7 +1666,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     </span>
                   ))}
                   <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">
-                    {insideFolder ? `${folderContents.length} item(s)` : `${selectedItem.docs.length} files`}
+                    {insideFolder ? `${fileCountOf(folderContents)} file(s)` : `${fileCountOf(selectedItem.docs)} files`}
                   </span>
                   {selectableCardIds.length > 0 && (
                     <button
@@ -2148,15 +2167,20 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   {allFilesView ? (
                     <>{allFiles.length} file{allFiles.length !== 1 ? "s" : ""} {insideFolder ? `in ${folderStack[folderStack.length - 1].name}` : "across all folders"}{allFilesSel.length > 0 && ` · ${allFilesSel.length} selected`}</>
-                  ) : (
+                  ) : (() => {
+                    const fileN = filteredDocs.filter((v) => v.doc.mimeType !== FOLDER_MIME).length;
+                    const folderN = filteredDocs.length - fileN;
+                    return (
                     <>
-                      {filteredDocs.length} {insideFolder ? "item" : "file"}{filteredDocs.length !== 1 ? "s" : ""}
+                      {fileN} file{fileN !== 1 ? "s" : ""}
+                      {folderN > 0 && ` · ${folderN} folder${folderN !== 1 ? "s" : ""}`}
                       {insideFolder
                         ? ` in ${folderStack[folderStack.length - 1].name}`
                         : selectedItem && ` in ${selectedItem.label}`}
                       {selCount > 0 && ` · ${selCount} selected`}
                     </>
-                  )}
+                    );
+                  })()}
                 </p>
                 <div className="flex items-center gap-1.5">
                   {/* All Files actions: Merge to current scope + Download */}
@@ -2461,7 +2485,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   <span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span>
                   <span className="truncate">{item.label}</span>
                 </span>
-                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{item.docs.length}</span>
+                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fileCountOf(item.docs)}</span>
               </button>
             ))}
           </div>

@@ -425,7 +425,7 @@ function CustomerPOsListContent() {
       id: "documents",
       header: "Docs",
       cell: ({ row }) => {
-        const count = row.original.driveDocuments?.length || 0;
+        const count = (row.original.driveDocuments || []).filter((d: any) => d?.mimeType !== "application/vnd.google-apps.folder").length;
         return (
           <button
             onClick={(e) => {

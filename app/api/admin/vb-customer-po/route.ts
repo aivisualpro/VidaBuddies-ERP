@@ -17,10 +17,22 @@ export async function GET(req: Request) {
     const vbNumber = searchParams.get("VBNumber") || searchParams.get("vidaPOId");
     const customer = searchParams.get("customer");
 
+    const mongoose = (await import("mongoose")).default;
     const filter: any = {};
-    if (vbNumber) filter.VBNumber = vbNumber;
+    if (vbNumber) {
+      // Expand to all sibling-group members so linked records show combined CPOs
+      const { resolveGroupPoIds } = await import("@/lib/folder-group");
+      const groupIds = await resolveGroupPoIds(vbNumber);
+      // Match both ObjectId and string storage of VBNumber
+      const variants: any[] = [];
+      for (const id of groupIds) {
+        variants.push(id);
+        if (/^[a-fA-F0-9]{24}$/.test(id)) variants.push(new mongoose.Types.ObjectId(id));
+      }
+      filter.VBNumber = { $in: variants };
+    }
     if (customer && /^[a-fA-F0-9]{24}$/.test(customer)) {
-      filter.customer = new (await import("mongoose")).default.Types.ObjectId(customer);
+      filter.customer = new mongoose.Types.ObjectId(customer);
     }
 
     const items = await VBcustomerPO.find(filter).sort({ createdAt: -1 });

@@ -36,14 +36,30 @@ export async function GET(request: NextRequest) {
     }
     const po = await vidapos.findOne(
       { $or: poFilter },
-      { projection: { VBNumber: 1, driveDocuments: 1 } }
+      { projection: { VBNumber: 1, driveDocuments: 1, folderGroupKey: 1, folderGroupMembers: 1 } }
     );
 
-    // Build list of possible VBNumber values used across collections
-    const vbNumberVariants: string[] = [vbNumber];
-    if (po?._id) vbNumberVariants.push(po._id.toString());
+    // ── Sibling group support ──
+    // If this PO is linked to siblings, gather ALL member POs so opening any of
+    // them shows the same combined set of records, and use the shared folder key
+    // as the Drive folder name.
+    const groupKey: string | undefined = po?.folderGroupKey;
+    let groupPOs: any[] = po ? [po] : [];
+    if (groupKey) {
+      groupPOs = await vidapos
+        .find({ folderGroupKey: groupKey }, { projection: { VBNumber: 1, driveDocuments: 1 } })
+        .toArray();
+    }
 
-    // 2. Get all CPOs for this VBNumber (ObjectId reference)
+    // Build the list of possible VBNumber values (display + _id) across all members
+    const vbNumberVariants: string[] = [];
+    for (const p of groupPOs) {
+      vbNumberVariants.push(p.VBNumber);
+      if (p._id) vbNumberVariants.push(p._id.toString());
+    }
+    if (vbNumberVariants.length === 0) vbNumberVariants.push(vbNumber);
+
+    // 2. Get all CPOs for these VBNumbers (ObjectId reference)
     const cpoQuery: any = {
       VBNumber: { $in: vbNumberVariants.map(v => v.length === 24 ? new mongoose.Types.ObjectId(v) : v) },
     };
@@ -51,7 +67,7 @@ export async function GET(request: NextRequest) {
       .find(cpoQuery, { projection: { VBSerialNumber: 1, poNo: 1, driveDocuments: 1 } })
       .toArray();
 
-    // 3. Get all Shippings for this VBNumber
+    // 3. Get all Shippings for these VBNumbers
     const shipQuery: any = {
       VBNumber: { $in: vbNumberVariants.map(v => /^[a-fA-F0-9]{24}$/.test(v) ? new mongoose.Types.ObjectId(v) : v) },
     };
@@ -59,7 +75,8 @@ export async function GET(request: NextRequest) {
       .find(shipQuery, { projection: { VBShipmentNumber: 1, svbid: 1, VBSerialNumber: 1, driveDocuments: 1 } })
       .toArray();
 
-    const poDisplay = po?.VBNumber || vbNumber;
+    // Folder name = the shared group key when linked, else the PO's own number.
+    const poDisplay = groupKey || po?.VBNumber || vbNumber;
 
     // FLAT Drive structure — every record's folder sits DIRECTLY under the PO,
     // named by its own display id:
@@ -68,11 +85,18 @@ export async function GET(request: NextRequest) {
     //   VBPO / {poDisplay} / {svbid}           (Shipment)
     // We encode this by putting the record's own folder name in `spoNumber`
     // (a single sub-level under the PO), leaving shipNumber unused.
+    // PO-level docs: merge across all group members when linked
+    const poDocs = groupPOs.flatMap((p: any) => p.driveDocuments || []);
+    // Use the current PO as the record identity (uploads write to it), but the
+    // folder + doc list reflect the whole group.
+    const poLabel = groupKey || po?.VBNumber || vbNumber;
+
     return NextResponse.json({
+      group: groupKey ? { key: groupKey, members: po?.folderGroupMembers || [] } : null,
       po: po ? {
         _id: po._id,
-        VBNumber: po.VBNumber,
-        driveDocuments: po.driveDocuments || [],
+        VBNumber: poLabel,
+        driveDocuments: poDocs,
         drivePath: { poNumber: poDisplay },
       } : null,
       cpos: cpos.map((c: any) => ({

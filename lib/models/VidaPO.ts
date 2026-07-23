@@ -120,6 +120,15 @@ export interface IVidaPO extends Document {
   createdAt: Date;
   isNigalu?: boolean;
   customerPO: IVidaPOCustomerPO[];
+  /**
+   * Sibling documentation link. When two or more POs are "siblings" they
+   * share ONE attachments folder tree. `folderGroupKey` is the shared folder
+   * name (e.g. "VB523-VB524"); `folderGroupMembers` lists every VBNumber in
+   * the group. All members carry identical values so opening any of them
+   * resolves the same folder.
+   */
+  folderGroupKey?: string;
+  folderGroupMembers?: string[];
 }
 
 const VidaPOShippingSchema: Schema = new Schema({
@@ -243,6 +252,9 @@ const VidaPOSchema: Schema = new Schema({
   isNigalu: { type: Boolean, default: false },
   customerPO: { type: [VidaPOCustomerPOSchema], default: undefined },  // legacy — separate collections now
   driveDocuments: { type: [Schema.Types.Mixed], default: undefined },
+  // Sibling documentation grouping — shared attachments folder across POs
+  folderGroupKey: { type: String, default: undefined, index: true },
+  folderGroupMembers: { type: [String], default: undefined },
 });
 
 const VidaPO: Model<IVidaPO> = mongoose.models.VidaPO || mongoose.model<IVidaPO>('VidaPO', VidaPOSchema);

@@ -140,13 +140,13 @@ export function ShippingCard({
 
   const shipId = ship._id || String(index);
   const hasTrackableContainer = !!ship.containerNo && !ship.containerNo.toUpperCase().startsWith("TBD");
-  // Number of files/folders attached to this shipment (for the paperclip badge).
-  // Prefer the lightweight count from the API; fall back to the array length.
+  // Number of FILES attached to this shipment (for the paperclip badge) —
+  // folders are not counted. Prefer the API count; fall back to the array.
   const attachmentCount =
     typeof ship.driveDocumentsCount === "number"
       ? ship.driveDocumentsCount
       : Array.isArray(ship.driveDocuments)
-        ? ship.driveDocuments.length
+        ? ship.driveDocuments.filter((d: any) => d?.mimeType !== "application/vnd.google-apps.folder").length
         : 0;
 
   // Resolve supplier name
