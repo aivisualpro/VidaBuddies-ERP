@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import VBshipping from "@/lib/models/VBshipping";
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import { renderShipmentStatusEmail } from "@/lib/email/templates/shipment-status";
 import {
   buildShipmentEmailData,
@@ -31,7 +32,9 @@ export async function GET(req: NextRequest) {
     const ship = await VBshipping.findOne(
       { containerNo },
       { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
-    ).lean();
+    )
+      .populate({ path: "VBSerialNumber", select: "customerPONo VBSerialNumber poNo", model: VBcustomerPO })
+      .lean();
 
     if (!ship) {
       return NextResponse.json(

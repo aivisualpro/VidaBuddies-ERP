@@ -54,6 +54,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AttachmentsModal } from "@/components/attachments-modal";
 import { DriveDocumentsModal } from "@/components/drive-documents-modal";
 import TimelineModal from "@/components/admin/timeline-modal";
+import { ShipmentTrackingPanel } from "@/components/admin/shipment-tracking-panel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePurchaseOrder } from "@/hooks/queries/usePurchaseOrder";
 import { useUpdatePO, useDeletePO } from "@/hooks/queries/usePurchaseOrderMutations";
@@ -363,7 +364,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [attachmentsOpen, setAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [legacyAttachmentsOpen, setLegacyAttachmentsOpen] = useState<{ poNumber: string; spoNumber?: string; shipNumber?: string; childFolders?: string[] } | null>(null);
   const [timelineOpen, setTimelineOpen] = useState<{ VBNumber?: string; VBSerialNumber?: string; VBShipmentNumber?: string; title?: string } | null>(null);
-  const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; title?: string } | null>(null);
+  const [liveTrackingOpen, setLiveTrackingOpen] = useState<{ containerNo?: string; cachedRawJson?: any } | null>(null);
   const [transferDialogShip, setTransferDialogShip] = useState<any | null>(null);
 
   const [isEditPOOpen, setIsEditPOOpen] = useState(false);
@@ -1040,7 +1041,15 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                       onUpdateField={(shipId, field, value) => updateShippingField(ship._cpoIdx, ship._shipIdx, field, value)}
                       onAttachments={(s) => { const cpo = po?.customerPO?.[s._cpoIdx]; setAttachmentsOpen({ poNumber: po?.VBNumber || '', spoNumber: cpo?.VBSerialNumber || cpo?.poNo || '', shipNumber: s.VBShipmentNumber || s.svbid || undefined }); }}
                       onTimeline={(s) => setTimelineOpen({ VBNumber: po?._id, VBSerialNumber: po?.customerPO?.[s._cpoIdx]?._id, VBShipmentNumber: s._id, title: `Timeline — ${s.svbid || 'Shipping'}` })}
-                      onLiveTracking={(s) => setLiveTrackingOpen({ containerNo: s.containerNo, title: `Live Tracking — ${s.containerNo}` })}
+                      onLiveTracking={(s) => {
+                        const records = s.shippingTrackingRecords || [];
+                        const latest = records[records.length - 1];
+                        let cachedRawJson = null;
+                        if (latest?.raw_json) {
+                          try { cachedRawJson = JSON.parse(latest.raw_json); } catch {}
+                        }
+                        setLiveTrackingOpen({ containerNo: s.containerNo, cachedRawJson });
+                      }}
                       onEdit={(s) => { const resolvedSup = suppliers.find((sup: any) => sup._id === rawSup) ? rawSup : (supplierIdByLocationId[rawSup] || rawSup); setSelectedSupplierForShipping(resolvedSup); setSelectedLocationForShipping(s.supplierLocation || (suppliers.find((sup: any) => sup._id === rawSup) ? '' : rawSup) || ''); setEditingShipping({ cpoIdx: s._cpoIdx, shipIdx: s._shipIdx, data: s }); }}
                       onDelete={(s) => handleDeleteShipping(s._id || '', s._cpoIdx, s._shipIdx)}
                       onTransfers={(s) => setTransferDialogShip(s)}
@@ -1469,22 +1478,12 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       />
 
       {/* Live Tracking Map Modal */}
-      <Dialog open={!!liveTrackingOpen} onOpenChange={(v) => { if (!v) setLiveTrackingOpen(null); }}>
-        <DialogContent className="max-w-[90vw] w-[1400px] h-[90vh] p-0 flex flex-col overflow-hidden bg-slate-50 gap-0">
-          <DialogHeader className="px-6 py-4 border-b shrink-0 bg-white">
-            <DialogTitle>{liveTrackingOpen?.title}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 w-full relative">
-            {liveTrackingOpen && (
-              <iframe
-                src={`https://www.searates.com/container/tracking/?number=${liveTrackingOpen.containerNo}&type=CT`}
-                className="absolute inset-0 w-full h-full border-0"
-                allowFullScreen
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ShipmentTrackingPanel
+        open={!!liveTrackingOpen}
+        onClose={() => setLiveTrackingOpen(null)}
+        containerNo={liveTrackingOpen?.containerNo || ''}
+        cachedRawJson={liveTrackingOpen?.cachedRawJson}
+      />
 
       <Dialog open={isEditPOOpen} onOpenChange={setIsEditPOOpen}>
         <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh]">

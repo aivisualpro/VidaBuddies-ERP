@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import EmailAutomation from "@/lib/models/EmailAutomation";
 import VBshipping from "@/lib/models/VBshipping";
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import { sendMail } from "@/lib/email/send";
 import { renderShipmentStatusEmail } from "@/lib/email/templates/shipment-status";
 import {
@@ -66,7 +67,9 @@ export async function GET(req: NextRequest) {
     const ships = await VBshipping.find(
       { containerNo: { $in: containerNos } },
       { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
-    ).lean();
+    )
+      .populate({ path: "VBSerialNumber", select: "customerPONo VBSerialNumber poNo", model: VBcustomerPO })
+      .lean();
     const shipMap = new Map<string, any>();
     for (const s of ships) if (s.containerNo) shipMap.set(s.containerNo, s);
 
@@ -122,7 +125,9 @@ export async function GET(req: NextRequest) {
           ? (await VBshipping.findOne(
               { containerNo: auto.containerNo },
               { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
-            ).lean()) || ship
+            )
+              .populate({ path: "VBSerialNumber", select: "customerPONo VBSerialNumber poNo", model: VBcustomerPO })
+              .lean()) || ship
           : ship;
 
         const data = buildShipmentEmailData(freshShip, appUrl, false);

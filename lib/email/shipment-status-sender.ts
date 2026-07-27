@@ -1,4 +1,5 @@
 import VBshipping from "@/lib/models/VBshipping";
+import VBcustomerPO from "@/lib/models/VBcustomerPO";
 import { sendMail } from "@/lib/email/send";
 import { buildTrackingUrl, publicAppUrl } from "@/lib/tracking-token";
 import { ensureFreshTracking } from "@/lib/tracking-refresh";
@@ -127,8 +128,12 @@ export function buildShipmentEmailData(
         ]
       : [];
 
+  const cpoObj = typeof ship?.VBSerialNumber === "object" ? ship.VBSerialNumber : null;
+  const customerPONo = cpoObj?.customerPONo || ship?.customerPONo || ship?.cpoNo || "";
+
   return {
     containerNo: ship?.containerNo || "",
+    customerPONo,
     carrier: md.sealine_name || md.sealine || lastRecord?.sealine_name || lastRecord?.sealine || ship?.carrier || "",
     status: delivered ? "DELIVERED" : md.status || lastRecord?.status || ship?.status || "IN_TRANSIT",
     fromName: polLoc?.name || lastRecord?.pol_name || lastRecord?.from_port_name || ship?.portOfLading || "",
@@ -185,7 +190,9 @@ export async function sendShipmentStatusNow(
   const ship = await VBshipping.findOne(
     { containerNo },
     { driveDocuments: 0, shippingTrackingRecords: { $slice: -1 } }
-  ).lean();
+  )
+    .populate({ path: "VBSerialNumber", select: "customerPONo VBSerialNumber poNo", model: VBcustomerPO })
+    .lean();
 
   if (!ship) return { success: false, error: `Shipment not found for container ${containerNo}` };
 

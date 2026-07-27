@@ -12,6 +12,7 @@
 
 export interface ShipmentStatusEmailData {
   containerNo: string;
+  customerPONo?: string;
   carrier?: string;
   status?: string;          // e.g. "IN_TRANSIT"
   fromName?: string;
@@ -134,9 +135,10 @@ export function renderShipmentStatusEmail(
   const ctaUrl = d.trackUrl || `${d.appUrl}/admin/live-shipments`;
 
   const route = `${d.fromName || "?"} → ${d.toName || "?"}`;
+  const poPrefix = d.customerPONo ? `[PO: ${d.customerPONo}] ` : "";
   const subject = delivered
-    ? `✅ Delivered — ${d.containerNo} · ${route}`
-    : `🚢 ${d.containerNo} · ${route}${progress != null ? ` · ${progress}% complete` : ""}${
+    ? `${poPrefix}✅ Delivered — ${d.containerNo} · ${route}`
+    : `${poPrefix}🚢 ${d.containerNo} · ${route}${progress != null ? ` · ${progress}% complete` : ""}${
         d.etaDays != null && d.etaDays > 0 ? ` · ETA ${fmtDate(etaLabel)} (${d.etaDays}d)` : ""
       }`;
 
@@ -299,8 +301,10 @@ export function renderShipmentStatusEmail(
         <!-- Brand strip -->
         <tr><td style="padding:0 4px 10px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-            <td style="font-size:11px;font-weight:800;letter-spacing:2px;color:#475569;">🌊 VIDABUDDIES <span style="color:#2563eb;">ERP</span></td>
-            <td align="right" style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;">Live Shipment Tracking</td>
+            <td style="vertical-align:middle;">
+              <img src="${esc(d.appUrl)}/logo.png" alt="VidaBuddies" style="height:28px;width:auto;display:block;border:0;" />
+            </td>
+            <td align="right" style="vertical-align:middle;font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Live Shipment Tracking</td>
           </tr></table>
         </td></tr>
 
