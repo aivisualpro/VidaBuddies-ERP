@@ -1185,9 +1185,10 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
   /* ─── Merge selected files from All Files → save into the CURRENT scope folder ─── */
   const handleMergeAllFiles = async () => {
-    const chosen = allFiles.filter((f) => allFilesSel.includes(f.id));
+    // Map from allFilesSel (selection-order array) to preserve the user's chosen merge sequence
+    const chosen = allFilesSel.map((id) => allFiles.find((f) => f.id === id)).filter(Boolean) as any[];
     // Only PDFs/images can merge
-    const mergeable = chosen.filter((f) =>
+    const mergeable = chosen.filter((f: any) =>
       f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/")
     );
     if (mergeable.length < 2) {
@@ -1864,11 +1865,19 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                     <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
                       <tr className="border-b border-border/40">
                         <th className="w-10 px-3 py-2.5">
-                          <Checkbox
-                            checked={allFilesSel.length > 0 && allFilesSel.length === allFiles.length}
-                            onCheckedChange={(v: boolean | "indeterminate") => setAllFilesSel(v ? allFiles.map((f) => f.id) : [])}
-                            className="h-3.5 w-3.5"
-                          />
+                          <button
+                            type="button"
+                            onClick={() => setAllFilesSel(allFilesSel.length > 0 && allFilesSel.length === allFiles.length ? [] : allFiles.map((f) => f.id))}
+                            className={cn(
+                              "h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all text-[10px] font-black",
+                              allFilesSel.length > 0 && allFilesSel.length === allFiles.length
+                                ? "bg-indigo-600 border-indigo-600 text-white"
+                                : "border-muted-foreground/40 hover:border-muted-foreground"
+                            )}
+                            title={allFilesSel.length > 0 && allFilesSel.length === allFiles.length ? "Deselect all" : "Select all"}
+                          >
+                            {allFilesSel.length > 0 && allFilesSel.length === allFiles.length ? <Check className="h-3 w-3" /> : ""}
+                          </button>
                         </th>
                         <th className="px-3 py-2 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Name</th>
                         <th className="px-3 py-2 text-left font-black uppercase tracking-widest text-[9px] text-muted-foreground/60">Location / Route</th>
@@ -1883,6 +1892,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                         .filter((f) => !searchQuery.trim() || f.name.toLowerCase().includes(searchQuery.toLowerCase()))
                         .map((f) => {
                           const isSel = allFilesSel.includes(f.id);
+                          const selOrder = isSel ? allFilesSel.indexOf(f.id) + 1 : 0;
                           const canMerge = f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/");
                           return (
                             <tr
@@ -1890,12 +1900,18 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                               onClick={() => setAllFilesSel((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id])}
                               className={cn("border-b border-border/20 cursor-pointer transition-colors", isSel ? "bg-indigo-500/[0.06]" : "hover:bg-muted/30")}
                             >
-                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  checked={isSel}
-                                  onCheckedChange={() => setAllFilesSel((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id])}
-                                  className="h-3.5 w-3.5"
-                                />
+                              <td className="px-3 py-2.5" onClick={(e) => { e.stopPropagation(); setAllFilesSel((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id]); }}>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all text-[10px] font-black",
+                                    isSel
+                                      ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
+                                      : "border-muted-foreground/30 text-transparent hover:border-indigo-400 hover:text-indigo-400/60"
+                                  )}
+                                >
+                                  {isSel ? selOrder : ""}
+                                </button>
                               </td>
                               <td className="px-3 py-2.5">
                                 <div className="flex items-center gap-2 min-w-0">
