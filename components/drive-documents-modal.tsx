@@ -19,8 +19,9 @@ import {
   FileVideo, FileAudio, FileSpreadsheet, FileArchive, FileType,
   X, Check, ExternalLink, CloudUpload, CheckCircle, AlertCircle, XCircle, Search, Mail, Trash2, Combine, Send, Download, ChevronLeft, ChevronRight,
   FolderPlus, ArrowRightLeft, PanelLeftOpen, PanelLeftClose, FolderTree,
-  Plus, ChevronDown, FileUp, FolderUp, Wrench, CheckSquare, Square, ListTree, MapPin,
+  Plus, ChevronDown, FileUp, FolderUp, Wrench, CheckSquare, Square, ListTree, MapPin, Landmark,
 } from "lucide-react";
+import CustomsPackageWizard from "@/components/admin/customs-package-wizard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -347,6 +348,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
 
   // Current upload/create target: the folder we're inside, else the record root
   const currentFolderId = insideFolder ? folderStack[folderStack.length - 1].id : recordFolderId;
+
+  // Customs Package wizard (shipment-scoped)
+  const [customsOpen, setCustomsOpen] = useState(false);
 
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
@@ -1005,6 +1009,47 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   })();
 
   /* ─── Directory Structure: create standard subfolders for the selected record ─── */
+  /**
+   * After the customs wizard generates a package PDF (stored in the
+   * "Generated Customs Packages" subfolder), make sure that folder shows as a
+   * card on the record (this modal lists DB records, not raw Drive contents).
+   */
+  const ensureGeneratedFolderCard = useCallback(async () => {
+    if (!selectedItem || !recordFolderId) { fetchDocs(); return; }
+    try {
+      const res = await fetch(
+        `/api/admin/drive?folderId=${recordFolderId}&ensureChildren=${encodeURIComponent("Generated Customs Packages")}`
+      );
+      const data = await res.json();
+      const folder = (data.files || []).find(
+        (f: any) => f.mimeType === "application/vnd.google-apps.folder" && f.name === "Generated Customs Packages"
+      );
+      if (folder) {
+        const exists = selectedItem.docs.some((d) => d.driveFileId === folder.id);
+        if (!exists) {
+          await fetch("/api/admin/drive-documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              collection: selectedItem.collection,
+              recordId: selectedItem.id,
+              document: {
+                documentName: "Generated Customs Packages",
+                documentLink: folder.webViewLink || "",
+                documentType: "Internal",
+                driveFileId: folder.id,
+                mimeType: "application/vnd.google-apps.folder",
+                size: "0",
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          });
+        }
+      }
+    } catch { /* non-fatal */ }
+    fetchDocs();
+  }, [selectedItem, recordFolderId, fetchDocs]);
+
   const handleDirectoryStructure = async () => {
     if (!selectedItem) return;
     // Use the record's already-resolved Drive folder — the exact folder the
@@ -1455,6 +1500,18 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   className="h-8 w-48 rounded-lg border border-border/60 bg-muted/30 pl-8 pr-3 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
                 />
               </div>
+              {/* Create Customs Package — shipment-scoped (spec: amber, beside Smart Create) */}
+              {!showEmailHistory && selectedItem?.kind === "VBShipmentNumber" && (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 shadow-sm bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => setCustomsOpen(true)}
+                  title={`Create Customs Package for ${selectedItem.label}`}
+                >
+                  <Landmark className="h-3.5 w-3.5" />
+                  Customs Package
+                </Button>
+              )}
               {!showEmailHistory && selectedItem && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -2542,6 +2599,19 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
           }, 200);
         }}
       />
+
+      {/* CUSTOMS PACKAGE WIZARD — shipment-scoped, never mixes sibling shipments */}
+      {selectedItem?.kind === "VBShipmentNumber" && (
+        <CustomsPackageWizard
+          open={customsOpen}
+          onOpenChange={setCustomsOpen}
+          shipmentId={selectedItem.id}
+          shipNumber={selectedItem.label}
+          folderId={recordFolderId}
+          poNumber={selectedItem.drivePath?.poNumber || poNumber}
+          onDocsChanged={ensureGeneratedFolderCard}
+        />
+      )}
 
       {/* RIGHT-SIDE PREVIEW PANEL — rendered via portal to escape Dialog event capture */}
       {previewFile && mounted && createPortal(
