@@ -1204,6 +1204,54 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
     }
   };
 
+  /**
+   * Touch-friendly fallback for drag & drop: move the SELECTED files into a
+   * folder from the Move dialog. (HTML5 drag & drop does not exist on iPads /
+   * touch screens, so every drag action needs a tap-based equivalent.)
+   */
+  const handleMoveSelectedIntoFolder = async (targetFolder: DocRecord) => {
+    const selected = getSelectedDocs().filter(
+      (s) => s.doc.mimeType !== FOLDER_MIME || s.doc.driveFileId !== targetFolder.driveFileId
+    );
+    const fileIds = selected.map((s) => s.doc.driveFileId).filter((id) => id && id !== targetFolder.driveFileId);
+    if (fileIds.length === 0 || !targetFolder?.driveFileId) return;
+    setMoving(true);
+    try {
+      const res = await fetch("/api/admin/drive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds, targetFolderId: targetFolder.driveFileId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.moved === 0) {
+        toast.error("Move failed", { description: data.error });
+        return;
+      }
+      // At the record root the cards are DB docs — detach them from the record
+      // (folder targets only render at root when a record is selected).
+      if (!insideFolder && selectedItem) {
+        await fetch("/api/admin/drive-documents/detach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            collection: selectedItem.collection,
+            recordId: selectedItem.id,
+            driveFileIds: fileIds,
+          }),
+        }).catch(() => {});
+      }
+      toast.success(`Moved ${data.moved} file(s) → ${targetFolder.documentName}`);
+      setSelectedIds([]);
+      setMoveDialogOpen(false);
+      if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
+      else fetchDocs();
+    } catch {
+      toast.error("Move failed");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   /* ─── All Files: recursive flat list under the record root ─── */
   const fetchAllFiles = useCallback(async (rootId: string) => {
     setLoadingAllFiles(true);
@@ -2160,7 +2208,8 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                               <>
                                 <img src={thumbUrl(d.driveFileId)} alt={d.documentName}
                                   loading="lazy" decoding="async"
-                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                  draggable={false}
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 select-none"
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; const fb = (e.target as HTMLImageElement).parentElement?.querySelector('.thumb-fb') as HTMLElement; if (fb) fb.style.display = 'flex'; }} />
                                 <div className="thumb-fb absolute inset-0 items-center justify-center bg-gradient-to-br from-muted/40 to-muted/20" style={{ display: 'none' }}>
                                   <div className="flex flex-col items-center gap-2">
@@ -2325,7 +2374,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   {/* Inside a folder: live Drive items → Download + Delete (Move is via drag & drop) */}
                   {selCount > 0 && insideFolder && (
                     <>
-                      <span className="text-[9px] font-medium text-muted-foreground/60 mr-1 hidden md:inline">Drag onto a folder to move</span>
+                      <span className="text-[9px] font-medium text-muted-foreground/60 mr-1 hidden md:inline">Drag onto a folder, or use Move</span>
+                      {folderContents.some((d) => d.mimeType === FOLDER_MIME && !selectedIds.some((id) => id.startsWith(d.driveFileId))) && (
+                        <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
+                          {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({selCount})
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDownloadSelected} disabled={downloadingSel}
                         title={selCount === 1 ? "Download" : `Download ${selCount} as ZIP`}>
                         {downloadingSel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Download ({selCount})
@@ -2540,10 +2594,38 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
             <DialogTitle className="flex items-center gap-2">
               <ArrowRightLeft className="h-5 w-5 text-blue-500" /> Move {selCount} File{selCount !== 1 ? "s" : ""}
             </DialogTitle>
-            <DialogDescription>Select the target folder to move the selected files to</DialogDescription>
+            <DialogDescription>Pick a destination — works without drag & drop (tablet friendly)</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1 pt-2 max-h-[320px] overflow-y-auto">
-            {items.map(item => (
+          <div className="space-y-1 pt-2 max-h-[360px] overflow-y-auto">
+            {/* Folders in the current view — same targets as drag & drop */}
+            {(() => {
+              const folderTargets = (insideFolder ? folderContents : (selectedItem?.docs || []))
+                .filter((d) => d.mimeType === FOLDER_MIME && !selectedIds.some((id) => id.startsWith(d.driveFileId)));
+              if (folderTargets.length === 0) return null;
+              return (
+                <>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
+                    Folders {insideFolder ? "in this folder" : selectedItem ? `in ${selectedItem.label}` : ""}
+                  </p>
+                  {folderTargets.map((f) => (
+                    <button
+                      key={f.driveFileId}
+                      onClick={() => handleMoveSelectedIntoFolder(f)}
+                      disabled={moving}
+                      className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/30"
+                    >
+                      <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                      <span className="truncate">{f.documentName}</span>
+                    </button>
+                  ))}
+                  {!insideFolder && <div className="h-px bg-border/60 my-1.5" />}
+                </>
+              );
+            })()}
+            {!insideFolder && items.length > 0 && (
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">Other records</p>
+            )}
+            {!insideFolder && items.map(item => (
               <button
                 key={item.id}
                 onClick={() => handleMoveFiles(item)}
