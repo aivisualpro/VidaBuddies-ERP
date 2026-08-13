@@ -4,27 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  IconBell,
-  IconBuildingStore,
-  IconBuildingWarehouse,
-  IconCheckbox,
-  IconClipboardList,
-  IconDashboard,
-  IconFileDescription,
-  IconListDetails,
-  IconPackage,
-  IconRoute,
-  IconSearch,
-  IconSettings,
-  IconShoppingCart,
-  IconTruck,
-  IconUser,
-  IconChartBar,
-  IconCalculator,
-  IconCurrencyDollar,
-  IconFileInvoice,
-  IconMessage,
-} from "@tabler/icons-react";
+  NAV_ADMIN,
+  NAV_INVENTORY,
+  NAV_MANAGEMENT,
+  NAV_REPORTS,
+  NAV_SALES,
+  NAV_SECONDARY,
+  filterNavItems,
+  type NavItem,
+} from "@/lib/navigation";
 
 import { NavDocuments } from "@/components/nav-documents";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -39,154 +27,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const data = {
-  user: {
-    name: "",
-    email: "",
-    avatar: "",
-  },
-  navSecondary: [
-    {
-      title: "Chat",
-      url: "/admin/chat",
-      icon: IconMessage,
-    },
-    {
-      title: "Notifications",
-      url: "/admin/notifications",
-      icon: IconBell,
-    },
-    {
-      title: "Settings",
-      url: "/admin/settings",
-      icon: IconSettings,
-    },
-  ],
-  admin: [
-    {
-      name: "Dashboard",
-      url: "/dashboard",
-      icon: IconDashboard,
-    },
-    {
-      name: "Users",
-      url: "/admin/users",
-      icon: IconUser,
-    },
-    {
-      name: "Customers",
-      url: "/admin/customers",
-      icon: IconBuildingStore,
-    },
-    {
-      name: "Active Actions",
-      url: "/admin/active-actions",
-      icon: IconCheckbox,
-    },
-    {
-      name: "Documents Box",
-      url: "/admin/documents-box",
-      icon: IconFileDescription,
-    },
-  ],
-  inventory: [
-    {
-      name: "Warehouse",
-      url: "/inventory/warehouse",
-      icon: IconBuildingWarehouse,
-    },
-    {
-      name: "Categories",
-      url: "/inventory/categories",
-      icon: IconListDetails,
-    },
-    {
-      name: "Products",
-      url: "/inventory/products",
-      icon: IconPackage,
-    },
-    {
-      name: "Transfer Orders",
-      url: "/inventory/transfer-orders",
-      icon: IconRoute,
-    },
-    {
-      name: "Release Requests",
-      url: "/inventory/release-requests",
-      icon: IconFileDescription,
-    },
-    {
-      name: "Inventory Mgt.",
-      url: "/inventory/management",
-      icon: IconClipboardList,
-    },
-  ],
-  management: [
-    {
-      name: "Purchase Orders",
-      url: "/admin/purchase-orders",
-      icon: IconShoppingCart,
-    },
-    {
-      name: "Customer POs",
-      url: "/admin/customer-pos",
-      icon: IconClipboardList,
-    },
-    {
-      name: "Shipments",
-      url: "/admin/shipments",
-      icon: IconTruck,
-    },
-    {
-      name: "Quality Control",
-      url: "/quality-control",
-      icon: IconCheckbox,
-    },
-  ],
-  sales: [
-    {
-      name: "Sales Dashboard",
-      url: "/admin/sales/dashboard",
-      icon: IconChartBar,
-    },
-    {
-      name: "Quote Builder",
-      url: "/admin/sales/quote-builder",
-      icon: IconCalculator,
-    },
-    {
-      name: "Supplier Pricing",
-      url: "/admin/sales/supplier-pricing",
-      icon: IconCurrencyDollar,
-    },
-    {
-      name: "Freight Requests",
-      url: "/admin/sales/freight-requests",
-      icon: IconTruck,
-    },
-    {
-      name: "Shipment Tracking",
-      url: "/admin/sales/shipment-tracking",
-      icon: IconRoute,
-    },
-    {
-      name: "Accounting",
-      url: "/admin/sales/accounting",
-      icon: IconFileInvoice,
-    },
-  ],
-  reports: [
-    {
-      name: "Andres Tracker",
-      url: "/admin/andres-tracker",
-      icon: IconClipboardList,
-    },
-    {
-      name: "Live Shipments",
-      url: "/admin/live-shipments",
-      icon: IconRoute,
-    },
-  ],
+const EMPTY_USER = {
+  name: "",
+  email: "",
+  avatar: "",
 };
 
 export function AppSidebar({
@@ -199,8 +43,8 @@ export function AppSidebar({
   initialPermissions?: any[],
   initialIsAdmin?: boolean
 }) {
-  const [reports, setReports] = React.useState(data.reports);
-  const [adminItems, setAdminItems] = React.useState(data.admin);
+  const [reports, setReports] = React.useState<NavItem[]>(NAV_REPORTS);
+  const [adminItems, setAdminItems] = React.useState<NavItem[]>(NAV_ADMIN);
   const [permissions, setPermissions] = React.useState<any[]>(initialPermissions);
   const [isAdmin, setIsAdmin] = React.useState(initialIsAdmin);
   const [isSupplier, setIsSupplier] = React.useState(isSupplierProp);
@@ -252,32 +96,25 @@ export function AppSidebar({
     fetchActiveActionsCount();
   }, [isSupplierProp]);
 
-  const filterItems = (items: any[]) => {
-    if (loadingPermissions) return []; // Show nothing while loading to prevent flash
-    if (isSupplier) return []; // Suppliers see nothing in sidebar
-    if (isAdmin) return items; // Super Admin sees all
-
-    return items.filter(item => {
-      const itemName = item.name || item.title;
-
-      const perm = permissions.find((p: any) => p.module === itemName);
-      // If permission entry exists, check view action.
-      if (perm) {
-        return perm.actions?.view === true;
-      }
-
-      // Fallback: If no permission record exists for this module, what to do?
-      // Defaulting to FALSE prevents unauthorized users from seeing everything if their permission load failed or is incomplete.
-      return false;
-    });
+  // Same registry, same filter as the ⌘K palette — the two cannot drift apart.
+  const access = {
+    isAdmin,
+    isSupplier,
+    permissions,
+    loading: loadingPermissions,
   };
 
-  const filteredAdmin = filterItems(adminItems);
-  const filteredInventory = filterItems(data.inventory);
-  const filteredManagement = filterItems(data.management);
-  const filteredSales = filterItems(data.sales);
-  const filteredReports = filterItems(reports);
-  const filteredSecondary = filterItems(data.navSecondary);
+  const filteredAdmin = filterNavItems(adminItems, access);
+  const filteredInventory = filterNavItems(NAV_INVENTORY, access);
+  const filteredManagement = filterNavItems(NAV_MANAGEMENT, access);
+  const filteredSales = filterNavItems(NAV_SALES, access);
+  const filteredReports = filterNavItems(reports, access);
+  const filteredSecondary = filterNavItems(NAV_SECONDARY, access).map((item) => ({
+    // NavSecondary predates the shared registry and keys off `title`.
+    title: item.name,
+    url: item.url,
+    icon: item.icon,
+  }));
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -324,7 +161,7 @@ export function AppSidebar({
         <p className="text-[10px] text-gray-600 dark:text-gray-400 text-center pt-1 group-data-[collapsible=icon]:hidden">
           V.1.52
         </p>
-        <NavUser user={data.user} isSupplier={isSupplier} />
+        <NavUser user={EMPTY_USER} isSupplier={isSupplier} />
       </SidebarFooter>
     </Sidebar>
   );

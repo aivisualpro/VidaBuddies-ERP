@@ -22,6 +22,7 @@ import {
   Plus, ChevronDown, FileUp, FolderUp, Wrench, CheckSquare, Square, ListTree, MapPin, Landmark,
 } from "lucide-react";
 import CustomsPackageWizard from "@/components/admin/customs-package-wizard";
+import MoveDestinationDialog from "@/components/admin/move-destination-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -352,6 +353,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   // Customs Package wizard (shipment-scoped)
   const [customsOpen, setCustomsOpen] = useState(false);
 
+  // Recursive file counts per folder (id → total files in subtree), shown as
+  // badges on folder cards. Refreshed whenever the visible docs change.
+  const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
+  // True when every folder card physically sits under the record's canonical
+  // Drive folder → the Repair option is unnecessary and hidden.
+  const [driveStructureOk, setDriveStructureOk] = useState(false);
+
   // Email
   const [emailComposeOpen, setEmailComposeOpen] = useState(false);
   const [emailComposeMode, setEmailComposeMode] = useState<"compose" | "view">("compose");
@@ -531,6 +539,46 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   }, [open, previewFile]);
 
   const selectedItem = items.find(i => i.id === selected) || null;
+
+  // Load recursive folder file-counts whenever the record folder or docs change
+  useEffect(() => {
+    if (!recordFolderId || !selectedItem) return;
+    const seedIds = (selectedItem.docs || [])
+      .filter((d) => d.mimeType === "application/vnd.google-apps.folder" && d.driveFileId)
+      .map((d) => d.driveFileId);
+    const seeds = seedIds.length ? `&seeds=${encodeURIComponent(seedIds.join(","))}` : "";
+    let cancelled = false;
+    fetch(`/api/admin/drive/folder-tree?folderId=${recordFolderId}${seeds}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.folders) return;
+        const byParent = new Map<string, any[]>();
+        for (const f of data.folders) {
+          const arr = byParent.get(f.parentId) || [];
+          arr.push(f);
+          byParent.set(f.parentId, arr);
+        }
+        const totals: Record<string, number> = {};
+        const total = (id: string, direct: number): number => {
+          if (totals[id] != null) return totals[id];
+          let sum = direct;
+          for (const c of byParent.get(id) || []) sum += total(c.id, c.fileCount || 0);
+          totals[id] = sum;
+          return sum;
+        };
+        for (const f of data.folders) total(f.id, f.fileCount || 0);
+        setFolderCounts(totals);
+        // Structure check: every folder card must be a REAL direct child of the
+        // canonical record folder (not merely reachable via a seed rescue).
+        const direct = new Set(
+          data.folders.filter((f: any) => f.parentId === recordFolderId && !f.viaSeed).map((f: any) => f.id)
+        );
+        setDriveStructureOk(seedIds.length > 0 && seedIds.every((id) => direct.has(id)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordFolderId, selectedItem, selectedItem?.docs, folderContents]);
 
   // driveFileId → documentType, from all records' DB docs. Lets folder contents
   // and the All Files view (both live Drive lists) show Internal/External.
@@ -1205,46 +1253,103 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
   };
 
   /**
-   * Touch-friendly fallback for drag & drop: move the SELECTED files into a
-   * folder from the Move dialog. (HTML5 drag & drop does not exist on iPads /
-   * touch screens, so every drag action needs a tap-based equivalent.)
+   * Universal tap-based move — the drag & drop equivalent that works on every
+   * device (iPads/touch screens have no HTML5 drag & drop) and across ANY
+   * folders of the record via the destination tree picker.
+   * Handles all three sources: root grid (DB docs), inside a folder (live
+   * Drive files) and the All Files table. Keeps the DB in sync:
+   *  - moved OUT of the record root → detach the DB doc entries
+   *  - moved INTO the record root  → attach DB doc entries (so cards appear)
    */
-  const handleMoveSelectedIntoFolder = async (targetFolder: DocRecord) => {
-    const selected = getSelectedDocs().filter(
-      (s) => s.doc.mimeType !== FOLDER_MIME || s.doc.driveFileId !== targetFolder.driveFileId
-    );
-    const fileIds = selected.map((s) => s.doc.driveFileId).filter((id) => id && id !== targetFolder.driveFileId);
-    if (fileIds.length === 0 || !targetFolder?.driveFileId) return;
+  const handleMoveToDestination = async (targetId: string, targetName: string) => {
+    const fromAllFiles = allFilesView;
+    let entries: { id: string; name: string; link?: string; mimeType?: string; size?: string; fromRootDb: boolean }[] = [];
+    if (fromAllFiles) {
+      entries = allFiles
+        .filter((f) => allFilesSel.includes(f.id))
+        .map((f) => ({
+          id: f.id,
+          name: f.name,
+          link: f.webViewLink,
+          mimeType: f.mimeType,
+          size: f.size,
+          fromRootDb: !insideFolder && (f.folderPath === "(root)" || !f.folderPath),
+        }));
+    } else {
+      entries = getSelectedDocs().map((s) => ({
+        id: s.doc.driveFileId,
+        name: s.doc.documentName,
+        link: s.doc.documentLink,
+        mimeType: s.doc.mimeType,
+        size: s.doc.size,
+        fromRootDb: !insideFolder,
+      }));
+    }
+    entries = entries.filter((e) => e.id && e.id !== targetId);
+    if (entries.length === 0) return;
+
     setMoving(true);
     try {
       const res = await fetch("/api/admin/drive", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileIds, targetFolderId: targetFolder.driveFileId }),
+        body: JSON.stringify({ fileIds: entries.map((e) => e.id), targetFolderId: targetId }),
       });
       const data = await res.json();
       if (!res.ok || data.moved === 0) {
         toast.error("Move failed", { description: data.error });
         return;
       }
-      // At the record root the cards are DB docs — detach them from the record
-      // (folder targets only render at root when a record is selected).
-      if (!insideFolder && selectedItem) {
-        await fetch("/api/admin/drive-documents/detach", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            collection: selectedItem.collection,
-            recordId: selectedItem.id,
-            driveFileIds: fileIds,
-          }),
-        }).catch(() => {});
+
+      const movedToRoot = targetId === recordFolderId;
+      if (selectedItem) {
+        // Files leaving the record root lose their DB card…
+        const detachIds = entries.filter((e) => e.fromRootDb).map((e) => e.id);
+        if (detachIds.length > 0 && !movedToRoot) {
+          await fetch("/api/admin/drive-documents/detach", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collection: selectedItem.collection, recordId: selectedItem.id, driveFileIds: detachIds }),
+          }).catch(() => {});
+        }
+        // …files arriving at the record root gain one.
+        if (movedToRoot) {
+          const attach = entries.filter((e) => !e.fromRootDb);
+          await Promise.all(
+            attach.map((a) =>
+              fetch("/api/admin/drive-documents", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  collection: selectedItem.collection,
+                  recordId: selectedItem.id,
+                  document: {
+                    documentName: a.name,
+                    documentLink: a.link || "",
+                    documentType: "Internal",
+                    driveFileId: a.id,
+                    mimeType: a.mimeType || "",
+                    size: a.size || "0",
+                    createdAt: new Date().toISOString(),
+                  },
+                }),
+              }).catch(() => {})
+            )
+          );
+        }
       }
-      toast.success(`Moved ${data.moved} file(s) → ${targetFolder.documentName}`);
+
+      toast.success(`Moved ${data.moved} item${data.moved !== 1 ? "s" : ""} → ${targetName}`);
       setSelectedIds([]);
+      setAllFilesSel([]);
       setMoveDialogOpen(false);
+      // Refresh every affected view
+      fetchDocs();
       if (insideFolder && currentFolderId) fetchFolderContents(currentFolderId);
-      else fetchDocs();
+      if (allFilesView) {
+        const scope = insideFolder ? currentFolderId : recordFolderId;
+        if (scope) fetchAllFiles(scope);
+      }
     } catch {
       toast.error("Move failed");
     } finally {
@@ -1609,7 +1714,7 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                         </DropdownMenuItem>
                       </>
                     )}
-                    {!insideFolder && !repairedPOs.has(poItems[0]?.label || poNumber) && (
+                    {!insideFolder && !driveStructureOk && !repairedPOs.has(poItems[0]?.label || poNumber) && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -2202,7 +2307,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                             {isFolder ? (
                               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-amber-500/10 to-amber-500/[0.03]">
                                 <Folder className="h-14 w-14 text-amber-500 fill-amber-500/20" />
-                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-600/70">Folder</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-600/70">
+                                  {folderCounts[d.driveFileId] != null
+                                    ? folderCounts[d.driveFileId] > 0
+                                      ? `${folderCounts[d.driveFileId]} file${folderCounts[d.driveFileId] !== 1 ? "s" : ""}`
+                                      : "Empty"
+                                    : "Folder"}
+                                </span>
                               </div>
                             ) : (
                               <>
@@ -2305,9 +2416,12 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   })()}
                 </p>
                 <div className="flex items-center gap-1.5">
-                  {/* All Files actions: Merge to current scope + Download */}
+                  {/* All Files actions: Move + Merge to current scope + Download */}
                   {allFilesView && allFilesSel.length > 0 && (
                     <>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
+                        {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({allFilesSel.length})
+                      </Button>
                       {(() => {
                         const mergeableCount = allFiles.filter((f) => allFilesSel.includes(f.id) && (f.mimeType === "application/pdf" || f.mimeType?.startsWith("image/"))).length;
                         const scopeName = insideFolder ? folderStack[folderStack.length - 1].name : (selectedItem?.label || "root");
@@ -2375,11 +2489,9 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
                   {selCount > 0 && insideFolder && (
                     <>
                       <span className="text-[9px] font-medium text-muted-foreground/60 mr-1 hidden md:inline">Drag onto a folder, or use Move</span>
-                      {folderContents.some((d) => d.mimeType === FOLDER_MIME && !selectedIds.some((id) => id.startsWith(d.driveFileId))) && (
-                        <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
-                          {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({selCount})
-                        </Button>
-                      )}
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={() => setMoveDialogOpen(true)} disabled={moving}>
+                        {moving ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Move ({selCount})
+                      </Button>
                       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2.5" onClick={handleDownloadSelected} disabled={downloadingSel}
                         title={selCount === 1 ? "Download" : `Download ${selCount} as ZIP`}>
                         {downloadingSel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Download ({selCount})
@@ -2587,70 +2699,34 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
         </DialogContent>
       </Dialog>
 
-      {/* Move Files Dialog */}
-      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="h-5 w-5 text-blue-500" /> Move {selCount} File{selCount !== 1 ? "s" : ""}
-            </DialogTitle>
-            <DialogDescription>Pick a destination — works without drag & drop (tablet friendly)</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1 pt-2 max-h-[360px] overflow-y-auto">
-            {/* Folders in the current view — same targets as drag & drop */}
-            {(() => {
-              const folderTargets = (insideFolder ? folderContents : (selectedItem?.docs || []))
-                .filter((d) => d.mimeType === FOLDER_MIME && !selectedIds.some((id) => id.startsWith(d.driveFileId)));
-              if (folderTargets.length === 0) return null;
-              return (
-                <>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
-                    Folders {insideFolder ? "in this folder" : selectedItem ? `in ${selectedItem.label}` : ""}
-                  </p>
-                  {folderTargets.map((f) => (
-                    <button
-                      key={f.driveFileId}
-                      onClick={() => handleMoveSelectedIntoFolder(f)}
-                      disabled={moving}
-                      className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/30"
-                    >
-                      <Folder className="h-4 w-4 text-amber-500 shrink-0" />
-                      <span className="truncate">{f.documentName}</span>
-                    </button>
-                  ))}
-                  {!insideFolder && <div className="h-px bg-border/60 my-1.5" />}
-                </>
-              );
-            })()}
-            {!insideFolder && items.length > 0 && (
-              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">Other records</p>
-            )}
-            {!insideFolder && items.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleMoveFiles(item)}
-                disabled={moving}
-                className={cn(
-                  "w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-between gap-2",
-                  "hover:bg-muted/60 border border-transparent hover:border-border/40",
-                  selectedItem?.id === item.id && "opacity-40 cursor-not-allowed"
-                )}
-              >
-                <span className="flex items-center gap-2 truncate">
-                  <span className={kindColor(item.kind)}>{kindIcon(item.kind)}</span>
-                  <span className="truncate">{item.label}</span>
-                </span>
-                <span className="text-[10px] font-bold bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">{fileCountOf(item.docs)}</span>
-              </button>
-            ))}
-          </div>
-          {moving && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Moving files...
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Move Files — full folder-tree destination picker (works on touch too) */}
+      <MoveDestinationDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        rootId={recordFolderId}
+        rootLabel={selectedItem?.label || "Record"}
+        currentLocationId={allFilesView ? null : insideFolder ? currentFolderId : recordFolderId}
+        selectedFolderIds={
+          !allFilesView
+            ? getSelectedDocs().filter((s) => s.doc.mimeType === FOLDER_MIME).map((s) => s.doc.driveFileId)
+            : []
+        }
+        itemCount={allFilesView ? allFilesSel.length : selCount}
+        moving={moving}
+        onMove={handleMoveToDestination}
+        records={
+          !insideFolder && !allFilesView
+            ? items.filter((i) => i.id !== selectedItem?.id).map((i) => ({ id: i.id, label: i.label, count: fileCountOf(i.docs) }))
+            : []
+        }
+        onPickRecord={(rid) => {
+          const it = items.find((i) => i.id === rid);
+          if (it) handleMoveFiles(it);
+        }}
+        seedFolders={(selectedItem?.docs || [])
+          .filter((d) => d.mimeType === FOLDER_MIME && d.driveFileId)
+          .map((d) => ({ id: d.driveFileId, name: d.documentName }))}
+      />
 
       {/* Email Compose Dialog */}
       <EmailComposeDialog

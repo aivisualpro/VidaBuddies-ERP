@@ -3,12 +3,7 @@
 import * as React from "react"
 import {
   DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
   closestCenter,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core"
@@ -20,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { useSortableSensors } from "@/lib/dnd-sensors"
 import {
   IconChevronDown,
   IconChevronLeft,
@@ -128,7 +124,7 @@ function DragHandle({ id }: { id: number }) {
       {...listeners}
       variant="ghost"
       size="icon"
-      className="text-muted-foreground size-7 hover:bg-transparent"
+      className="text-muted-foreground size-7 cursor-grab touch-none active:cursor-grabbing hover:bg-transparent"
     >
       <IconGripVertical className="text-muted-foreground size-3" />
       <span className="sr-only">Drag to reorder</span>
@@ -354,11 +350,8 @@ export function DataTable({
     pageSize: 10,
   })
   const sortableId = React.useId()
-  const sensors = useSensors(
-    useSensor(MouseSensor, {}),
-    useSensor(TouchSensor, {}),
-    useSensor(KeyboardSensor, {})
-  )
+  // Mouse, touch, pen and keyboard — see lib/dnd-sensors.
+  const sensors = useSortableSensors()
 
   const dataIds = React.useMemo<UniqueIdentifier[]>(
     () => data?.map(({ id }) => id) || [],

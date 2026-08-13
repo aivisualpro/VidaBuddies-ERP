@@ -274,3 +274,87 @@ body {
   animation: progress-bar 1.4s ease-in-out infinite;
 }
 
+/* ==========================================================================
+   Installed application chrome
+   ==========================================================================
+   manifest.json opts into `window-controls-overlay`, so in an installed
+   desktop window the browser draws no title bar of its own and the page owns
+   the whole window — including the strip the OS buttons sit in.
+
+   Two obligations come with that, and both live here:
+
+     1. Something has to declare a drag surface, or the window cannot be
+        moved at all. That is `[data-app-region="drag"]`.
+
+     2. Nothing interactive may sit inside a drag surface without opting back
+        out, or it silently stops responding to clicks. Rather than rely on
+        every future contributor remembering that, the blanket rule below
+        opts every interactive element out automatically.
+
+   All measurements are read from the platform via `env(titlebar-area-*)` and
+   `env(safe-area-inset-*)` — never hard-coded per OS.
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* 0px in a browser tab, so every calc() downstream is a no-op there. */
+  --app-titlebar-height: 0px;
+  --app-safe-top: 0px;
+}
+
+@media (display-mode: window-controls-overlay) {
+  :root {
+    /* Windows reports ~33px; floor it so the controls inside stay usable. */
+    --app-titlebar-height: max(env(titlebar-area-height, 36px), 36px);
+  }
+
+  /* The title bar mounts on the client, one frame after first paint. Painting
+     the body in the title bar's own colour means that frame reads as the bar
+     itself rather than as a flash of empty window. */
+  body {
+    background-color: var(--sidebar);
+  }
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  :root {
+    /* Installed on a phone the web view runs edge to edge — including under
+       the status bar and notch, which the browser used to keep clear for us. */
+    --app-safe-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+[data-app-region="drag"] {
+  -webkit-app-region: drag;
+  app-region: drag;
+  /* A drag surface must not double as a text selection or native image drag. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+[data-app-region="no-drag"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+[data-app-region="drag"]
+  :is(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role="button"],
+    [role="link"],
+    [role="menuitem"],
+    [role="tab"],
+    [role="combobox"],
+    [role="switch"],
+    [role="checkbox"],
+    [tabindex]:not([tabindex^="-"])
+  ) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+

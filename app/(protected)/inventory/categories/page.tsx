@@ -34,20 +34,16 @@ import { TablePageSkeleton } from "@/components/skeletons";
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useSortableSensors } from "@/lib/dnd-sensors";
 
 interface SubCategory {
   id: string; // Used for UI keying (DND)
@@ -169,13 +165,8 @@ export default function CategoriesPage() {
 
   const [formData, setFormData] = useState<Partial<Category>>(defaultFormData);
 
-  // DnD Sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // Mouse, touch, pen and keyboard — see lib/dnd-sensors.
+  const sensors = useSortableSensors();
 
 
   const handleSubmit = async (e: React.FormEvent) => {

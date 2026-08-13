@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import "./globals.css";
 
@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWAInstallPrompt } from "@/components/pwa/install-prompt";
 import { VersionUpdateBanner } from "@/components/pwa/version-update-banner";
+import { ThemeColorSync } from "@/components/pwa/theme-color-sync";
 import { QueryProvider } from "./providers";
 
 import { Poppins } from "next/font/google";
@@ -36,6 +37,21 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * `viewport-fit: cover` is what makes `env(safe-area-inset-*)` report real
+ * values. Without it the installed mobile app renders its header underneath
+ * the status bar and notch, because `appleWebApp.statusBarStyle` is
+ * translucent and the web view therefore owns the full screen.
+ *
+ * Zoom is deliberately left unrestricted — an ERP gets read on a phone in a
+ * warehouse, and pinch-to-zoom is not ours to take away.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -48,7 +64,12 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#09090b" />
+        {/*
+          The browser paints the installed window's OS buttons on this colour.
+          Seeded to the dark title bar (matching `defaultTheme="dark"`) for a
+          clean first paint; <ThemeColorSync /> keeps it honest after that.
+        */}
+        <meta name="theme-color" content="#292524" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -75,6 +96,7 @@ export default async function RootLayout({
             <QueryProvider>
             {children}
             <Toaster position="bottom-right" richColors duration={1500} />
+            <ThemeColorSync />
             <ServiceWorkerRegistration />
             <PWAInstallPrompt />
             <VersionUpdateBanner />

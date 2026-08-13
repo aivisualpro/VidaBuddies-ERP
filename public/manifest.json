@@ -1,11 +1,16 @@
 {
+  "id": "/",
   "name": "Vida Buddies ERP",
   "short_name": "VidaBuddies",
   "description": "Vida Buddies ERP — Analytics dashboard with dynamic charts, interactive tables, and seamless performance across devices.",
   "start_url": "/",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#09090b",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#0c0a09",
+  "theme_color": "#292524",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [
@@ -29,7 +34,32 @@
     }
   ],
   "screenshots": [],
-  "display_override": ["window-controls-overlay", "standalone"],
+  "shortcuts": [
+    {
+      "name": "Live Shipments",
+      "short_name": "Shipments",
+      "description": "Track shipments currently in transit",
+      "url": "/admin/live-shipments"
+    },
+    {
+      "name": "Active Actions",
+      "short_name": "Actions",
+      "description": "Open and in-progress items assigned to the team",
+      "url": "/admin/active-actions"
+    },
+    {
+      "name": "Purchase Orders",
+      "short_name": "POs",
+      "description": "Review and raise purchase orders",
+      "url": "/admin/purchase-orders"
+    },
+    {
+      "name": "Chat",
+      "short_name": "Chat",
+      "description": "Team and supplier conversations",
+      "url": "/admin/chat"
+    }
+  ],
   "edge_side_panel": {
     "preferred_width": 480
   },
