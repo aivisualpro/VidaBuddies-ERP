@@ -577,8 +577,13 @@ export function DriveDocumentsModal({ open, onClose, poNumber, spoNumber, shipNu
       })
       .catch(() => {});
     return () => { cancelled = true; };
+    // NOTE deps are stable primitives/state only. `selectedItem` is a fresh
+    // object every render — depending on it cancelled the slow Drive BFS fetch
+    // on each re-render, so counts never resolved. `items` changes identity
+    // exactly once per fetchDocs, which doubles as the refresh trigger after
+    // uploads / moves / deletes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordFolderId, selectedItem, selectedItem?.docs, folderContents]);
+  }, [recordFolderId, selected, items]);
 
   // driveFileId → documentType, from all records' DB docs. Lets folder contents
   // and the All Files view (both live Drive lists) show Internal/External.
