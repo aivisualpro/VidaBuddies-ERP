@@ -14,12 +14,14 @@ import { useTheme } from "next-themes";
  *
  * The values are literal hex on purpose: `theme-color` is consumed by browser
  * chrome outside the page's style resolution, so the `oklch()` value of
- * `--sidebar` cannot be handed over directly. These mirror stone-50 / stone-800
- * in `globals.css` — update both together.
+ * `--sidebar` cannot be handed over directly. These are exact sRGB conversions
+ * of `--sidebar` in `globals.css` (stone-50 light, stone-900 dark) — if that
+ * token moves, move these with it, or the OS buttons sit on a visibly
+ * different shade than the bar they are drawn into.
  */
 const THEME_COLOR = {
   light: "#fafaf9",
-  dark: "#292524",
+  dark: "#1c1917",
 } as const;
 
 export function ThemeColorSync() {

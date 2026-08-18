@@ -1,6 +1,13 @@
 "use client";
 
 import * as React from "react";
+import {
+  IconAlertTriangle,
+  IconLoader2,
+  IconPointFilled,
+  IconWifiOff,
+} from "@tabler/icons-react";
+
 import { cn } from "@/lib/utils";
 import { getPusherClient } from "@/lib/pusher/client";
 import {
@@ -12,46 +19,54 @@ import {
 /**
  * Live connection indicator.
  *
- * In a shared ERP the question "am I looking at current data?" is a real one —
- * two people editing the same purchase order need to know the moment realtime
- * drops. This surfaces network reachability and the realtime socket as a single
- * honest signal, rather than letting the UI quietly go stale.
+ * In a shared ERP, "am I looking at current data?" is a real question — two
+ * people editing the same purchase order need to know the moment realtime
+ * drops. This surfaces network reachability and the realtime socket as one
+ * honest signal, rather than letting the screen quietly go stale.
+ *
+ * Each state carries its own glyph as well as its own colour: at 11px in a
+ * 36px strip, hue alone is not a signal anyone can rely on (WCAG 1.4.1), and
+ * the label is hidden entirely on narrow windows.
  */
 
 type Health = "live" | "connecting" | "degraded" | "offline";
 
-const PRESENTATION: Record<
-  Health,
-  { label: string; detail: string; dot: string; ring: string; text: string }
-> = {
+interface Presentation {
+  label: string;
+  detail: string;
+  icon: React.ComponentType<{ className?: string }>;
+  /** Light-mode shades are one step darker: -600 on the near-white sidebar
+   *  clears 4.5:1, -500 does not. */
+  tone: string;
+  spin?: boolean;
+}
+
+const PRESENTATION: Record<Health, Presentation> = {
   live: {
     label: "Live",
     detail: "Connected. Changes from your team appear in real time.",
-    dot: "bg-emerald-500",
-    ring: "bg-emerald-500/70",
-    text: "text-emerald-600 dark:text-emerald-400",
+    icon: IconPointFilled,
+    tone: "text-emerald-700 dark:text-emerald-400",
   },
   connecting: {
     label: "Connecting",
     detail: "Re-establishing the realtime connection…",
-    dot: "bg-amber-500",
-    ring: "bg-amber-500/70",
-    text: "text-amber-600 dark:text-amber-400",
+    icon: IconLoader2,
+    tone: "text-amber-700 dark:text-amber-400",
+    spin: true,
   },
   degraded: {
     label: "Delayed",
     detail:
       "Realtime updates are unavailable. Your work still saves — the screen just won't refresh on its own.",
-    dot: "bg-amber-500",
-    ring: "bg-amber-500/70",
-    text: "text-amber-600 dark:text-amber-400",
+    icon: IconAlertTriangle,
+    tone: "text-amber-700 dark:text-amber-400",
   },
   offline: {
     label: "Offline",
     detail: "No network connection. Changes cannot be saved until you reconnect.",
-    dot: "bg-rose-500",
-    ring: "bg-rose-500/70",
-    text: "text-rose-600 dark:text-rose-400",
+    icon: IconWifiOff,
+    tone: "text-rose-700 dark:text-rose-400",
   },
 };
 
@@ -106,10 +121,10 @@ export function ConnectionStatus({ className }: { className?: string }) {
     };
   }, []);
 
-  // Render the optimistic state until we've actually measured, so the title bar
-  // never flashes a red "Offline" on a perfectly healthy connection.
+  // Stay optimistic until we've actually measured, so the title bar never
+  // flashes a red "Offline" on a perfectly healthy connection.
   const health: Health = ready ? healthFromSocket(socketState, online) : "live";
-  const presentation = PRESENTATION[health];
+  const { label, detail, icon: Icon, tone, spin } = PRESENTATION[health];
 
   return (
     <Tooltip>
@@ -117,42 +132,34 @@ export function ConnectionStatus({ className }: { className?: string }) {
         <button
           type="button"
           data-app-region="no-drag"
-          aria-label={`Connection status: ${presentation.label}`}
+          aria-label={`Connection status: ${label}`}
           className={cn(
-            "group/status flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2",
-            "text-[11px] font-medium tracking-tight",
-            "transition-colors hover:bg-foreground/5 focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-2",
+            "flex h-6 shrink-0 items-center gap-1.5 rounded-md px-1.5",
+            "text-[11px] leading-[1.4] font-medium tracking-tight",
+            "transition-colors hover:bg-foreground/10 dark:hover:bg-white/10",
+            "focus-visible:ring-ring focus-visible:ring-offset-sidebar focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+            tone,
             className
           )}
         >
-          <span className="relative flex size-1.5 shrink-0">
+          <span className="relative flex size-3.5 shrink-0 items-center justify-center">
             {health === "live" && (
               <span
-                className={cn(
-                  "absolute inline-flex size-full animate-ping rounded-full opacity-60",
-                  presentation.ring
-                )}
+                aria-hidden
+                className="bg-emerald-600/60 dark:bg-emerald-400/60 absolute size-2 rounded-full motion-safe:animate-ping"
                 style={{ animationDuration: "2.4s" }}
               />
             )}
-            <span
-              className={cn(
-                "relative inline-flex size-1.5 rounded-full",
-                presentation.dot,
-                health === "connecting" && "animate-pulse"
-              )}
+            <Icon
+              className={cn("relative size-3.5", spin && "motion-safe:animate-spin")}
             />
           </span>
-          <span className={cn("hidden md:inline", presentation.text)}>
-            {presentation.label}
-          </span>
+          <span className="hidden md:inline">{label}</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-56">
-        <p className="font-medium">{presentation.label}</p>
-        <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
-          {presentation.detail}
-        </p>
+        <p className="font-medium">{label}</p>
+        <p className="text-primary-foreground/80 mt-0.5 text-xs leading-snug">{detail}</p>
       </TooltipContent>
     </Tooltip>
   );

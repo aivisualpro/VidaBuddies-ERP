@@ -10,9 +10,7 @@ import VidaAppRole from "@/lib/models/VidaAppRole";
 import { redirect } from "next/navigation";
 import { RealtimeInvalidator } from "@/components/RealtimeInvalidator";
 import { GlobalProgressBar } from "@/components/GlobalProgressBar";
-import { AppTitleBar } from "@/components/pwa/app-titlebar";
 import { AppCommandMenu } from "@/components/pwa/app-command-menu";
-import { CommandMenuProvider } from "@/components/providers/command-menu-provider";
 
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -64,44 +62,38 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <HeaderActionsProvider>
-      {/* Wraps both the title bar and the shell: the ⌘K trigger lives in the
-          title bar, which sits outside SidebarProvider, while the palette
-          itself needs sidebar context. */}
-      <CommandMenuProvider>
-        <GlobalProgressBar />
+      <GlobalProgressBar />
 
-        {/* Renders only in an installed desktop window, where the browser has
-            handed us the title bar. A no-op in a normal tab. */}
-        <AppTitleBar />
+      <SidebarProvider
+        defaultOpen={defaultOpen}
+        // `--app-titlebar-height` is 0px unless we are drawing the window's
+        // title bar ourselves, so this is exactly `h-screen` in a browser tab.
+        className="h-[calc(100vh-var(--app-titlebar-height))] min-h-0 overflow-hidden"
+        style={
+          {
+            "--header-height": "3rem",
+          } as React.CSSProperties
+        }
+      >
 
-        <SidebarProvider
-          defaultOpen={defaultOpen}
-          // `--app-titlebar-height` is 0px unless we are drawing the window's
-          // title bar ourselves, so this is exactly `h-screen` in a browser tab.
-          className="h-[calc(100vh-var(--app-titlebar-height))] min-h-0 overflow-hidden"
-          style={
-            {
-              "--header-height": "3rem",
-            } as React.CSSProperties
-          }
-        >
+        <RealtimeInvalidator />
+        <AppSidebar variant="inset" isSupplierProp={isSupplier} initialPermissions={initialPermissions} initialIsAdmin={isSuperAdmin} />
+        <SidebarInset className="flex flex-col h-full w-full overflow-hidden bg-background">
+          <SiteHeader />
+          <div className="flex-1 overflow-auto origin-top-left flex flex-col p-4">
+              {children}
+          </div>
+        </SidebarInset>
 
-          <RealtimeInvalidator />
-          <AppSidebar variant="inset" isSupplierProp={isSupplier} initialPermissions={initialPermissions} initialIsAdmin={isSuperAdmin} />
-          <SidebarInset className="flex flex-col h-full w-full overflow-hidden bg-background">
-            <SiteHeader />
-            <div className="flex-1 overflow-auto origin-top-left flex flex-col p-4">
-                {children}
-            </div>
-          </SidebarInset>
-
-          <AppCommandMenu
-            isAdmin={isSuperAdmin}
-            isSupplier={isSupplier}
-            permissions={initialPermissions}
-          />
-        </SidebarProvider>
-      </CommandMenuProvider>
+        {/* Inside SidebarProvider so the palette can offer "toggle sidebar";
+            its open state comes from CommandMenuProvider at the root, which is
+            what lets the title bar's ⌘K button reach it. */}
+        <AppCommandMenu
+          isAdmin={isSuperAdmin}
+          isSupplier={isSupplier}
+          permissions={initialPermissions}
+        />
+      </SidebarProvider>
     </HeaderActionsProvider>
   );
 }

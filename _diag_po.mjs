@@ -1,0 +1,18 @@
+import { readFileSync } from "fs";
+import { MongoClient } from "mongodb";
+const env = readFileSync("./.env","utf-8");
+const uri = env.match(/^MONGODB_URI="?([^"\n]+)"?/m)[1];
+const c = new MongoClient(uri, { serverSelectionTimeoutMS: 15000 });
+await c.connect();
+const col = c.db().collection("vidapos");
+console.log("=== INDEXES ===");
+for (const ix of await col.indexes()) console.log(JSON.stringify(ix));
+const docs = await col.find({}, { projection: { VBNumber:1, isArchived:1, vbpoNo:1 } }).toArray();
+console.log("total:", docs.length, "| withVbpoNo:", docs.filter(d=>'vbpoNo' in d).length);
+const nums = docs.map(d => { const m=String(d.VBNumber||"").match(/^VB(\d+)$/i); return m?parseInt(m[1],10):null; });
+console.log("max VB:", Math.max(...nums.filter(Boolean)));
+console.log("non-matching VBNumbers:", JSON.stringify(docs.filter((d,i)=>nums[i]===null).map(d=>d.VBNumber)));
+const seen={}; docs.forEach(d=>{const k=String(d.VBNumber); seen[k]=(seen[k]||0)+1;});
+console.log("dupes:", JSON.stringify(Object.entries(seen).filter(([,v])=>v>1)));
+console.log("VB525-539:", JSON.stringify(docs.filter(d=>/^VB(52[5-9]|53[0-9])$/i.test(String(d.VBNumber))).map(d=>d.VBNumber).sort()));
+await c.close();

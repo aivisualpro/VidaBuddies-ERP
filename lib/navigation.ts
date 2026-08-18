@@ -148,14 +148,12 @@ const SEGMENT_LABELS: Record<string, string> = {
   "quality-control": "Quality Control",
   qc: "QC",
   po: "PO",
-  id: "Detail",
-  management: "Inventory Mgt.",
 };
 
-/** Longest URL prefix wins, so `/admin/sales/dashboard` beats `/dashboard`. */
-const ROUTE_LABELS: ReadonlyArray<readonly [string, string]> = NAV_GROUPS.flatMap((group) =>
-  group.items.map((item) => [item.url, item.name] as const)
-).sort((a, b) => b[0].length - a[0].length);
+/** Exact URL → the name the sidebar uses for it. */
+const ROUTE_LABELS = new Map<string, string>(
+  NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.url, item.name] as const))
+);
 
 function humanise(segment: string): string {
   if (OBJECT_ID.test(segment)) return "Detail";
@@ -169,6 +167,12 @@ export interface Crumb {
   href: string;
   /** The last crumb — the page you are actually on. */
   current: boolean;
+  /**
+   * Whether `href` is a real destination. Group folders such as `/admin` and
+   * `/inventory` are routing artefacts with no page behind them, so linking
+   * them would hand the user a 404.
+   */
+  linkable: boolean;
 }
 
 /**
@@ -178,7 +182,7 @@ export interface Crumb {
 export function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) {
-    return [{ label: "Dashboard", href: "/dashboard", current: true }];
+    return [{ label: "Dashboard", href: "/dashboard", current: true, linkable: true }];
   }
 
   const crumbs: Crumb[] = [];
@@ -187,18 +191,10 @@ export function buildBreadcrumbs(pathname: string): Crumb[] {
   for (let index = 0; index < segments.length; index += 1) {
     href += `/${segments[index]}`;
 
-    const registered = ROUTE_LABELS.find(([url]) => url === href);
-    const label =
-      registered?.[1] ?? SEGMENT_LABELS[segments[index]] ?? humanise(segments[index]);
+    const registered = ROUTE_LABELS.get(href);
+    const label = registered ?? SEGMENT_LABELS[segments[index]] ?? humanise(segments[index]);
 
-    // Group folders such as `/admin` and `/inventory` are routing artefacts,
-    // not pages — keep them as context but never as the first crumb on their own.
-    crumbs.push({ label, href, current: false });
-  }
-
-  // Collapse a leading bare group segment ("Admin › Admin › Users").
-  if (crumbs.length > 1 && crumbs[0].label === crumbs[1].label) {
-    crumbs.shift();
+    crumbs.push({ label, href, current: false, linkable: registered !== undefined });
   }
 
   crumbs[crumbs.length - 1].current = true;

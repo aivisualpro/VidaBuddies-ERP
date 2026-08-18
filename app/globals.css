@@ -281,7 +281,7 @@ body {
    desktop window the browser draws no title bar of its own and the page owns
    the whole window — including the strip the OS buttons sit in.
 
-   Two obligations come with that, and both live here:
+   Three obligations come with that, and all three live here:
 
      1. Something has to declare a drag surface, or the window cannot be
         moved at all. That is `[data-app-region="drag"]`.
@@ -291,27 +291,79 @@ body {
         every future contributor remembering that, the blanket rule below
         opts every interactive element out automatically.
 
-   All measurements are read from the platform via `env(titlebar-area-*)` and
-   `env(safe-area-inset-*)` — never hard-coded per OS.
+     3. The bar's geometry is gated on CSS, never on React. Hydration lands a
+        frame or two after first paint; anything that only appears once React
+        mounts costs a visible jump on every single launch.
+
+   Every measurement is read from the platform via `env(titlebar-area-*)` and
+   `env(safe-area-inset-*)` — never hard-coded per operating system.
    -------------------------------------------------------------------------- */
 
 :root {
-  /* 0px in a browser tab, so every calc() downstream is a no-op there. */
+  /* All 0px in a browser tab, so every calc() downstream is a no-op there. */
   --app-titlebar-height: 0px;
+  --app-titlebar-inset-start: 0px;
+  --app-titlebar-inset-end: 0px;
   --app-safe-top: 0px;
+  --app-viewport-height: calc(100vh - var(--app-titlebar-height));
+}
+
+[data-app-titlebar] {
+  display: none;
+  transition: opacity 150ms ease-out;
+}
+
+/* Every real title bar fades when its window loses focus. Doing the same is
+   the cheapest, strongest signal that this is an application window and not a
+   web page wearing one. */
+html[data-window-inactive] [data-app-titlebar] {
+  opacity: 0.6;
 }
 
 @media (display-mode: window-controls-overlay) {
   :root {
     /* Windows reports ~33px; floor it so the controls inside stay usable. */
     --app-titlebar-height: max(env(titlebar-area-height, 36px), 36px);
+    /* Room the OS window buttons occupy — left on macOS, right on Windows.
+       Derived from the platform, so one layout serves both. */
+    --app-titlebar-inset-start: env(titlebar-area-x, 0px);
+    --app-titlebar-inset-end: calc(
+      100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
+    );
   }
 
-  /* The title bar mounts on the client, one frame after first paint. Painting
-     the body in the title bar's own colour means that frame reads as the bar
-     itself rather than as a flash of empty window. */
+  [data-app-titlebar] {
+    display: flex;
+  }
+
+  /* The browser is no longer drawing a title bar, so the document owns the
+     whole window and has to split it between the bar and the app. */
   body {
-    background-color: var(--sidebar);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The sidebar is fixed to the viewport rather than to the shell, so it does
+     not inherit the shell's offset and would be painted over by the bar. */
+  [data-slot="sidebar-container"] {
+    top: var(--app-titlebar-height);
+    height: var(--app-viewport-height);
+  }
+
+  /* Chrome-level controls that the title bar has taken over. */
+  [data-app-chrome-duplicate] {
+    display: none;
+  }
+
+  /* Screens written against the full viewport predate the title bar.
+     Remapping the two viewport-height utilities inside the shell keeps them
+     correct without every page having to know the bar exists. */
+  [data-app-shell] .min-h-screen {
+    min-height: var(--app-viewport-height);
+  }
+
+  [data-app-shell] .h-screen {
+    height: var(--app-viewport-height);
   }
 }
 
@@ -357,4 +409,3 @@ body {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
-

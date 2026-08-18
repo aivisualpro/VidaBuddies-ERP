@@ -95,7 +95,7 @@ export function AppCommandMenu({ isAdmin, isSupplier, permissions }: NavAccess) 
 
         {groups.length > 0 && <CommandSeparator />}
 
-        <CommandGroup heading="Workspace">
+        <CommandGroup heading="Actions">
           <CommandItem
             value="toggle sidebar navigation collapse expand"
             onSelect={() => run(toggleSidebar)}

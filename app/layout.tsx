@@ -12,6 +12,8 @@ import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-regis
 import { PWAInstallPrompt } from "@/components/pwa/install-prompt";
 import { VersionUpdateBanner } from "@/components/pwa/version-update-banner";
 import { ThemeColorSync } from "@/components/pwa/theme-color-sync";
+import { AppTitleBar } from "@/components/pwa/app-titlebar";
+import { CommandMenuProvider } from "@/components/providers/command-menu-provider";
 import { QueryProvider } from "./providers";
 
 import { Poppins } from "next/font/google";
@@ -69,7 +71,7 @@ export default async function RootLayout({
           Seeded to the dark title bar (matching `defaultTheme="dark"`) for a
           clean first paint; <ThemeColorSync /> keeps it honest after that.
         */}
-        <meta name="theme-color" content="#292524" />
+        <meta name="theme-color" content="#1c1917" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -94,7 +96,18 @@ export default async function RootLayout({
         >
           <ActiveThemeProvider initialTheme={activeThemeValue}>
             <QueryProvider>
-            {children}
+            {/*
+              The title bar lives at the root, not in the protected shell.
+              `start_url` is "/", which redirects an unauthenticated launch to
+              /login — so a shell-only title bar would leave the very first
+              window a user sees with no drag surface at all.
+            */}
+            <CommandMenuProvider>
+              <AppTitleBar />
+              <div data-app-shell="" className="min-h-0 flex-1">
+                {children}
+              </div>
+            </CommandMenuProvider>
             <Toaster position="bottom-right" richColors duration={1500} />
             <ThemeColorSync />
             <ServiceWorkerRegistration />

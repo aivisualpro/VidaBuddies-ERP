@@ -10,7 +10,7 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#0c0a09",
-  "theme_color": "#292524",
+  "theme_color": "#1c1917",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [

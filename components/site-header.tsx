@@ -11,14 +11,12 @@ import { ThemeSelector } from "./theme-selector";
 import { ModeSwitcher } from "./mode-switcher";
 import { useHeaderActions } from "@/components/providers/header-actions-provider";
 import { useCommandMenu } from "@/components/providers/command-menu-provider";
-import { useWindowControlsOverlay } from "@/hooks/use-window-controls-overlay";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 
 export function SiteHeader() {
   const pathname = usePathname();
   const { openMenu } = useCommandMenu();
-  const { isOverlayVisible } = useWindowControlsOverlay();
 
   // Safe consumption of context to avoid crashing if provider is missing
   let headerCtx: {
@@ -45,11 +43,6 @@ export function SiteHeader() {
 
   const title = resolvePageTitle(pathname);
   const isSupplierPortal = /^\/[0-9a-fA-F]{24}\/(dashboard|documents|details)/.test(pathname);
-
-  // The desktop title bar already carries a search field. A second one directly
-  // beneath it would be noise, so this trigger only appears when the title bar
-  // is not there to provide it.
-  const showSearchTrigger = !isSupplierPortal && !isOverlayVisible;
 
   return (
     <header
@@ -80,9 +73,13 @@ export function SiteHeader() {
         )}
         <div className="ml-auto flex items-center gap-2">
           {headerCtx.rightContent || headerCtx.actions}
-          {showSearchTrigger && (
+          {!isSupplierPortal && (
             <button
               type="button"
+              // The installed desktop window carries its own search field up in
+              // the title bar; CSS hides this one there rather than JS, so it
+              // never renders and then disappears a frame later.
+              data-app-chrome-duplicate=""
               onClick={openMenu}
               aria-label="Search screens and actions"
               aria-keyshortcuts="Meta+K Control+K"
